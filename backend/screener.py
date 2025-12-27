@@ -1,0 +1,508 @@
+import pandas as pd
+import numpy as np
+import yfinance as yf
+import requests
+import logging
+import sys
+import os
+
+# Ensure backend directory is in path for imports if running as script
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+if parent_dir not in sys.path:
+    sys.path.append(parent_dir)
+
+from backend import indicators
+
+
+# Configuration
+PERIOD = "6mo"            # bajamos 6 meses diarios para tener margen
+INTERVAL = "1d"           # timeframe diario
+
+# Ventanas (en barras de trading)
+THREEM_BARS = 63   # ~3 meses
+MONTH_BARS  = 21   # ~1 mes
+WEEK_BARS   = 5    # ~1 semana
+
+# Condiciones de performance
+MIN_RET_3M      = 0.90    # > +90% en 3 meses
+MIN_RET_1W      = 0.10    # > +10% en la semana
+MIN_RET_1M      = -0.25   # -25% mínimo...
+MAX_RET_1M      = 0.0     # ...hasta 0% (lateral / corrección suave)
+
+# Filtros básicos
+MIN_PRICE   = 2.0       # precio mínimo
+MIN_AVG_VOL = 300_000   # volumen promedio mínimo (para evitar ilíquidos)
+
+def get_sec_tickers():
+    """Fetch tickers from SEC JSON."""
+    # SEC requires a User-Agent with an email, but the specific format matters.
+    # This one was confirmed working:
+    url = "https://www.sec.gov/files/company_tickers.json"
+    headers = {
+        "User-Agent": "Javier Screener 3M Rally (contacto: test@example.com)"
+    }
+    # Priority 1: Check for tickers.txt (Manual Override)
+    try:
+        import os
+        if os.path.exists("tickers.txt"):
+            print("DEBUG: Found tickers.txt, loading custom list...")
+            with open("tickers.txt", "r") as f:
+                # Read lines, strip whitespace, ignore empty lines
+                custom_tickers = [line.strip().upper() for line in f if line.strip()]
+            
+            if custom_tickers:
+                print(f"DEBUG: Loaded {len(custom_tickers)} tickers from tickers.txt")
+                return sorted(list(set(custom_tickers)))
+    except Exception as e:
+         print(f"DEBUG: Error reading tickers.txt: {e}")
+
+    # Priority 2: SEC Fetch
+    try:
+        print("DEBUG: Fetching SEC tickers...")
+        resp = requests.get(url, headers=headers, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        tickers = []
+        for _, v in data.items():
+            t = v.get("ticker")
+            if t:
+                tickers.append(t)
+        unique_tickers = sorted(list(set(tickers)))
+        print(f"DEBUG: SUCCCESS - Fetched {len(unique_tickers)} tickers from SEC")
+        return unique_tickers
+    except Exception as e:
+        print(f"DEBUG: ERROR fetching SEC tickers: {e}")
+        # Priority 3: Fallback list
+        print("DEBUG: Using fallback ticker list due to SEC error.")
+        return ["VTYX", "SNDK", "EVAX", "BETR", "GSIT", "EOSE", "IHRT", "CIFR", "AAPL", "MSFT", "NVDA", "TSLA", "GOOGL", "AMZN", "META", "AMD", "NFLX", "INTC", "QCOM", "TXN", "HON", "AMGN", "SBUX", "GILD", "MDLZ", "BKNG", "ADI", "ADP", "LRCX", "VRTX", "CSX", "ISRG", "REGN", "ATVI", "FISV", "KLAC", "MAR", "SNPS", "CDNS", "PANW", "ASML", "NXPI", "FTNT", "KDP", "ORLY", "MNST", "ODFL", "PCAR", "ROST", "PAYX", "CTAS", "MCHP", "AEP", "LULU", "EXC", "IDXX", "BIIB", "AZN", "XEL", "EA", "CSGP", "FAST", "DLTR", "BKR", "GFS", "FANG", "DXCM", "ANSS", "WBD", "ALGN", "ILMN", "SIRI", "EBAY", "ZM", "JD", "LCID", "RIVN", "DDOG", "TEAM", "WDAY", "ZS", "CRWD", "SQ", "COIN", "DKNG", "PLTR", "HOOD", "AFRM", "U", "NET", "SNOW", "MDB", "OKTA", "DOCU", "TWLO", "SPLK", "SPOT", "SNAP", "PINS", "ROKU", "TTD", "SHOP", "SE", "MELI", "TSM", "BABA", "PDD", "BIDU", "NTES", "TCOM", "ZTO", "BEKE", "YUMC", "HTHT", "BZ", "VIPS", "IQ", "WB", "MOMO", "YY", "BILI", "TME", "HUYA", "DOYU", "NIO", "XPEV", "LI", "FUTU", "TIGR", "EH", "KC", "GDS", "DQ", "JKS", "CSIQ", "SOL", "YGE", "JASO", "TSL", "LDK", "STP", "SPY", "QQQ", "IWM", "DIA", "GLD", "SLV", "USO", "UNG", "TLT", "IEF", "SHy", "AGG", "LQD", "HYG", "JNK", "EEM", "EFA", "VWO", "VEA", "IVV", "VTI", "VOO", "XLK", "XLF", "XLV", "XLY", "XLP", "XLE", "XLI", "XLB", "XLRE", "XLU", "XBI", "KRE", "KBE", "SMH", "SOXX", "XOP", "XME", "GDX", "GDXJ", "SIL", "SILJ", "TAN", "ICLN", "PBW", "QCLN", "LIT", "URA", "REMX", "COPX", "PICK", "SLX", "WOOD", "KWEB", "CQQQ", "FXI", "MCHI", "ASHR", "ASHS", "CNYA", "CHXB", "KBA", "CNXT", "CHIQ", "CHIE", "CHIM", "CHIC", "CHII", "CHIS", "CHIU", "CHIR", "CHIH", "CHIK", "CHIL", "CHIB", "CHII", "CHIS"]
+
+
+def compute_3m_pattern(df: pd.DataFrame):
+    """
+    Evalúa:
+      - Suba > 90% en los últimos ~3 meses
+      - Perf 1m entre -25% y 0%
+      - Perf 1w > 10%
+      - Devuelve mínimo y máximo del rally de 3 meses
+    Si no se cumple algo, devuelve None.
+    """
+
+    if df is None or df.empty:
+        return None
+
+    # CRITICAL: Handle MultiIndex columns (yfinance sometimes returns this)
+    # But if we get here with MultiIndex, something went wrong upstream
+    if isinstance(df.columns, pd.MultiIndex):
+        print(f"WARNING: Still got MultiIndex in compute_3m_pattern: {df.columns.tolist()}")
+        # Try to flatten by taking first element
+        df.columns = [col[0] if isinstance(col, tuple) else col for col in df.columns]
+
+    # Verify required columns exist
+    required = ["Close", "High", "Low", "Volume"]
+    for col in required:
+        if col not in df.columns:
+            print(f"ERROR: Missing column {col}. Available columns: {df.columns.tolist()}")
+            return None
+
+    df = df.sort_index().copy().dropna()
+
+    # Necesitamos al menos 3 meses + algo de historial para volumen
+    min_len = max(THREEM_BARS, 60) + 5
+    if len(df) < min_len:
+        return None
+
+    close = df["Close"].values
+    high  = df["High"].values
+    low   = df["Low"].values
+    vol   = df["Volume"].values
+
+    i_last = len(df) - 1
+    # Chequeos de longitud para 3m, 1m, 1w
+    if i_last - THREEM_BARS < 0: return None
+    if i_last - MONTH_BARS  < 0: return None
+    if i_last - WEEK_BARS   < 0: return None
+
+    last_close = close[-1]
+
+    # Filtro de precio
+    if last_close < MIN_PRICE:
+        return None
+
+    # Filtro de liquidez (volumen promedio 60 barras)
+    vol_s = pd.Series(vol)
+    avg_vol_60 = vol_s.rolling(60).mean().iloc[-1]
+    if np.isnan(avg_vol_60) or avg_vol_60 < MIN_AVG_VOL:
+        return None
+
+    # -----------------------
+    # 1) Performance 3 meses
+    # -----------------------
+    price_3m_ago = close[-1 - THREEM_BARS]
+    if price_3m_ago <= 0:
+        return None
+
+    ret_3m = (last_close / price_3m_ago) - 1.0
+
+    # Condición: > +90%
+    if ret_3m <= MIN_RET_3M:
+        return None
+
+    # Mínimo y máximo del rally en los últimos 3 meses
+    rally_window_highs = high[-THREEM_BARS:]
+    rally_window_lows  = low[-THREEM_BARS:]
+
+    rally_high = rally_window_highs.max()
+    rally_low  = rally_window_lows.min()
+
+    # -----------------------
+    # 2) Performance último mes
+    # -----------------------
+    price_1m_ago = close[-1 - MONTH_BARS]
+    if price_1m_ago <= 0:
+        return None
+
+    ret_1m = (last_close / price_1m_ago) - 1.0
+
+    # Lateralización / corrección suave: entre 0% y -25%
+    if not (MIN_RET_1M <= ret_1m <= MAX_RET_1M):
+        return None
+
+    # -----------------------
+    # 3) Performance última semana
+    # -----------------------
+    price_1w_ago = close[-1 - WEEK_BARS]
+    if price_1w_ago <= 0:
+        return None
+
+    ret_1w = (last_close / price_1w_ago) - 1.0
+
+    if ret_1w <= MIN_RET_1W:
+        return None
+
+    # Si llegó hasta acá, cumple todas las condiciones
+    last_row = df.iloc[-1]
+    result = {
+        "date": str(last_row.name.date()) if hasattr(last_row.name, "date") else str(last_row.name),
+        "close": float(last_close),
+        "ret_3m_pct": float(ret_3m * 100.0),
+        "ret_1m_pct": float(ret_1m * 100.0),
+        "ret_1w_pct": float(ret_1w * 100.0),
+        "rally_low": float(rally_low),
+        "rally_high": float(rally_high),
+        "avg_vol_60": float(avg_vol_60),
+    }
+    return result
+
+def scan_rsi_crossover(df: pd.DataFrame):
+    """
+    Scanner for Weekly RSI Strategy:
+    - SMA3 > SMA14 (Bullish Trend)
+    - RSI between 30 and 50 (Early Reversal Zone)
+    """
+    if df is None or df.empty:
+        return None
+        
+    # Ensure we sort by index (Date)
+    df = df.sort_index()
+
+    # Calculate Weekly Analytics using shared module
+    # Note: df is Daily. calculate_weekly_rsi_analytics handles resampling.
+    rsi_data = indicators.calculate_weekly_rsi_analytics(df)
+    
+    if not rsi_data:
+        return None
+        
+    if rsi_data['signal_buy']:
+        last_close = df['Close'].iloc[-1]
+        return {
+            "date": str(df.index[-1].date()),
+            "close": float(last_close),
+            "rsi": round(rsi_data['rsi'], 2),
+            "sma3": round(rsi_data['sma3'], 2),
+            "sma14": round(rsi_data['sma14'], 2),
+            "setup": "Weekly RSI Reversal"
+        }
+    
+    return None
+
+
+def analyze_bull_flag(ticker: str):
+    """
+    Detailed analysis for Bull Flag pattern.
+    Fetches 12mo data.
+    """
+    try:
+        # 1. Fetch Daily Data
+        df = yf.download(ticker, period="12mo", interval="1d", progress=False, auto_adjust=False)
+        if df is None or df.empty:
+            return None
+            
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = [c[0] for c in df.columns]
+
+        df = df.sort_index().dropna()
+        if len(df) < max(THREEM_BARS, MONTH_BARS):
+            return None
+
+        # 2. Fetch Weekly Data for RSI
+        # Fetch enough history to warm up RSI
+        df_weekly = yf.download(ticker, period="2y", interval="1wk", progress=False, auto_adjust=False)
+        if isinstance(df_weekly.columns, pd.MultiIndex):
+            df_weekly.columns = [c[0] for c in df_weekly.columns]
+        
+        rsi_weekly_series = None
+        rsi_weekly_series = None
+        if not df_weekly.empty:
+             df_weekly['RSI'] = indicators.calculate_rsi(df_weekly['Close'])
+             df_weekly['RSI_SMA_3'] = df_weekly['RSI'].rolling(window=3).mean()
+             df_weekly['RSI_SMA_14'] = df_weekly['RSI'].rolling(window=14).mean()
+             df_weekly['RSI_SMA_21'] = df_weekly['RSI'].rolling(window=21).mean()
+             rsi_weekly_series = df_weekly['RSI']
+
+        # Calculate Stan Weinstein WEEKLY Moving Averages on Daily (approximation)
+        df['SMA_50'] = df['Close'].rolling(window=50).mean()   # ~10 weeks
+        df['SMA_150'] = df['Close'].rolling(window=150).mean() # ~30 weeks
+
+        # Logic for Mast
+        last_3m = df.iloc[-THREEM_BARS:]
+        mast_low_date = last_3m["Low"].idxmin()
+        mast_low = float(last_3m.loc[mast_low_date, "Low"])
+        mast_high_date = last_3m["High"].idxmax()
+        mast_high = float(last_3m.loc[mast_high_date, "High"])
+        mast_height = mast_high - mast_low
+        
+        # Calculate mast duration (days from low to high)
+        mast_duration_days = (mast_high_date - mast_low_date).days
+        
+        # Validation 1: Upward Mast (High must be AFTER Low)
+        # Mast must be sharp (between 3 and 35 days)
+        if mast_duration_days <= 3 or mast_duration_days > 35: 
+             return None
+
+        # Logic for Flag (Last Month)
+        last_month = df.iloc[-MONTH_BARS:]
+        flag_high = float(last_month["High"].max())
+        flag_low = float(last_month["Low"].min())
+
+        # Validation 2: Flag High must not exceed Mast High significantly
+        if flag_high > mast_high * 1.02: # Allow small 2% overshoot validation
+             return None
+        
+        # Channel Regression
+        highs = last_month["High"].values
+        x = np.arange(len(highs))
+        slope, intercept = np.polyfit(x, highs, 1)
+
+        # Validation 3: Flag should not slope up significantly (should be flat or down)
+        # Normalize slope? Or just check raw.
+        # Strict: slope <= 0 is ideal. Allow slight drift.
+        if slope > 0.2: 
+             return None
+
+        # Validation 4: Mast must be significant (> 7% move)
+        if (mast_high - mast_low) / mast_low < 0.07:
+             return None
+        
+        entry_bar_date = last_month.index[-1]
+        entry_bar_low = float(df.loc[entry_bar_date, "Low"])
+        entry_bar_high = float(df.loc[entry_bar_date, "High"])
+        current_close = float(df.loc[entry_bar_date, "Close"])
+
+        # Channel Top at last bar
+        channel_top_last = float(slope * (len(highs) - 1) + intercept)
+        
+        ENTRY_BUFFER_PCT = 0.01
+        raw_entry = channel_top_last * (1.0 + ENTRY_BUFFER_PCT)
+        entry_ideal = max(raw_entry, entry_bar_high * 1.001)
+        
+        SL_BUFFER_PCT = 0.05
+        stop_loss = entry_bar_low * (1.0 - SL_BUFFER_PCT)
+        
+        target = entry_ideal + mast_height
+        
+        # Calculate expected timeframe
+        distance_to_target = target - current_close
+        percent_move = (distance_to_target / current_close) * 100
+        
+        if mast_duration_days > 0 and mast_height > 0:
+            mast_velocity = (mast_height / mast_low) / mast_duration_days  # % per day
+            if mast_velocity > 0:
+                breakout_velocity = mast_velocity * 0.5
+                expected_days = (percent_move / 100) / breakout_velocity
+                expected_days = min(expected_days, 90)
+            else:
+                expected_days = 45
+        else:
+            expected_days = 45
+        
+        # Prepare chart data (serialize dates) with SMAs and RSI
+        chart_data = []
+        for idx, row in df.iterrows():
+            # Find latest available weekly RSI
+            # We look for the weekly candle that closed on or before this daily date
+            rsi_val = None
+            rsi_sma3 = None
+            rsi_sma14 = None
+            rsi_sma21 = None
+            if not df_weekly.empty:
+                past_weeks = df_weekly[df_weekly.index <= idx]
+                if not past_weeks.empty:
+                    week_row = past_weeks.iloc[-1]
+                    rsi_val = float(week_row['RSI'])
+                    if not pd.isna(week_row['RSI_SMA_3']):
+                        rsi_sma3 = float(week_row['RSI_SMA_3'])
+                    if not pd.isna(week_row['RSI_SMA_14']):
+                        rsi_sma14 = float(week_row['RSI_SMA_14'])
+                    if not pd.isna(week_row['RSI_SMA_21']):
+                        rsi_sma21 = float(week_row['RSI_SMA_21'])
+
+            data_point = {
+                "date": str(idx.date()),
+                "open": float(row["Open"]),
+                "high": float(row["High"]),
+                "low": float(row["Low"]),
+                "close": float(row["Close"]),
+                "volume": float(row["Volume"])
+            }
+            
+            if not pd.isna(row['SMA_50']):
+                data_point['sma_50'] = float(row['SMA_50'])
+            if not pd.isna(row['SMA_150']):
+                data_point['sma_150'] = float(row['SMA_150'])
+            if rsi_val is not None and not pd.isna(rsi_val):
+                data_point['rsi_weekly'] = rsi_val
+            if rsi_sma3 is not None:
+                data_point['rsi_sma_3'] = rsi_sma3
+            if rsi_sma14 is not None:
+                data_point['rsi_sma_14'] = rsi_sma14
+            if rsi_sma21 is not None:
+                data_point['rsi_sma_21'] = rsi_sma21
+
+            chart_data.append(data_point)
+        
+        # Add future projection points
+        last_date = pd.Timestamp(entry_bar_date)
+        last_sma_50 = df['SMA_50'].iloc[-1] if not pd.isna(df['SMA_50'].iloc[-1]) else None
+        last_sma_150 = df['SMA_150'].iloc[-1] if not pd.isna(df['SMA_150'].iloc[-1]) else None
+        
+        num_projection_points = min(int(expected_days / 7) + 1, 15)
+        for i in range(1, num_projection_points + 1):
+            future_date = last_date + pd.Timedelta(days=i*7)
+            progress = (i * 7) / expected_days
+            projected_price = current_close + (target - current_close) * min(progress, 1.0)
+            
+            proj_point = {
+                "date": str(future_date.date()),
+                "projected": float(projected_price),
+                "is_projection": True
+            }
+            
+            if last_sma_50:
+                proj_point['sma_50'] = float(last_sma_50)
+            if last_sma_150:
+                proj_point['sma_150'] = float(last_sma_150)
+            
+            chart_data.append(proj_point)
+            
+        return {
+            "symbol": ticker,
+            "metrics": {
+                "symbol": ticker,  # Add symbol for watermark
+                "is_bull_flag": True,
+                "mast_height": mast_height,
+                "flag_depth": flag_high - flag_low,
+                "slope": slope,
+                "intercept": intercept,
+                "channel_top_last": channel_top_last,
+                "entry": entry_ideal,
+                "stop_loss": stop_loss,
+                "target": target,
+                "expected_days": int(expected_days),
+                "percent_move": round(percent_move, 2),
+                "current_close": current_close,
+                "mast_duration_days": mast_duration_days
+            },
+            "chart_data": chart_data,
+            "mast_dates": {
+                "low": str(mast_low_date.date()),
+                "high": str(mast_high_date.date())
+            },
+            "flag_start_date": str(last_month.index[0].date())
+        }
+
+    except Exception as e:
+        print(f"Error analyzing {ticker}: {e}")
+        return None
+
+def get_technical_levels(ticker: str, sentiment: str = "BULLISH"):
+    """
+    Calculates simple technical levels (Entry, Target, Stop) based on recent price action.
+    Used as fallback for Options Scanner when specific patterns aren't found.
+    """
+    try:
+        # Fetch 6mo daily data
+        df = yf.download(ticker, period="6mo", interval="1d", progress=False, auto_adjust=False)
+        if df is None or df.empty:
+            return None
+            
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = [c[0] for c in df.columns]
+            
+        df = df.sort_index().dropna()
+        if len(df) < 20: 
+            return None
+            
+        last_close = float(df['Close'].iloc[-1])
+        
+        # Calculate volatility (ATR 14 approx)
+        df['TR'] = np.maximum(df['High'] - df['Low'], 
+                              np.maximum(abs(df['High'] - df['Close'].shift(1)), 
+                                         abs(df['Low'] - df['Close'].shift(1))))
+        atr = df['TR'].rolling(window=14).mean().iloc[-1]
+        
+        levels = {
+            "entry": last_close,
+            "target": 0.0,
+            "stop_loss": 0.0,
+            "r_r": 0.0
+        }
+        
+        if sentiment == "BULLISH":
+            # Stop Loss: Recent Swing Low (20d) or 2*ATR
+            swing_low = df['Low'].rolling(window=20).min().iloc[-1]
+            levels['stop_loss'] = max(swing_low, last_close - (atr * 2))
+            
+            # Target: 2x Risk or Recent High
+            risk = last_close - levels['stop_loss']
+            levels['target'] = last_close + (risk * 2)
+            
+        elif sentiment == "BEARISH":
+            # Stop Loss: Recent Swing High (20d) or 2*ATR
+            swing_high = df['High'].rolling(window=20).max().iloc[-1]
+            levels['stop_loss'] = min(swing_high, last_close + (atr * 2))
+            
+            # Target: 2x Risk
+            risk = levels['stop_loss'] - last_close
+            levels['target'] = last_close - (risk * 2)
+            
+        else: # NEUTRAL/VOLATILITY
+             # Wide brackets
+             levels['stop_loss'] = last_close - (atr * 2) # Downside protection
+             levels['target'] = last_close + (atr * 2)    # Upside target
+             
+        levels['entry'] = round(levels['entry'], 2)
+        levels['target'] = round(levels['target'], 2)
+        levels['stop_loss'] = round(levels['stop_loss'], 2)
+             
+        if levels['target'] != levels['entry']:
+             dist_target = abs(levels['target'] - levels['entry'])
+             dist_stop = abs(levels['entry'] - levels['stop_loss'])
+             if dist_stop > 0:
+                 levels['r_r'] = round(dist_target / dist_stop, 2)
+        
+        return levels
+
+    except Exception as e:
+        print(f"Error getting levels for {ticker}: {e}")
+        return None
