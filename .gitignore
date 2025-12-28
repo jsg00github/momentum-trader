@@ -18,3 +18,21 @@ ENV/
 *~
 .DS_Store
 *.log
+
+# Database files (contain user data)
+*.db
+*.sqlite
+*.sqlite3
+
+# Backups
+backups/
+backend/backups/
+
+# Temporary files
+backend/index.html
+backend/openapi_check.json
+
+# Other projects
+backend_to_streamlit/
+app_hub/
+Antigravity_Hub.bat
