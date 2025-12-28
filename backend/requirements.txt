@@ -1,8 +1,9 @@
 fastapi
 uvicorn
-yfinance
 pandas
 numpy
-scikit-learn
+yfinance
 requests
+httpx
 python-multipart
+# Add any specific versions if needed, e.g., pandas==2.0.3

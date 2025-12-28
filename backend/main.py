@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import uvicorn
 import screener
@@ -20,7 +21,9 @@ import ai_advisor # New Import
 from trade_journal import router as trade_router
 import alerts
 import asyncio
+import asyncio
 from datetime import datetime
+import socket
 
 app = FastAPI(title="Momentum Screener API")
 
@@ -36,12 +39,7 @@ app.add_middleware(
 # Include trade journal routes
 app.include_router(trade_router)
 
-# Serve static files from the workspace location (C: drive)
-app.mount(
-    "/static",
-    StaticFiles(directory=r"C:\Users\micro\.gemini\antigravity\playground\ancient-glenn\backend\static"),
-    name="static",
-)
+# Static files are mounted at the end of the file to ensure API routes take priority
 
 
 # API Models
@@ -119,6 +117,11 @@ def process_ticker(ticker, use_cache=True, strategy="rally_3m"):
     return None
 
 # API Routes
+@app.get("/", include_in_schema=False)
+def serve_root():
+    """Serve the frontend index.html at root URL"""
+    return FileResponse(r"C:\Users\micro\.gemini\antigravity\playground\ancient-glenn\backend\static\index.html")
+
 @app.get("/api/health")
 def health_check():
     return {"status": "ok"}
@@ -545,7 +548,24 @@ def run_backtest_api(req: BacktestRequest):
     """Run a strategy backtest simulation"""
     import backtester
     result = backtester.run_backtest(req.ticker, req.strategy)
+    result = backtester.run_backtest(req.ticker, req.strategy)
     return result
+
+@app.get("/api/system/network")
+def get_network_info():
+    """Detect local LAN IP for remote access"""
+    try:
+        # Connect to a public DNS to determine the best local interface IP
+        # We don't actually send data, just establish the routing
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(0.1)
+        s.connect(("8.8.8.8", 80))
+        local_ip = s.getsockname()[0]
+        s.close()
+        return {"ip": local_ip, "port": 8000, "url": f"http://{local_ip}:8000"}
+    except Exception as e:
+        print(f"Error finding local IP: {e}")
+        return {"ip": "127.0.0.1", "port": 8000, "url": "http://127.0.0.1:8000", "error": str(e)}
 
 # Remove duplicate scheduled_reports_loop define here if strictly necessary, but actually
 # the file showed two definitions (one around line 141, one around line 468).
@@ -585,10 +605,13 @@ def restore_backup_endpoint(filename: str):
     return result
 
 
-# Mount Static Files
-static_dir = os.path.join(os.path.dirname(__file__), "static")
+# Mount Static Files (use absolute path to ensure it works regardless of CWD)
+static_dir = r"C:\Users\micro\.gemini\antigravity\playground\ancient-glenn\backend\static"
 if os.path.exists(static_dir):
-    app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
+    # Mount at /static for backwards compatibility
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+    # Mount at root with html=True to serve index.html at /
+    app.mount("/", StaticFiles(directory=static_dir, html=True), name="static_root")
 else:
     print(f"Warning: Static directory not found at {static_dir}")
 

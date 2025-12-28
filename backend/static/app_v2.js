@@ -3226,11 +3226,92 @@ function Settings() {
         </div>
     );
 }
+
+// Connect Modal for Remote Access
+function ConnectModal({ onClose }) {
+    const [networkInfo, setNetworkInfo] = useState(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        axios.get(`${API_BASE}/system/network`)
+            .then(res => setNetworkInfo(res.data))
+            .catch(e => console.error(e))
+            .finally(() => setLoading(false));
+    }, []);
+
+    return (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[100] backdrop-blur-sm" onClick={onClose}>
+            <div className="bg-slate-900 border border-slate-700 rounded-2xl p-8 max-w-sm w-full shadow-2xl transform scale-100 transition-all" onClick={e => e.stopPropagation()}>
+                <div className="text-center">
+                    <div className="mx-auto bg-blue-500/10 w-16 h-16 rounded-full flex items-center justify-center mb-4">
+                        <span className="text-3xl">📱</span>
+                    </div>
+                    <h3 className="text-2xl font-bold text-white mb-2">Remote Access</h3>
+                    <p className="text-slate-400 text-sm mb-6">Scan to control from your phone</p>
+
+                    {loading ? (
+                        <div className="w-48 h-48 mx-auto bg-slate-800 rounded-xl animate-pulse flex items-center justify-center text-slate-500">
+                            Detecting Network...
+                        </div>
+                    ) : (
+                        <div className="bg-white p-4 rounded-xl mx-auto w-fit mb-4 shadow-inner">
+                            {/* Using public QR API */}
+                            <img
+                                src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(networkInfo?.url || '')}&bgcolor=ffffff`}
+                                alt="QR Code"
+                                className="w-48 h-48 mix-blend-multiply"
+                            />
+                        </div>
+                    )}
+
+                    <div className="bg-slate-800/50 rounded-lg p-3 mb-6 border border-slate-700/50">
+                        <div className="text-xs text-slate-500 uppercase tracking-widest mb-1">Direct Link</div>
+                        <code className="text-blue-400 font-mono text-sm select-all">
+                            {networkInfo?.url || '...'}
+                        </code>
+                    </div>
+
+                    <button
+                        onClick={onClose}
+                        className="w-full bg-slate-800 hover:bg-slate-700 text-white font-medium py-3 rounded-lg transition border border-slate-700"
+                    >
+                        Close
+                    </button>
+                    <p className="text-[10px] text-slate-600 mt-4">
+                        Note: Devices must be on the same Wi-Fi network.
+                    </p>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 // Main App Component
 function App() {
     const [view, setView] = useState('dashboard');
     const [selectedTicker, setSelectedTicker] = useState(null);
     const [overrideMetrics, setOverrideMetrics] = useState({});
+    const [showConnectModal, setShowConnectModal] = useState(false);
+
+    // PWA Install Logic (Global)
+    const [deferredPrompt, setDeferredPrompt] = useState(null);
+
+    useEffect(() => {
+        const handler = (e) => {
+            e.preventDefault();
+            setDeferredPrompt(e);
+        };
+        window.addEventListener('beforeinstallprompt', handler);
+        return () => window.removeEventListener('beforeinstallprompt', handler);
+    }, []);
+
+    const handleInstallClick = async () => {
+        if (!deferredPrompt) return;
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        console.log(`User response to the install prompt: ${outcome}`);
+        setDeferredPrompt(null);
+    };
 
     // Parse URL Params
     useEffect(() => {
@@ -3324,12 +3405,28 @@ function App() {
                             {view === 'settings' && 'System Configuration'}
                         </h1>
                         <div className="flex items-center gap-4">
+                            {deferredPrompt && (
+                                <button onClick={handleInstallClick} className="bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white px-3 py-1.5 rounded-lg font-bold text-xs shadow-lg animate-pulse flex items-center gap-1">
+                                    <span>📲</span> Install App
+                                </button>
+                            )}
                             <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse"></div>
                             <span className="text-xs font-mono text-green-500">SYSTEM ONLINE</span>
                             <span className="text-xs font-mono text-slate-500">|</span>
+                            <span className="text-xs font-mono text-slate-500">|</span>
+
+                            <button
+                                onClick={() => setShowConnectModal(true)}
+                                className="bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white px-3 py-1.5 rounded-lg font-medium text-xs border border-slate-700 transition flex items-center gap-2"
+                            >
+                                <span>🔗</span> <span className="hidden sm:inline">Connect Device</span>
+                            </button>
+
                             <span className="text-xs font-mono text-slate-400">{new Date().toLocaleTimeString()}</span>
                         </div>
                     </div>
+
+                    {showConnectModal && <ConnectModal onClose={() => setShowConnectModal(false)} />}
 
                     {view === 'dashboard' && <MarketDashboard onTickerClick={handleTickerClick} />}
                     {view === 'scanner' && <Scanner onTickerClick={handleTickerClick} />}
