@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+pandas
+numpy
+yfinance
+requests
+httpx
+python-multipart
+# Add any specific versions if needed, e.g., pandas==2.0.3

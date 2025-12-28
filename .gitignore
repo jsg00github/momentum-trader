@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment variables
+.env
+env/
+venv/
+.venv/
+
+# Database (Large Files)
+*.db
+*.sqlite
+*.sqlite3
+data/cache.db
+trades.db
+
+# Logs
+*.log
