@@ -6,4 +6,5 @@ yfinance
 requests
 httpx
 python-multipart
+python-dotenv
 # Add any specific versions if needed, e.g., pandas==2.0.3

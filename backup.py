@@ -5,9 +5,11 @@ import glob
 from datetime import datetime
 import logging
 
-BACKUP_DIR = "backups"
-DB_FILE = "backend/trades.db"
-ENV_FILE = "backend/.env"
+# Get the directory where this script lives
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BACKUP_DIR = os.path.join(BASE_DIR, "backups")
+DB_FILE = os.path.join(BASE_DIR, "trades.db")
+ENV_FILE = os.path.join(BASE_DIR, ".env")
 
 if not os.path.exists(BACKUP_DIR):
     os.makedirs(BACKUP_DIR)
@@ -68,7 +70,7 @@ def restore_backup(filename):
              shutil.copy2(DB_FILE, f"{DB_FILE}.pre_restore_{timestamp}.bak")
              
         with zipfile.ZipFile(backup_path, 'r') as zipf:
-            zipf.extract("trades.db", path="backend")
+            zipf.extract("trades.db", path=BASE_DIR)
             # We typically don't restore .env automatically to avoid breaking config
             
         return {"status": "success", "message": f"Restored from {filename}"}

@@ -9,7 +9,11 @@ from typing import Optional, List, Tuple
 class DataCache:
     """Cache for yfinance data to speed up repeated scans"""
     
-    def __init__(self, db_path: str = "backend/data/cache.db"):
+    def __init__(self, db_path: str = None):
+        if db_path is None:
+            # Default to data/cache.db relative to this script's location
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            db_path = os.path.join(base_dir, "data", "cache.db")
         self.db_path = db_path
         self._ensure_db()
     
