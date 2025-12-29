@@ -89,7 +89,7 @@ def check_price_alerts():
     try:
         # Import here to avoid circular dependency
         import yfinance as yf
-        from backend import indicators
+        import indicators
         
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()

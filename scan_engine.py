@@ -9,12 +9,9 @@ import os
 import sys
 
 # Local imports
-try:
-    from backend import screener, scoring, cache
-except ImportError:
-    import screener
-    import scoring
-    import cache
+import screener
+import scoring
+import cache
 
 # Global progress tracking
 SCAN_STATUS = {

@@ -13,7 +13,7 @@ import yfinance as yf
 import pandas as pd
 import io
 import traceback
-from backend import indicators
+import indicators
 
 router = APIRouter()
 

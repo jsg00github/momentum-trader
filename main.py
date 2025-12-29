@@ -25,6 +25,9 @@ import asyncio
 from datetime import datetime
 import socket
 
+# Define Base Directory for relative paths (Crucial for Cloud Deployment)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 app = FastAPI(title="Momentum Screener API")
 
 # CORS
@@ -120,7 +123,7 @@ def process_ticker(ticker, use_cache=True, strategy="rally_3m"):
 @app.get("/", include_in_schema=False)
 def serve_root():
     """Serve the frontend index.html at root URL"""
-    return FileResponse(r"C:\Users\micro\.gemini\antigravity\playground\ancient-glenn\backend\static\index.html")
+    return FileResponse(os.path.join(static_dir, "index.html"))
 
 @app.get("/api/health")
 def health_check():
@@ -442,7 +445,7 @@ class WatchlistAddRequest(BaseModel):
 @app.get("/api/watchlist")
 def get_watchlist_api():
     """Get all watchlist entries with hypothesis"""
-    conn = sqlite3.connect('backend/trades.db')
+    conn = sqlite3.connect(os.path.join(BASE_DIR, 'trades.db'))
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
     cursor.execute("SELECT ticker, note, hypothesis, added_at FROM watchlist ORDER BY added_at DESC")
@@ -453,7 +456,7 @@ def get_watchlist_api():
 @app.post("/api/watchlist")
 def add_watchlist_api(req: WatchlistAddRequest):
     """Add ticker to watchlist with optional hypothesis"""
-    conn = sqlite3.connect('backend/trades.db')
+    conn = sqlite3.connect(os.path.join(BASE_DIR, 'trades.db'))
     cursor = conn.cursor()
     try:
         cursor.execute(
@@ -472,7 +475,7 @@ def add_watchlist_api(req: WatchlistAddRequest):
 @app.delete("/api/watchlist/{ticker}")
 def delete_watchlist_api(ticker: str):
     """Remove ticker from watchlist"""
-    conn = sqlite3.connect('backend/trades.db')
+    conn = sqlite3.connect(os.path.join(BASE_DIR, 'trades.db'))
     cursor = conn.cursor()
     try:
         cursor.execute("DELETE FROM watchlist WHERE ticker = ?", (ticker.upper(),))
@@ -578,7 +581,7 @@ def get_network_info():
 # BACKUP ENDPOINTS
 # -----------------------------------------------------
 try:
-    from backend import backup
+    import backup
 except ImportError:
     import backup
 
@@ -606,7 +609,7 @@ def restore_backup_endpoint(filename: str):
 
 
 # Mount Static Files (use absolute path to ensure it works regardless of CWD)
-static_dir = r"C:\Users\micro\.gemini\antigravity\playground\ancient-glenn\backend\static"
+static_dir = os.path.join(BASE_DIR, "static")
 if os.path.exists(static_dir):
     # Mount at /static for backwards compatibility
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
