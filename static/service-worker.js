@@ -1,15 +1,15 @@
 // Momentum Trader Service Worker
 // Provides offline caching and background sync capabilities
 
-const CACHE_NAME = 'momentum-trader-v1';
-const STATIC_CACHE = 'momentum-static-v1';
-const API_CACHE = 'momentum-api-v1';
+const CACHE_NAME = 'momentum-trader-v5';
+const STATIC_CACHE = 'momentum-static-v5';
+const API_CACHE = 'momentum-api-v5';
 
 // Static assets to cache immediately
 const STATIC_ASSETS = [
     '/',
     '/static/index.html',
-    '/static/app.js',
+    '/static/app.js?v=5.0',
     '/static/style.css',
     '/static/manifest.json',
     '/static/icon-192.png',

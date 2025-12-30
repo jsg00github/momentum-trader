@@ -152,47 +152,63 @@ async def scheduled_reports_loop():
     """Checks time every minute to send scheduled reports AND run automated scans"""
     import scan_engine
     
-    last_day_morning = None
-    last_day_evening = None
-    last_day_scan = None
+    last_sent = {
+        "PRE_MARKET": None,
+        "OPEN": None,
+        "MID_DAY": None,
+        "CLOSE": None,
+        "POST_MARKET": None,
+        "SCAN": None
+    }
     
     while True:
         try:
             now = datetime.now()
             current_date = now.date()
+            h, m = now.hour, now.minute
             
-            # Morning Briefing: 09:00 AM
-            if now.hour == 9 and now.minute == 0:
-                if last_day_morning != current_date:
-                    print(f"[{now}] Sending Morning Briefing...")
-                    alerts.send_scheduled_briefing("MORNING")
-                    last_day_morning = current_date
+            # 08:30 AM - PRE_MARKET
+            if h == 8 and m == 30:
+                if last_sent["PRE_MARKET"] != current_date:
+                    alerts.send_scheduled_briefing("PRE_MARKET")
+                    last_sent["PRE_MARKET"] = current_date
             
-            # Evening Briefing: 16:15 PM
-            if now.hour == 16 and now.minute == 15:
-                if last_day_evening != current_date:
-                    print(f"[{now}] Sending Evening Briefing...")
-                    alerts.send_scheduled_briefing("EVENING")
-                    last_day_evening = current_date
+            # 09:45 AM - OPEN
+            if h == 9 and m == 45:
+                if last_sent["OPEN"] != current_date:
+                    alerts.send_scheduled_briefing("OPEN")
+                    last_sent["OPEN"] = current_date
                     
-            # Post-Market Scan & Watchlist: 16:30 PM
-            if now.hour == 16 and now.minute == 30:
-                if last_day_scan != current_date:
+            # 13:00 PM - MID_DAY
+            if h == 13 and m == 0:
+                if last_sent["MID_DAY"] != current_date:
+                    alerts.send_scheduled_briefing("MID_DAY")
+                    last_sent["MID_DAY"] = current_date
+            
+            # 15:50 PM - CLOSE
+            if h == 15 and m == 50:
+                if last_sent["CLOSE"] != current_date:
+                    alerts.send_scheduled_briefing("CLOSE")
+                    last_sent["CLOSE"] = current_date
+                    
+            # 16:30 PM - POST_MARKET & SCAN
+            if h == 16 and m == 30:
+                if last_sent["POST_MARKET"] != current_date:
+                    alerts.send_scheduled_briefing("POST_MARKET")
+                    last_sent["POST_MARKET"] = current_date
+                
+                if last_sent["SCAN"] != current_date:
                     print(f"[{now}] Running Post-Market Automated Scan...")
-                    # Run full scan (limit 2000 to cover most liquid names)
                     scan_res = scan_engine.run_market_scan(limit=2000, strategy="rally_3m")
                     if scan_res and "results" in scan_res:
                         top_picks = [r for r in scan_res["results"] if r.get("grade") in ["A", "B"]]
                         if top_picks:
-                            # Send Watchlist via Telegram
                             msg = "📋 <b>DAILY WATCHLIST</b>\n\n"
-                            for p in top_picks[:10]: # Top 10
+                            for p in top_picks[:10]:
                                 msg += f"🔹 <b>{p['ticker']}</b> (Grade: {p['grade']})\n"
                                 msg += f"   Entry: ~${p.get('entry', 0):.2f}\n"
-                            
                             alerts.send_telegram(alerts.get_alert_settings()["telegram_chat_id"], msg)
-                    
-                    last_day_scan = current_date
+                    last_sent["SCAN"] = current_date
                     
         except Exception as e:
             print(f"Error in scheduler: {e}")
@@ -338,28 +354,33 @@ def analyze_ticker(req: AnalyzeRequest):
     
     # Calculate grade based on screener metrics
     try:
-        # Download data for scoring and Elliott
-        df = screener.yf.download(req.ticker, period=screener.PERIOD, 
-                            interval=screener.INTERVAL, progress=False, auto_adjust=False)
+        # Avoid redundant download if possible, but for grade we need specific period
+        df_grade = screener.yf.download(req.ticker, period=screener.PERIOD, 
+                                  interval=screener.INTERVAL, progress=False, auto_adjust=False)
         
-        # Handle MultiIndex
-        if isinstance(df.columns, pd.MultiIndex):
-            df = df.xs(req.ticker, axis=1, level=1)
-        
-        pattern_result = screener.compute_3m_pattern(df)
-        if pattern_result:
-            score = scoring.calculate_score(pattern_result)
-            grade = scoring.score_to_grade(score)
-            result["grade"] = grade
-            result["score"] = score
-        
-        # Add Elliott Wave analysis
-        if not df.empty:
-            elliott_analysis = elliott.analyze_elliott_waves(df)
+        if not df_grade.empty:
+            # Handle MultiIndex more robustly
+            if isinstance(df_grade.columns, pd.MultiIndex):
+                if req.ticker in df_grade.columns.get_level_values(1):
+                    df_grade = df_grade.xs(req.ticker, axis=1, level=1)
+                elif req.ticker in df_grade.columns.get_level_values(0):
+                    df_grade = df_grade.xs(req.ticker, axis=1, level=0)
+                else:
+                    # Fallback: flatten
+                    df_grade.columns = [c[0] for c in df_grade.columns]
+            
+            pattern_result = screener.compute_3m_pattern(df_grade)
+            if pattern_result:
+                score = scoring.calculate_score(pattern_result)
+                grade = scoring.score_to_grade(score)
+                result["grade"] = grade
+                result["score"] = score
+            
+            # Add Elliott Wave analysis
+            elliott_analysis = elliott.analyze_elliott_waves(df_grade)
             result["elliott_wave"] = elliott_analysis
     except Exception as e:
-        # If scoring fails, default to showing no grade
-        print(f"Error in analysis extras: {e}")
+        print(f"Error in analysis extras for {req.ticker}: {e}")
         pass
     
     
@@ -383,6 +404,11 @@ def get_ai_recommendations_api():
 def scan_options_api():
     """Trigger a scan for unusual options activity"""
     return options_scanner.scan_unusual_options()
+
+@app.get("/api/options-flow")
+def get_options_flow_api():
+    """Get cached unusual options flow"""
+    return options_scanner.get_cached_options_flow()
 
 # Alert System Endpoints
 @app.get("/api/alerts/settings")

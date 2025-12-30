@@ -272,7 +272,7 @@ def init_alert_db():
 def send_scheduled_briefing(report_type: str) -> bool:
     """
     Sends a scheduled market briefing.
-    report_type: 'MORNING' or 'EVENING'
+    report_type: 'PRE_MARKET', 'OPEN', 'MID_DAY', 'CLOSE', 'POST_MARKET'
     """
     settings = get_alert_settings()
     if not settings or not settings["telegram_chat_id"]:
@@ -282,33 +282,32 @@ def send_scheduled_briefing(report_type: str) -> bool:
     try:
         # Fetch fresh data
         status = market_data.get_market_status()
-        if "error" in status:
-            print(f"Error fetching data for briefing: {status['error']}")
-            return False
-            
-        message = ""
+        summary = status.get('expert_summary', {})
+        mood = summary.get('mood', 'Neutral')
+        session_label = report_type.replace("_", " ")
         
-        if report_type == "MORNING":
-            message = market_data.generate_morning_briefing(status['indices'], status['sectors'])
-        elif report_type == "EVENING":
-            summary = status['expert_summary']
-            message = f"""
-🌙 <b>CLOSING BELL BRIEFING</b>
+        emoji = "🎙️"
+        if report_type == "PRE_MARKET": emoji = "🌅"
+        elif report_type == "OPEN": emoji = "🔔"
+        elif report_type == "MID_DAY": emoji = "🌤️"
+        elif report_type == "CLOSE": emoji = "🌇"
+        elif report_type == "POST_MARKET": emoji = "🌙"
 
-<b>Mood:</b> {summary['mood']}
-<b>Setup:</b> {summary['setup']}
+        message = f"""
+{emoji} <b>{session_label} REPORT</b>
 
-<b>Market Internals:</b>
-{summary['internals']}
+<b>Mood:</b> {mood}
+<b>Summary:</b> {summary.get('setup', '')}
+
+<b>Internals:</b>
+{summary.get('internals', '')}
 
 <b>Expert Play:</b>
-{summary['play']}
+{summary.get('play', '')}
 
-<i>"Markets are closed. Review your journal."</i>
+<i>"Trade what you see, not what you think."</i>
 """
-        
-        if message:
-            return send_telegram(settings["telegram_chat_id"], message)
+        return send_telegram(settings["telegram_chat_id"], message)
             
     except Exception as e:
         print(f"Error sending scheduled briefing: {e}")

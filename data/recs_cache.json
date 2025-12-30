@@ -1,0 +1,22 @@
+{
+    "Aggressive": [
+        {
+            "ticker": "TSLA",
+            "profile": "Aggressive",
+            "score": 86.2,
+            "rationale": [
+                "Strong Momentum",
+                "High Volatility (3.8%)"
+            ],
+            "metrics": {
+                "price": 461.82,
+                "rsi": 56.2,
+                "atr_pct": 3.77
+            }
+        }
+    ],
+    "Moderate": [],
+    "Safe": [],
+    "last_scan": 1767113081.868276,
+    "is_scanning": false
+}
