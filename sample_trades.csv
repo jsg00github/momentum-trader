@@ -1,0 +1,21 @@
+ticker,entry_date,entry_price,shares,status,notes
+AAPL,11/15/2025,175.5,50,open,Strong earnings momentum
+NVDA,11/18/2025,485,20,open,AI demand catalyst
+MSFT,11/20/2025,378.25,30,open,Cloud growth story
+GOOGL,11/22/2025,142.8,40,open,Ad revenue recovery
+AMZN,12/1/2025,185.5,35,open,Holiday season play
+META,12/5/2025,545,15,open,Reels monetization
+TSLA,12/8/2025,248.75,25,open,EV market leader
+AMD,12/10/2025,145.2,45,open,Data center chips
+CRM,12/12/2025,265,20,open,AI integration boost
+NFLX,12/15/2025,485.5,12,open,Subscriber growth
+JPM,10/5/2025,152.3,60,closed,Q3 earnings beat
+V,10/10/2025,265.4,30,closed,Consumer spending
+HD,10/15/2025,345,18,closed,Housing market play
+UNH,10/20/2025,525.8,10,closed,Healthcare demand
+PG,10/25/2025,158.9,50,closed,Defensive staples
+KO,11/1/2025,62.5,100,closed,Dividend growth
+MCD,11/5/2025,285,22,closed,Value menu success
+DIS,11/8/2025,92.4,70,closed,Streaming turnaround
+BA,11/10/2025,215.5,25,closed,Airline recovery
+XOM,11/12/2025,108.75,55,closed,Oil price stability

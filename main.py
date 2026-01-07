@@ -507,6 +507,32 @@ def get_options_flow_api():
     return options_scanner.get_cached_options_flow()
 
 # -----------------------------------------------------
+# Scheduled Scan Reports Endpoints
+# -----------------------------------------------------
+import scheduled_scan
+
+@app.get("/api/scan/reports")
+def list_scan_reports():
+    """List all available scan reports"""
+    return {"reports": scheduled_scan.list_reports()}
+
+@app.get("/api/scan/reports/latest")
+def get_latest_scan_report():
+    """Get the most recent scan report"""
+    report = scheduled_scan.get_latest_report()
+    if report:
+        return report
+    return {"error": "No reports found"}
+
+@app.post("/api/scan/run-now")
+def run_scan_now():
+    """Manually trigger a scheduled scan with report"""
+    filepath = scheduled_scan.run_scheduled_scan()
+    if filepath:
+        return {"status": "complete", "report": filepath}
+    return {"status": "error", "message": "Scan failed"}
+
+# -----------------------------------------------------
 # Alert System Endpoints
 # -----------------------------------------------------
 
@@ -651,9 +677,15 @@ async def start_alert_monitor():
     asyncio.create_task(alert_monitor_loop())
     asyncio.create_task(scheduled_reports_loop())
     asyncio.create_task(options_scanner_loop()) # Auto-scan options
+    
+    # Start scheduled RSI scanner (runs daily at 6pm Argentina / 4pm EST)
+    import scheduled_scan
+    scheduled_scan.start_scheduler()
+    
     print("✅ Alert monitoring started")
     print("✅ Scheduled briefings started")
     print("✅ Automatic Options Scanning started")
+    print("✅ Scheduled RSI Scanner started (6pm Argentina daily)")
 
 class BacktestRequest(BaseModel):
     ticker: str
