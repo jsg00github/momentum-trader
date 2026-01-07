@@ -152,8 +152,8 @@ def run_market_scan(limit=1000, strategy="weekly_rsi"):
     except Exception as e:
         print(f"Error calculating SPY RS: {e}")
 
-    # Batch Processing
-    batch_size = 50
+    # Batch Processing - Increased batch size for efficiency
+    batch_size = 75  # Larger batches = fewer API calls
     results = []
     
     total_batches = (len(subset) + batch_size - 1) // batch_size
@@ -168,7 +168,8 @@ def run_market_scan(limit=1000, strategy="weekly_rsi"):
         # 1. BULK DOWNLOAD for the entire batch
         # threads=True is safe here because we are doing one big download call
         # which is much more efficient than many small ones.
-        period = "1y" if strategy == "weekly_rsi" else screener.PERIOD
+        # Using 6mo for weekly_rsi (sufficient for 14-week EMA + RSI calculation)
+        period = "6mo" if strategy == "weekly_rsi" else screener.PERIOD
         batch_df = market_data.safe_yf_download(batch, period=period, auto_adjust=False, threads=True)
         
         # 2. Parallel Processing of the pre-downloaded data
