@@ -6,6 +6,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Momentum Trader</title>
 
+    <!-- Google Fonts - Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
+        rel="stylesheet">
+
     <!-- PWA Meta Tags -->
     <link rel="manifest" href="/static/manifest.json">
     <meta name="theme-color" content="#6366f1">
@@ -78,6 +84,13 @@
     <!-- Axios -->
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
 
+    <!-- jsPDF & AutoTable for PDF Generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+
+    <!-- SheetJS for Excel Generation -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+
     <link href="/static/style.css" rel="stylesheet">
 
     <script>
@@ -89,7 +102,7 @@
             } else {
                 console.log("Recharts loaded successfully.");
             }
-        }
+        };
     </script>
 </head>
 
@@ -97,7 +110,7 @@
     <div id="root"></div>
 
     <!-- App Logic -->
-    <script type="text/babel" src="app.js?v=25.8"></script>
+    <script type="text/babel" src="app.js?v=33.0&t=20260108"></script>
 
     <!-- Service Worker Registration -->
     <script>

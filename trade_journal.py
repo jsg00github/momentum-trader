@@ -1481,3 +1481,227 @@ def get_snapshots(days: int = 30):
         return [dict(row) for row in rows]
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================
+# UNIFIED PORTFOLIO (USA + Argentina)
+# ============================================
+
+@router.get("/api/trades/unified/positions")
+def get_unified_positions(market: str = "all"):
+    """
+    Get unified positions from both USA and Argentina markets.
+    market: 'all', 'usa', 'argentina'
+    Returns positions normalized to USD (Argentina uses CCL rate).
+    """
+    import argentina_data
+    import argentina_journal
+    
+    positions = []
+    rates = argentina_data.get_dolar_rates()
+    ccl = rates.get("ccl", 1200)
+    
+    # Get USA positions
+    if market in ["all", "usa"]:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, ticker, entry_date, entry_price, shares, strategy, 
+                   stop_loss, target, target2, target3, notes, status
+            FROM trades WHERE status = 'open'
+        """)
+        usa_trades = cursor.fetchall()
+        conn.close()
+        
+        for t in usa_trades:
+            positions.append({
+                "id": t["id"],
+                "ticker": t["ticker"],
+                "market": "USA",
+                "entry_date": t["entry_date"],
+                "entry_price_local": t["entry_price"],
+                "entry_price_usd": t["entry_price"],
+                "shares": t["shares"],
+                "cost_usd": t["entry_price"] * t["shares"],
+                "stop_loss": t["stop_loss"],
+                "target": t["target"],
+                "target2": t.get("target2"),
+                "target3": t.get("target3"),
+                "strategy": t["strategy"],
+                "notes": t["notes"],
+                "currency": "USD"
+            })
+    
+    # Get Argentina positions
+    if market in ["all", "argentina"]:
+        arg_positions = argentina_journal.get_all_positions("open")
+        
+        for p in arg_positions:
+            entry_usd = p["entry_price"] / ccl if ccl > 0 else 0
+            positions.append({
+                "id": f"ARG-{p['id']}",
+                "ticker": p["ticker"],
+                "market": "ARG",
+                "asset_type": p.get("asset_type", "stock"),
+                "entry_date": p["entry_date"],
+                "entry_price_local": p["entry_price"],
+                "entry_price_usd": round(entry_usd, 2),
+                "shares": p["shares"],
+                "cost_usd": round(entry_usd * p["shares"], 2),
+                "stop_loss": p.get("stop_loss"),
+                "target": p.get("target"),
+                "strategy": p.get("strategy"),
+                "notes": p.get("notes"),
+                "currency": "ARS"
+            })
+    
+    return {
+        "positions": positions,
+        "count": len(positions),
+        "rates": {"ccl": ccl, "mep": rates.get("mep", 1150)}
+    }
+
+
+@router.get("/api/trades/unified/metrics")
+def get_unified_metrics(market: str = "all"):
+    """
+    Get unified portfolio metrics for Total/USA/ARGY view.
+    Returns values in multiple currencies (USD, ARS via CCL/MEP/Oficial).
+    """
+    import argentina_data
+    import argentina_journal
+    
+    rates = argentina_data.get_dolar_rates()
+    ccl = rates.get("ccl", 1200)
+    mep = rates.get("mep", 1150)
+    oficial = rates.get("oficial", 1050)
+    
+    # Initialize totals
+    usa_invested_usd = 0.0
+    usa_current_usd = 0.0
+    usa_pnl_usd = 0.0
+    usa_count = 0
+    
+    arg_invested_ars = 0.0
+    arg_current_ars = 0.0
+    arg_pnl_ars = 0.0
+    arg_count = 0
+    
+    # USA Metrics (already in USD)
+    # USA Metrics (already in USD)
+    if market in ["all", "usa"]:
+        import market_data
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        # 1. Open Positions: Calculate Unrealized P&L
+        cursor.execute("SELECT ticker, entry_price, shares FROM trades WHERE UPPER(status) = 'OPEN'")
+        open_trades = cursor.fetchall()
+        
+        tickers = [t["ticker"] for t in open_trades]
+        live_prices = market_data.get_batch_latest_prices(tickers)
+        
+        for t in open_trades:
+            invested = t["entry_price"] * t["shares"]
+            usa_invested_usd += invested
+            usa_count += 1
+            
+            # Calculate current value
+            current_price = live_prices.get(t["ticker"], t["entry_price"])
+            current_val = current_price * t["shares"]
+            usa_current_usd += current_val
+            
+            # Unrealized P&L
+            usa_pnl_usd += (current_val - invested)
+
+        # 2. Closed Positions: Add Realized P&L
+        cursor.execute("SELECT SUM(pnl) as realized_pnl FROM trades WHERE UPPER(status) = 'CLOSED'")
+        row = cursor.fetchone()
+        if row and row["realized_pnl"]:
+            usa_pnl_usd += row["realized_pnl"]
+            
+        conn.close()
+    
+    # Argentina Metrics (in ARS)
+    if market in ["all", "argentina"]:
+        arg_portfolio = argentina_journal.get_portfolio_valuation()
+        arg_count = arg_portfolio.get("position_count", 0)
+        
+        for h in arg_portfolio.get("holdings", []):
+            arg_invested_ars += h.get("cost_basis", 0)
+            arg_current_ars += h.get("value_ars", 0)
+            arg_pnl_ars += h.get("pnl_ars", 0)
+    
+    # Convert Argentina to USD using different rates
+    arg_invested_ccl = arg_invested_ars / ccl if ccl > 0 else 0
+    arg_invested_mep = arg_invested_ars / mep if mep > 0 else 0
+    arg_invested_oficial = arg_invested_ars / oficial if oficial > 0 else 0
+    
+    arg_current_ccl = arg_current_ars / ccl if ccl > 0 else 0
+    arg_current_mep = arg_current_ars / mep if mep > 0 else 0
+    arg_current_oficial = arg_current_ars / oficial if oficial > 0 else 0
+    
+    arg_pnl_ccl = arg_pnl_ars / ccl if ccl > 0 else 0
+    arg_pnl_mep = arg_pnl_ars / mep if mep > 0 else 0
+    arg_pnl_oficial = arg_pnl_ars / oficial if oficial > 0 else 0
+    
+    # Convert USA to ARS
+    usa_invested_ars_ccl = usa_invested_usd * ccl
+    usa_invested_ars_mep = usa_invested_usd * mep
+    usa_invested_ars_oficial = usa_invested_usd * oficial
+    
+    # Combined totals in different currencies
+    total_count = usa_count + arg_count
+    
+    return {
+        "usa": {
+            "invested_usd": round(usa_invested_usd, 2),
+            "current_usd": round(usa_current_usd, 2),
+            "pnl_usd": round(usa_pnl_usd, 2),
+            "invested_ars_ccl": round(usa_invested_ars_ccl, 2),
+            "invested_ars_mep": round(usa_invested_ars_mep, 2),
+            "invested_ars_oficial": round(usa_invested_ars_oficial, 2),
+            "position_count": usa_count
+        },
+        "argentina": {
+            "invested_ars": round(arg_invested_ars, 2),
+            "current_ars": round(arg_current_ars, 2),
+            "pnl_ars": round(arg_pnl_ars, 2),
+            "invested_usd_ccl": round(arg_invested_ccl, 2),
+            "invested_usd_mep": round(arg_invested_mep, 2),
+            "invested_usd_oficial": round(arg_invested_oficial, 2),
+            "current_usd_ccl": round(arg_current_ccl, 2),
+            "pnl_usd_ccl": round(arg_pnl_ccl, 2),
+            "position_count": arg_count
+        },
+        "total": {
+            "usd_ccl": {
+                "invested": round(usa_invested_usd + arg_invested_ccl, 2),
+                "current": round(usa_current_usd + arg_current_ccl, 2),
+                "pnl": round(usa_pnl_usd + arg_pnl_ccl, 2)
+            },
+            "usd_mep": {
+                "invested": round(usa_invested_usd + arg_invested_mep, 2),
+                "current": round(usa_current_usd + arg_current_mep, 2),
+                "pnl": round(usa_pnl_usd + arg_pnl_mep, 2)
+            },
+            "usd_oficial": {
+                "invested": round(usa_invested_usd + arg_invested_oficial, 2),
+                "current": round(usa_current_usd + arg_current_oficial, 2),
+                "pnl": round(usa_pnl_usd + arg_pnl_oficial, 2)
+            },
+            "ars_ccl": {
+                "invested": round(usa_invested_ars_ccl + arg_invested_ars, 2),
+                "current": round(usa_invested_ars_ccl + arg_current_ars, 2),
+                "pnl": round((usa_pnl_usd * ccl) + arg_pnl_ars, 2)
+            },
+            "position_count": total_count
+        },
+        "rates": {
+            "ccl": ccl,
+            "mep": mep,
+            "oficial": oficial
+        }
+    }

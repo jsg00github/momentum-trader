@@ -1,8 +1,9 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
+from starlette.middleware.base import BaseHTTPMiddleware
 import uvicorn
 import screener
 import scoring
@@ -43,11 +44,32 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Anti-cache middleware for development (no more hard refresh needed)
+class NoCacheMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        # Disable caching for static files in development
+        if request.url.path == "/" or request.url.path.endswith(('.js', '.css', '.html')):
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+        return response
+
+app.add_middleware(NoCacheMiddleware)
+
 # Include trade journal routes
 app.include_router(trade_router)
 
 # Include watchlist routes
 app.include_router(watchlist_router)
+
+# Include Argentina routes
+import argentina_journal
+app.include_router(argentina_journal.router)
+
+# Include Crypto routes
+import crypto_journal
+app.include_router(crypto_journal.router)
 
 # Static files are mounted at the end of the file to ensure API routes take priority
 
@@ -533,6 +555,46 @@ def run_scan_now():
     return {"status": "error", "message": "Scan failed"}
 
 # -----------------------------------------------------
+# Sharpe Portfolio Endpoints (Fundamental Analysis)
+# -----------------------------------------------------
+import fundamental_screener
+
+@app.get("/api/fundamental/scan")
+def scan_sharpe_portfolio(min_sharpe: float = 1.5, max_pe: float = 50.0, min_pe: float = 0.0):
+    """Scan cached tickers for high Sharpe ratio stocks"""
+    return fundamental_screener.scan_sharpe_portfolio(
+        min_sharpe=min_sharpe, 
+        max_pe=max_pe, 
+        min_pe=min_pe
+    )
+
+@app.get("/api/fundamental/portfolio")
+def build_sharpe_portfolio(max_positions: int = 10, min_sharpe: float = 1.5, strategy: str = 'undervalued'):
+    """
+    Build equal-weight portfolio. 
+    Strategy='undervalued' prioritizes PE < 20.
+    """
+    scan_result = fundamental_screener.scan_sharpe_portfolio(
+        min_sharpe=min_sharpe,
+        max_pe=100.0, # Widen buffer for scan, let portfolio builder filter strict PE
+        min_pe=0.0
+    )
+    if "error" in scan_result:
+        return scan_result
+        
+    portfolio = fundamental_screener.build_equal_weight_portfolio(
+        scan_result.get("results", []), 
+        max_positions=max_positions,
+        strategy=strategy
+    )
+    
+    # Return BOTH pieces of data
+    return {
+        "portfolio": portfolio,
+        "scan_results": scan_result
+    }
+
+# -----------------------------------------------------
 # Alert System Endpoints
 # -----------------------------------------------------
 
@@ -720,6 +782,67 @@ def get_network_info():
 # I will retain the one at line 141 which has the Scan logic (Post-market).
 # So I will DELETE the one at line 468.
 
+# -----------------------------------------------------
+# PORTFOLIO SNAPSHOTS ENDPOINTS
+# -----------------------------------------------------
+import portfolio_snapshots
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
+import pytz
+
+# Initialize scheduler for daily portfolio snapshots at 19:00 ARG
+_snapshot_scheduler = None
+
+def start_snapshot_scheduler():
+    """Start the background scheduler for daily snapshots at 19:00 ARG."""
+    global _snapshot_scheduler
+    if _snapshot_scheduler is not None:
+        return  # Already running
+    
+    try:
+        tz_arg = pytz.timezone("America/Argentina/Buenos_Aires")
+        _snapshot_scheduler = BackgroundScheduler(timezone=tz_arg)
+        
+        # Schedule daily at 19:00 ARG time
+        trigger = CronTrigger(hour=19, minute=0, timezone=tz_arg)
+        _snapshot_scheduler.add_job(
+            portfolio_snapshots.take_snapshot,
+            trigger,
+            id="daily_portfolio_snapshot",
+            name="Daily Portfolio Snapshot (19:00 ARG)",
+            replace_existing=True
+        )
+        
+        _snapshot_scheduler.start()
+        print("[Scheduler] Portfolio snapshot scheduler started - runs daily at 19:00 ARG")
+    except Exception as e:
+        print(f"[Scheduler] Error starting snapshot scheduler: {e}")
+
+# Start scheduler on app startup
+@app.on_event("startup")
+async def startup_event():
+    start_snapshot_scheduler()
+    print("[Startup] Portfolio snapshot scheduler initialized")
+
+@app.get("/api/portfolio/snapshots")
+def get_portfolio_snapshots(days: int = 365):
+    """Get portfolio history for charts."""
+    return portfolio_snapshots.get_history(days)
+
+@app.get("/api/portfolio/snapshot/latest")
+def get_latest_snapshot():
+    """Get the most recent portfolio snapshot."""
+    return portfolio_snapshots.get_latest() or {}
+
+@app.get("/api/portfolio/distribution")
+def get_portfolio_distribution():
+    """Get geographic distribution of investments."""
+    return portfolio_snapshots.get_geographic_distribution()
+
+@app.post("/api/portfolio/snapshot/take")
+def take_manual_snapshot():
+    """Manually trigger a portfolio snapshot (for testing)."""
+    return portfolio_snapshots.take_snapshot()
 
 
 # -----------------------------------------------------

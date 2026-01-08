@@ -22,7 +22,7 @@ _session.headers.update({
 _download_lock = threading.Lock()
 
 # Timeout for Yahoo Finance downloads (seconds)
-YF_DOWNLOAD_TIMEOUT = 15
+YF_DOWNLOAD_TIMEOUT = 60
 
 
 def safe_yf_download(tickers, **kwargs):
@@ -77,14 +77,28 @@ def safe_yf_download(tickers, **kwargs):
                         # Sometimes yf returns a single-level index even if MultiIndex was expected
                         pass
                 
-                # SUCCESS: Save to cache for future fallback
-                if len(tickers) == 1:
-                    try:
-                        import cache
-                        c = cache.get_cache()
-                        c.set(tickers[0], period, kwargs.get('interval', '1d'), df)
-                    except Exception:
-                        pass
+                # SUCCESS: Save to cache for future fallback (both single and batch downloads)
+                try:
+                    import cache
+                    c = cache.get_cache()
+                    interval = kwargs.get('interval', '1d')
+                    
+                    if len(tickers) == 1:
+                        # Single ticker - cache directly
+                        c.set(tickers[0], period, interval, df)
+                    else:
+                        # Batch download - extract and cache each ticker individually
+                        # This makes batch scanner data available for journal price lookups
+                        if isinstance(df.columns, pd.MultiIndex):
+                            for ticker in tickers:
+                                try:
+                                    if ticker in df.columns.get_level_values(1):
+                                        ticker_df = df.xs(ticker, axis=1, level=1)
+                                        c.set(ticker, period, interval, ticker_df)
+                                except Exception:
+                                    pass
+                except Exception:
+                    pass
                 
                 return df
             
@@ -487,7 +501,7 @@ def update_market_status_worker():
     try:
         # 1. Fetch Principal Indices (SPY, QQQ, IWM, ^VIX)
         # Reduced period to 1mo for speed (sufficient for 21/50 EMA)
-        data = safe_yf_download(INDICES, period="1mo", interval="1d", progress=False, auto_adjust=True, timeout=10)
+        data = safe_yf_download(INDICES, period="1y", interval="1d", progress=False, auto_adjust=True, timeout=10)
         
         if not data.empty:
             closes = data['Close'] if isinstance(data.columns, pd.MultiIndex) else data
@@ -532,20 +546,35 @@ def update_market_status_worker():
                         status[ticker] = {
                             "price": round(lp, 2), "ext_price": round(float(ep), 2), "ext_change_pct": round(float(echg), 2),
                             "ema21": round(e21, 2), "ema50": round(e50, 2), "color": color, "desc": desc,
-                            "sparkline": [round(float(p), 2) for p in ser.iloc[-20:].tolist()]
+                            "sparkline": [round(float(p), 2) for p in ser.tolist()]
                         }
                 except Exception as ex: print(f"Error processing {ticker}: {ex}")
 
             # 2. VIX Check
+            # 2. VIX Check
             try:
-                v_fi = yf.Ticker("^VIX").fast_info
-                vp = getattr(v_fi, "last_price", 0)
-                status["VIX"] = {"price": round(float(vp), 2), "level": "Low" if vp < 15 else ("High" if vp > 20 else "Elevated")}
+                vix_data = safe_yf_download("^VIX", period="1y", interval="1d", progress=False, auto_adjust=True, timeout=10)
+                if not vix_data.empty:
+                    vix_close = vix_data['Close'] if 'Close' in vix_data.columns else vix_data.iloc[:, 0]
+                    if isinstance(vix_close, pd.DataFrame): vix_close = vix_close.iloc[:, 0]
+                    vix_close = vix_close.dropna()
+                    
+                    vp = float(vix_close.iloc[-1])
+                    status["VIX"] = {
+                        "price": round(vp, 2), 
+                        "level": "Low" if vp < 15 else ("High" if vp > 20 else "Elevated"),
+                        "sparkline": [round(float(p), 2) for p in vix_close.tolist()]
+                    }
+                else:
+                    # Fallback if download fails
+                    v_fi = yf.Ticker("^VIX").fast_info
+                    vp = getattr(v_fi, "last_price", 0)
+                    status["VIX"] = {"price": round(float(vp), 2), "level": "Low" if vp < 15 else ("High" if vp > 20 else "Elevated")}
             except: pass
             
             # 2b. Bitcoin (BTC-USD)
             try:
-                btc_data = safe_yf_download("BTC-USD", period="5d", interval="1d", progress=False, auto_adjust=True, timeout=10)
+                btc_data = safe_yf_download("BTC-USD", period="1y", interval="1d", progress=False, auto_adjust=True, timeout=10)
                 if btc_data is not None and not btc_data.empty:
                     btc_close = btc_data['Close'] if 'Close' in btc_data.columns else btc_data.iloc[:, 0]
                     if isinstance(btc_close, pd.DataFrame): btc_close = btc_close.iloc[:, 0]
@@ -558,7 +587,7 @@ def update_market_status_worker():
                             "price": round(current_btc, 2),
                             "change_24h": round(btc_chg, 2),
                             "color": "Green" if btc_chg > 0 else ("Red" if btc_chg < 0 else "Yellow"),
-                            "sparkline": [round(float(p), 2) for p in btc_close.iloc[-5:].tolist()]
+                            "sparkline": [round(float(p), 2) for p in btc_close.tolist()]
                         }
             except Exception as ex:
                 print(f"Error fetching BTC: {ex}")

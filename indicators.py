@@ -56,8 +56,9 @@ def calculate_weekly_rsi_analytics(daily_df):
     except:
         return None
     
-    # Need enough data: 14 weeks for RSI + 14 weeks for SMA(14) = ~28 weeks min
-    if len(weekly_df) < 30:
+    # Need enough data: 14 weeks for RSI + 8 weeks for EMA(14) warmup = ~22 weeks min
+    # 6 months = ~26 weeks, so this should work
+    if len(weekly_df) < 22:
         return None
 
     # Calculate Weekly RSI (14)
