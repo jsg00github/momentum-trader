@@ -3,29 +3,29 @@
         {
             "ticker": "XOM",
             "profile": "Aggressive",
-            "score": 86.9,
+            "score": 92.0,
             "rationale": [
                 "Strong Momentum",
-                "High Volatility (1.8%)"
+                "High Volatility (1.9%)"
             ],
             "metrics": {
-                "price": 120.19,
-                "rsi": 56.9,
-                "atr_pct": 1.77
+                "price": 122.91,
+                "rsi": 62.0,
+                "atr_pct": 1.93
             }
         },
         {
             "ticker": "NVDA",
             "profile": "Aggressive",
-            "score": 101.3,
+            "score": 100.3,
             "rationale": [
                 "Strong Momentum",
-                "High Volatility (2.6%)"
+                "High Volatility (2.7%)"
             ],
             "metrics": {
-                "price": 185.51,
-                "rsi": 71.3,
-                "atr_pct": 2.63
+                "price": 185.04,
+                "rsi": 70.3,
+                "atr_pct": 2.71
             }
         },
         {
@@ -37,9 +37,9 @@
                 "High Volatility (1.9%)"
             ],
             "metrics": {
-                "price": 322.7,
-                "rsi": 88.5,
-                "atr_pct": 1.93
+                "price": 325.44,
+                "rsi": 89.3,
+                "atr_pct": 1.92
             }
         }
     ],
@@ -48,46 +48,46 @@
         {
             "ticker": "PEP",
             "profile": "Safe",
-            "score": 90.6,
+            "score": 87.4,
             "rationale": [
                 "Support Zone",
                 "Defensive / Value"
             ],
             "metrics": {
-                "price": 138.74,
-                "rsi": 14.4,
-                "atr_pct": 1.36
+                "price": 139.37,
+                "rsi": 17.6,
+                "atr_pct": 1.39
             }
         },
         {
             "ticker": "AAPL",
             "profile": "Safe",
-            "score": 85.2,
+            "score": 83.0,
             "rationale": [
                 "Support Zone",
                 "Defensive / Value"
             ],
             "metrics": {
-                "price": 256.48,
-                "rsi": 19.8,
-                "atr_pct": 1.59
+                "price": 259.04,
+                "rsi": 22.0,
+                "atr_pct": 1.58
             }
         },
         {
             "ticker": "KO",
             "profile": "Safe",
-            "score": 75.8,
+            "score": 65.3,
             "rationale": [
                 "Support Zone",
                 "Defensive / Value"
             ],
             "metrics": {
-                "price": 68.43,
-                "rsi": 29.2,
-                "atr_pct": 0.96
+                "price": 69.37,
+                "rsi": 39.7,
+                "atr_pct": 1.05
             }
         }
     ],
-    "last_scan": 1767884306.1604633,
+    "last_scan": 1767915033.0193284,
     "is_scanning": false
 }

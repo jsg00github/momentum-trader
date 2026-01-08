@@ -6798,6 +6798,18 @@ function App() {
                                     </span>
                                 </button>
 
+                                {/* Options Scanner */}
+                                <button
+                                    onClick={() => setView('options')}
+                                    className={`group relative w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200 ${view === 'options' ? 'bg-purple-600 text-white shadow-lg shadow-purple-900/40' : 'hover:bg-[#151515] text-slate-500 hover:text-white'}`}
+                                    title="Options Scanner"
+                                >
+                                    <span className="text-lg">🔮</span>
+                                    <span className="absolute left-full ml-3 px-3 py-1.5 bg-[#1a1a1a] text-white text-xs font-medium rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap transition-opacity border border-[#2a2a2a] shadow-xl z-50">
+                                        Options Scanner
+                                    </span>
+                                </button>
+
                                 {/* 8. Watchlist */}
                                 <button
                                     onClick={() => setView('watchlist')}
