@@ -5790,29 +5790,40 @@ function PortfolioDashboardView() {
 
     const fetchAllData = async () => {
         setLoading(true);
-        try {
-            // Fetch all data in parallel
-            const [metricsRes, historyRes, distRes] = await Promise.all([
-                fetch(`${API_BASE}/trades/unified/metrics`),
-                fetch(`${API_BASE}/portfolio/snapshots?days=365`),
-                fetch(`${API_BASE}/portfolio/distribution`)
-            ]);
 
-            if (metricsRes.ok) {
-                const data = await metricsRes.json();
-                setMetrics(data);
-            }
+        // 1. Fetch History (Fast, from DB)
+        try {
+            const historyRes = await fetch(`${API_BASE}/portfolio/snapshots?days=365`);
             if (historyRes.ok) {
                 const histData = await historyRes.json();
                 setHistory(histData || []);
             }
+        } catch (err) {
+            console.error('Error fetching history:', err);
+        }
+
+        // 2. Fetch Distribution (Fast, from DB)
+        try {
+            const distRes = await fetch(`${API_BASE}/portfolio/distribution`);
             if (distRes.ok) {
                 const distData = await distRes.json();
                 setDistribution(distData || {});
             }
         } catch (err) {
-            console.error('Error fetching portfolio data:', err);
+            console.error('Error fetching distribution:', err);
         }
+
+        // 3. Fetch Real-time Metrics (Slow, External API)
+        try {
+            const metricsRes = await fetch(`${API_BASE}/trades/unified/metrics`);
+            if (metricsRes.ok) {
+                const data = await metricsRes.json();
+                setMetrics(data);
+            }
+        } catch (err) {
+            console.error('Error fetching metrics:', err);
+        }
+
         setLoading(false);
     };
 
