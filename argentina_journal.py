@@ -955,3 +955,65 @@ def api_get_snapshots():
 def api_get_unified_metrics():
     """Placeholder for unified metrics if needed."""
     return {}
+
+
+@router.get("/ai/portfolio-insight")
+def api_ai_portfolio_insight():
+    """Generate AI portfolio analysis for Argentina positions using Gemini."""
+    import market_brain
+    
+    try:
+        # Get open positions
+        positions = get_all_positions("open")
+        live_prices = api_get_prices()
+        
+        if not positions:
+            return {"insight": "No hay posiciones abiertas en Argentina para analizar."}
+        
+        # Calculate portfolio metrics
+        total_value = 0
+        unrealized_pnl = 0
+        positions_list = []
+        winners = []
+        losers = []
+        
+        for p in positions:
+            ticker = p['ticker']
+            shares = p['shares']
+            entry = p['entry_price']
+            current = live_prices.get(ticker, {}).get('price', entry)
+            
+            value = current * shares
+            pnl = (current - entry) * shares
+            pnl_pct = ((current / entry) - 1) * 100 if entry > 0 else 0
+            
+            total_value += value
+            unrealized_pnl += pnl
+            
+            positions_list.append(f"{ticker} ({shares} @ ${entry})")
+            
+            if pnl_pct > 0:
+                winners.append(f"{ticker}: +{pnl_pct:.1f}%")
+            else:
+                losers.append(f"{ticker}: {pnl_pct:.1f}%")
+        
+        # Sort by magnitude
+        winners = sorted(winners, key=lambda x: float(x.split('+')[1].replace('%', '')), reverse=True)[:3]
+        losers = sorted(losers, key=lambda x: float(x.split(':')[1].replace('%', '')))[:3]
+        
+        portfolio_data = {
+            "positions": ", ".join(positions_list[:10]) if positions_list else "Sin posiciones",
+            "total_value": f"{total_value:,.2f} ARS",
+            "unrealized_pnl": f"{unrealized_pnl:,.2f} ARS",
+            "sectors": "Argentina Market (Mixed)",
+            "winners": ", ".join(winners) if winners else "Ninguno",
+            "losers": ", ".join(losers) if losers else "Ninguno"
+        }
+        
+        insight = market_brain.get_portfolio_insight(portfolio_data)
+        return {"insight": insight}
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"insight": f"Error analyzing Argentina portfolio: {e}"}

@@ -276,3 +276,58 @@ def get_portfolio_metrics():
         "total_value": metrics["total_value"],
         "total_pnl": metrics["total_pnl"]
     }
+
+
+@router.get("/api/crypto/ai/portfolio-insight")
+def api_ai_crypto_insight():
+    """Generate AI portfolio analysis for Crypto positions using Gemini."""
+    import market_brain
+    
+    try:
+        # Get positions with enriched data
+        data = get_positions()
+        positions = data.get("positions", [])
+        metrics = data.get("metrics", {})
+        
+        if not positions:
+            return {"insight": "No hay posiciones crypto para analizar."}
+        
+        # Build portfolio summary
+        positions_list = []
+        winners = []
+        losers = []
+        
+        for p in positions:
+            ticker = p['ticker']
+            amount = p['amount']
+            entry = p['entry_price']
+            current = p.get('current_price', entry)
+            pnl_pct = p.get('pnl_pct', 0)
+            
+            positions_list.append(f"{ticker} ({amount} @ ${entry})")
+            
+            if pnl_pct > 0:
+                winners.append(f"{ticker}: +{pnl_pct:.1f}%")
+            elif pnl_pct < 0:
+                losers.append(f"{ticker}: {pnl_pct:.1f}%")
+        
+        # Sort by magnitude
+        winners = sorted(winners, key=lambda x: float(x.split('+')[1].replace('%', '')), reverse=True)[:3]
+        losers = sorted(losers, key=lambda x: float(x.split(':')[1].replace('%', '')))[:3]
+        
+        portfolio_data = {
+            "positions": ", ".join(positions_list[:10]) if positions_list else "Sin posiciones",
+            "total_value": f"${metrics.get('total_value', 0):,.2f}",
+            "unrealized_pnl": f"${metrics.get('total_pnl', 0):,.2f}",
+            "sectors": "Cryptocurrency Market",
+            "winners": ", ".join(winners) if winners else "Ninguno",
+            "losers": ", ".join(losers) if losers else "Ninguno"
+        }
+        
+        insight = market_brain.get_portfolio_insight(portfolio_data)
+        return {"insight": insight}
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"insight": f"Error analyzing crypto portfolio: {e}"}

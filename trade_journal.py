@@ -733,6 +733,16 @@ def get_open_prices():
                 except Exception as e:
                     print(f"Error calc RSI for {ticker}: {e}")
 
+                # Momentum Path calculation
+                momentum_path_val = None
+                try:
+                    import screener
+                    predictions = screener.predict_future_path(df)
+                    if predictions and len(predictions) > 0:
+                        momentum_path_val = round(predictions[0].get('projected', 0), 2)
+                except Exception as e:
+                    print(f"Error calc Momentum Path for {ticker}: {e}")
+
                 results[ticker] = {
                     'price': round(last_price, 2),
                     'change_pct': round(day_change_pct, 2),
@@ -741,7 +751,8 @@ def get_open_prices():
                     'ema_35': round(float(ema_35_series.iloc[-1]), 2),
                     'ema_200': round(float(ema_200_series.iloc[-1]), 2),
                     'violations_map': violation_map,
-                    'rsi_weekly': rsi_summary
+                    'rsi_weekly': rsi_summary,
+                    'momentum_path': momentum_path_val
                 }
                 
             except Exception as e:

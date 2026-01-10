@@ -599,6 +599,160 @@ def build_sharpe_portfolio(max_positions: int = 10, min_sharpe: float = 1.5, str
 # -----------------------------------------------------
 
 
+
+# -----------------------------------------------------
+# AI ANALYST (MARKET BRAIN)
+# -----------------------------------------------------
+import market_brain
+
+@app.get("/api/ai/insight")
+def get_ai_insight():
+    """Generate AI market insight using Gemini"""
+    # Gather context from existing market data
+    status = market_data.get_market_status()
+    
+    # Format context for the AI
+    context = {
+        "indices": {k: f"{v.get('price')} ({v.get('ext_change_pct')}%)" for k, v in status.get('indices', {}).items() if isinstance(v, dict)},
+        "movers": "See market status for details", # Simplified for now
+        "news": "Latest market headlines available in system",
+        "breadth": status.get('breadth', 'Neutral')
+    }
+    
+    insight = market_brain.get_market_insight(context)
+    return {"insight": insight}
+
+@app.get("/api/ai/portfolio-insight")
+def get_portfolio_insight():
+    """Generate AI portfolio analysis using Gemini"""
+    # Gather portfolio data from trade journal
+    try:
+        result = trade_journal.get_trades()
+        trades = result.get("trades", []) if isinstance(result, dict) else []
+        # Fix: status is 'OPEN' not 'open' - use case-insensitive comparison
+        open_trades = [t for t in trades if isinstance(t, dict) and str(t.get('status', '')).upper() == 'OPEN']
+        
+        if not open_trades:
+            return {"insight": "No open positions found in the USA portfolio."}
+        
+        # Get live prices for accurate PnL
+        live_data = trade_journal.get_open_prices()
+        
+        # Calculate portfolio metrics
+        total_value = 0
+        unrealized_pnl = 0
+        positions = []
+        pnl_list = []
+        
+        for t in open_trades:
+            ticker = t.get('ticker', '?')
+            shares = float(t.get('shares', 0) or 0)
+            entry = float(t.get('entry_price', 0) or 0)
+            
+            # Get current price from live data
+            live = live_data.get(ticker, {})
+            current = float(live.get('price', entry) or entry)
+            
+            value = current * shares
+            pnl = (current - entry) * shares
+            pnl_pct = ((current / entry) - 1) * 100 if entry > 0 else 0
+            
+            total_value += value
+            unrealized_pnl += pnl
+            
+            positions.append(f"{ticker} ({int(shares)} @ ${entry:.2f})")
+            pnl_list.append({"ticker": ticker, "pnl_pct": pnl_pct})
+        
+        # Sort by PnL %
+        sorted_by_pnl = sorted(pnl_list, key=lambda x: x['pnl_pct'], reverse=True)
+        winners = [f"{p['ticker']}: +{p['pnl_pct']:.1f}%" for p in sorted_by_pnl[:3] if p['pnl_pct'] > 0]
+        losers = [f"{p['ticker']}: {p['pnl_pct']:.1f}%" for p in sorted_by_pnl if p['pnl_pct'] < 0][-3:]
+        
+        portfolio_data = {
+            "positions": ", ".join(positions[:10]) if positions else "No open positions",
+            "total_value": f"${total_value:,.2f}",
+            "unrealized_pnl": f"${unrealized_pnl:,.2f}",
+            "sectors": "Mixed (data not available)",
+            "winners": ", ".join(winners) if winners else "None",
+            "losers": ", ".join(losers) if losers else "None"
+        }
+        
+        insight = market_brain.get_portfolio_insight(portfolio_data)
+        return {"insight": insight}
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"insight": f"Error gathering portfolio data: {e}"}
+
+
+# Portfolio Chatbot Endpoint
+class ChatQuery(BaseModel):
+    query: str
+    history: list = []
+
+@app.post("/api/chat/query")
+def chat_query(chat: ChatQuery):
+    """Conversational AI assistant for portfolio queries"""
+    try:
+        # Get live portfolio context
+        result = trade_journal.get_trades()
+        trades = result.get("trades", []) if isinstance(result, dict) else []
+        open_trades = [t for t in trades if isinstance(t, dict) and str(t.get('status', '')).upper() == 'OPEN']
+        
+        # Get live prices
+        live_data = trade_journal.get_open_prices()
+        
+        # Build portfolio context
+        positions = []
+        total_value = 0
+        unrealized_pnl = 0
+        
+        for t in open_trades:
+            ticker = t.get('ticker', '?')
+            shares = float(t.get('shares', 0) or 0)
+            entry = float(t.get('entry_price', 0) or 0)
+            
+            live = live_data.get(ticker, {})
+            current = float(live.get('price', entry) or entry)
+            
+            value = current * shares
+            pnl = (current - entry) * shares
+            
+            total_value += value
+            unrealized_pnl += pnl
+            
+            positions.append({
+                'ticker': ticker,
+                'shares': shares,
+                'entry_price': entry,
+                'current_price': current
+            })
+        
+        portfolio_context = {
+            'positions': positions,
+            'metrics': {
+                'total_value': total_value,
+                'unrealized_pnl': unrealized_pnl,
+                'position_count': len(positions)
+            }
+        }
+        
+        # Call chat function
+        response = market_brain.chat_with_portfolio(
+            user_query=chat.query,
+            conversation_history=chat.history,
+            portfolio_context=portfolio_context
+        )
+        
+        return {"response": response, "context_used": True}
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"response": f"Sorry, I encountered an error: {str(e)}", "context_used": False}
+
+
 # Alert System Endpoints
 @app.get("/api/alerts/settings")
 def get_alert_settings():

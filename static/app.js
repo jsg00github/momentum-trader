@@ -1079,6 +1079,23 @@ function TradeJournal() {
     const [displayCurrency, setDisplayCurrency] = useState('usd_ccl'); // 'usd_ccl', 'usd_mep', 'usd_oficial', 'ars_ccl'
     const [unifiedMetrics, setUnifiedMetrics] = useState(null); // Multi-currency totals
 
+    // AI Portfolio Analysis
+    const [aiInsight, setAiInsight] = useState(null);
+    const [analyzing, setAnalyzing] = useState(false);
+
+    const handleAnalyzePortfolio = async () => {
+        setAnalyzing(true);
+        try {
+            const res = await fetch(`${API_BASE}/ai/portfolio-insight`);
+            const data = await res.json();
+            setAiInsight(data.insight);
+        } catch (err) {
+            console.error('AI Analysis failed:', err);
+            setAiInsight('Error analyzing portfolio. Please try again.');
+        }
+        setAnalyzing(false);
+    };
+
     // Group trades by ticker (USA only - Argentina has its own journal)
     const groupedTrades = useMemo(() => {
         return trades.reduce((groups, trade) => {
@@ -1541,6 +1558,13 @@ ${res.data.errors.join("\n")}`);
                     >
                         🔔 Alerts {alertSettings.enabled && '✓'}
                     </button>
+                    <button
+                        onClick={handleAnalyzePortfolio}
+                        disabled={analyzing}
+                        className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white px-4 py-2 rounded-lg font-medium transition text-sm shadow-lg"
+                    >
+                        {analyzing ? '🔄 Analyzing...' : '🤖 AI Insights'}
+                    </button>
                     <button onClick={() => setShowForm(!showForm)} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-medium transition text-sm">
                         {showForm ? 'Cancel' : '+ Log Trade'}
                     </button>
@@ -1548,6 +1572,55 @@ ${res.data.errors.join("\n")}`);
             </div>
 
             {showForm && <TradeForm onSave={() => { setShowForm(false); fetchData(); }} onCancel={() => setShowForm(false)} />}
+
+            {/* AI Insight Display */}
+            {aiInsight && (
+                <div className="mb-6 bg-gradient-to-r from-purple-900/30 to-blue-900/30 border border-purple-500/30 rounded-xl p-4">
+                    <div className="flex justify-between items-start mb-3">
+                        <h3 className="text-purple-400 font-bold flex items-center gap-2">
+                            🤖 AI Portfolio Analysis
+                        </h3>
+                        <button onClick={() => setAiInsight(null)} className="text-slate-500 hover:text-white text-sm">✕ Close</button>
+                    </div>
+                    {(() => {
+                        const text = aiInsight;
+                        const sentimentMatch = text.match(/\*\*Sentiment:\*\*\s*(\d+)\/100\s*\(([^)]+)\)/);
+                        const analysisMatch = text.match(/\*\*Analysis:\*\*\s*([\s\S]*?)(?=\*\*Actionable|$)/);
+                        const actionMatch = text.match(/\*\*Actionable Insight:\*\*\s*([\s\S]*?)$/);
+
+                        if (sentimentMatch) {
+                            const score = parseInt(sentimentMatch[1]);
+                            const mood = sentimentMatch[2];
+                            const analysis = analysisMatch ? analysisMatch[1].trim() : '';
+                            const action = actionMatch ? actionMatch[1].trim() : '';
+
+                            const moodColor = score >= 60 ? 'text-green-400' : score >= 40 ? 'text-yellow-400' : 'text-red-400';
+                            const barColor = score >= 60 ? 'bg-green-500' : score >= 40 ? 'bg-yellow-500' : 'bg-red-500';
+
+                            return (
+                                <div className="space-y-3">
+                                    <div className="flex items-center gap-4">
+                                        <div className="flex-1">
+                                            <div className="w-full bg-slate-700 rounded-full h-2 overflow-hidden">
+                                                <div className={`${barColor} h-full rounded-full transition-all duration-500`} style={{ width: `${score}%` }}></div>
+                                            </div>
+                                        </div>
+                                        <span className={`text-lg font-bold ${moodColor}`}>{score}/100 {mood}</span>
+                                    </div>
+                                    {analysis && <p className="text-slate-300 text-sm">{analysis}</p>}
+                                    {action && (
+                                        <div className="bg-blue-900/40 rounded-lg p-3 border border-blue-500/30">
+                                            <span className="text-blue-400 font-bold text-xs">🎯 ACTION:</span>
+                                            <p className="text-white text-sm mt-1">{action}</p>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        }
+                        return <p className="text-slate-300 text-sm whitespace-pre-wrap">{text.replace(/\*\*/g, '')}</p>;
+                    })()}
+                </div>
+            )}
 
             {/* Alert Configuration Modal */}
             {
@@ -1893,6 +1966,7 @@ ${res.data.errors.join("\n")}`);
                                         <th className="p-2 text-center border-r border-slate-800">EMA 21</th>
                                         <th className="p-2 text-center border-r border-slate-800">EMA 35</th>
                                         <th className="p-2 text-center">EMA 200</th>
+                                        <th className="p-2 text-center text-cyan-400 border-l border-slate-700">M.Path</th>
                                         <th className="p-2"></th>
                                     </tr>
                                 </thead>
@@ -2022,6 +2096,19 @@ ${res.data.errors.join("\n")}`);
                                                     </td>
                                                     <td className={`p-2 text-center ${getEmaColor(currentPrice || 0, emas.ema_200)}`}>
                                                         {emas.ema_200 ? <span>${emas.ema_200.toFixed(2)}</span> : '-'}
+                                                    </td>
+                                                    <td className="p-2 text-center border-l border-slate-700 font-bold">
+                                                        {(() => {
+                                                            const mPath = row.live?.momentum_path;
+                                                            const price = currentPrice || 0;
+                                                            if (!mPath) return <span className="text-slate-600">-</span>;
+
+                                                            let colorClass = 'text-yellow-400';
+                                                            if (mPath > price) colorClass = 'text-green-400';
+                                                            else if (mPath < price) colorClass = 'text-red-400';
+
+                                                            return <span className={colorClass}>${mPath.toFixed(2)}</span>;
+                                                        })()}
                                                     </td>
                                                     <td className="p-2 bg-slate-900"></td>
                                                 </tr>
@@ -2355,9 +2442,9 @@ function WatchlistSidebar({ onSelectTicker }) {
     const [watchlist, setWatchlist] = useState([]);
 
     useEffect(() => {
-        axios.get(`${API_BASE}/watchlist`).then(res => setWatchlist(res.data)).catch(console.error);
+        axios.get(`${API_BASE}/watchlist?_t=${Date.now()}`).then(res => setWatchlist(res.data)).catch(console.error);
         const interval = setInterval(() => {
-            axios.get(`${API_BASE}/watchlist`).then(res => setWatchlist(res.data)).catch(console.error);
+            axios.get(`${API_BASE}/watchlist?_t=${Date.now()}`).then(res => setWatchlist(res.data)).catch(console.error);
         }, 15000);
         return () => clearInterval(interval);
     }, []);
@@ -4130,6 +4217,24 @@ function MarketDashboard({ onTickerClick }) {
     const [marketData, setMarketData] = useState(null);
     const [loading, setLoading] = useState(true);
 
+    // AI Analyst State
+    const [aiInsight, setAiInsight] = useState(null);
+    const [analyzing, setAnalyzing] = useState(false);
+
+    const fetchInsight = () => {
+        setAnalyzing(true);
+        axios.get(`${API_BASE}/ai/insight?_t=${Date.now()}`)
+            .then(res => {
+                setAiInsight(res.data.insight);
+                setAnalyzing(false);
+            })
+            .catch(err => {
+                console.error("AI Error:", err);
+                setAiInsight("Error contacting AI Analyst.");
+                setAnalyzing(false);
+            });
+    };
+
     const SECTOR_ETFS = {
         "Technology": "XLK",
         "Financials": "XLF",
@@ -4156,7 +4261,7 @@ function MarketDashboard({ onTickerClick }) {
 
     useEffect(() => {
         setLoading(true);
-        axios.get(`${API_BASE}/market-status`)
+        axios.get(`${API_BASE}/market-status?_t=${Date.now()}`)
             .then(res => {
                 setMarketData(res.data);
                 setLoading(false);
@@ -4171,6 +4276,8 @@ function MarketDashboard({ onTickerClick }) {
     if (!marketData) return <div className="p-8 text-center text-red-400">Error loading data</div>;
 
     const { indices, sectors, expert_summary, breadth, calendar } = marketData;
+
+
 
     const renderTrafficLight = (ticker, info) => {
         if (!info) return (
@@ -4209,57 +4316,125 @@ function MarketDashboard({ onTickerClick }) {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
             {/* Main Content (9 Columns) */}
             <div className="lg:col-span-8 space-y-8">
-                {/* Section 0: Expert Summary */}
-                {expert_summary && (
-                    <div className="bg-gradient-to-r from-blue-900/40 to-slate-900/40 border border-blue-700/30 rounded-xl p-6 relative overflow-hidden shadow-lg">
-                        <div className="absolute top-0 right-0 p-4 opacity-10 pointer-events-none">
-                            <svg className="w-32 h-32 text-blue-400" fill="currentColor" viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z" /></svg>
+                {/* AI Analyst Section */}
+                <div className="bg-gradient-to-r from-purple-900/40 to-slate-900/40 border border-purple-700/30 rounded-xl p-6 relative overflow-hidden shadow-lg">
+                    <div className="absolute top-0 right-0 p-4 opacity-10 pointer-events-none">
+                        <svg className="w-32 h-32 text-purple-400" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z" /></svg>
+                    </div>
+
+                    {!aiInsight ? (
+                        <div className="flex flex-col items-center justify-center text-center py-4 relative z-10">
+                            <h2 className="text-xl font-bold text-white mb-2">🧠 Market Brain (AI Analyst)</h2>
+                            <p className="text-slate-400 text-sm mb-4">Powered by Google Gemini AI</p>
+                            <div className="flex gap-3 flex-wrap justify-center">
+                                <button
+                                    onClick={fetchInsight}
+                                    disabled={analyzing}
+                                    className={`px-5 py-2 rounded-lg font-bold text-white transition-all shadow-lg flex items-center gap-2 ${analyzing ? 'bg-purple-600/50 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-500 hover:scale-105'}`}
+                                >
+                                    {analyzing ? (
+                                        <><span className="animate-spin">🔄</span> Analyzing...</>
+                                    ) : (
+                                        <><span>📊</span> Market Analysis</>
+                                    )}
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        setAnalyzing(true);
+                                        axios.get(`${API_BASE}/ai/portfolio-insight?_t=${Date.now()}`)
+                                            .then(res => { setAiInsight(res.data.insight); setAnalyzing(false); })
+                                            .catch(err => { setAiInsight("Error: " + (err.response?.data?.detail || err.message)); setAnalyzing(false); });
+                                    }}
+                                    disabled={analyzing}
+                                    className={`px-5 py-2 rounded-lg font-bold text-white transition-all shadow-lg flex items-center gap-2 ${analyzing ? 'bg-green-600/50 cursor-not-allowed' : 'bg-green-600 hover:bg-green-500 hover:scale-105'}`}
+                                >
+                                    <span>💼</span> Analyze My Portfolio
+                                </button>
+                            </div>
                         </div>
+                    ) : (
                         <div className="relative z-10">
-                            <div className="flex items-center gap-3 mb-4">
-                                <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
-                                    <span>🎙️</span> {expert_summary.mood.toUpperCase()} BRIEFING
+                            <div className="flex items-center justify-between mb-4">
+                                <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                                    <span>🧠</span> AI ANALYST INSIGHT
                                 </h2>
-                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${expert_summary.mood.includes('Bullish') ? 'bg-green-500/20 text-green-400' : (expert_summary.mood.includes('Bearish') ? 'bg-red-500/20 text-red-400' : 'bg-yellow-500/20 text-yellow-400')}`}>
-                                    {expert_summary.mood}
-                                </span>
-                            </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm">
-                                <div className="bg-slate-900/30 p-3 rounded-lg border border-slate-700/30 transition hover:border-blue-500/20">
-                                    <h4 className="text-slate-400 font-bold uppercase text-[10px] mb-2 tracking-wider">The Market Setup</h4>
-                                    <p className="text-slate-300 leading-relaxed text-xs" dangerouslySetInnerHTML={{ __html: formatExpertText(expert_summary.setup) }}></p>
-                                </div>
-                                <div className="bg-slate-900/30 p-3 rounded-lg border border-slate-700/30 transition hover:border-blue-500/20">
-                                    <h4 className="text-slate-400 font-bold uppercase text-[10px] mb-2 tracking-wider">Internals & Breadth</h4>
-                                    <p className="text-slate-300 leading-relaxed text-xs" dangerouslySetInnerHTML={{ __html: formatExpertText(expert_summary.internals) }}></p>
-                                </div>
-                                <div className="bg-blue-900/10 p-3 rounded-lg border border-blue-500/20 transition hover:border-blue-500/40">
-                                    <h4 className="text-blue-400 font-bold uppercase text-[10px] mb-2 tracking-wider">Tactical Action Plan</h4>
-                                    <p className="text-slate-200 leading-relaxed italic border-l-2 border-blue-500/50 pl-3 py-1 text-xs">
-                                        "{expert_summary.play}"
-                                    </p>
+                                <div className="flex gap-2">
+                                    <button onClick={fetchInsight} className="text-purple-400 hover:text-purple-300 text-xs px-2 py-1 border border-purple-500/30 rounded">🔄 Refresh</button>
+                                    <button onClick={() => setAiInsight(null)} className="text-slate-500 hover:text-white text-xs px-2 py-1 border border-slate-600 rounded">✕ Clear</button>
                                 </div>
                             </div>
 
-                            {/* Headlines Section */}
-                            {expert_summary.headlines && expert_summary.headlines.length > 0 && (
-                                <div className="mt-4 pt-4 border-t border-slate-700/30">
-                                    <h4 className="text-slate-400 font-bold uppercase text-[10px] mb-3 tracking-wider flex items-center gap-2">
-                                        📰 Market Headlines
-                                    </h4>
-                                    <div className="space-y-2">
-                                        {expert_summary.headlines.map((h, i) => (
-                                            <div key={i} className="flex items-start gap-2 text-xs">
-                                                <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${h.sentiment === 'bullish' ? 'bg-green-500/20 text-green-400' : (h.sentiment === 'bearish' ? 'bg-red-500/20 text-red-400' : 'bg-slate-500/20 text-slate-400')}`}>
-                                                    {h.ticker || '📈'}
-                                                </span>
-                                                <span className="text-slate-300 leading-tight flex-1">{h.headline}</span>
+                            {/* Parse and render the insight beautifully */}
+                            {(() => {
+                                const text = aiInsight;
+                                const sentimentMatch = text.match(/\*\*Sentiment:\*\*\s*(\d+)\/100\s*\(([^)]+)\)/);
+                                const analysisMatch = text.match(/\*\*Analysis:\*\*\s*([\s\S]*?)(?=\*\*Actionable|$)/);
+                                const actionMatch = text.match(/\*\*Actionable Insight:\*\*\s*([\s\S]*?)$/);
+
+                                if (sentimentMatch) {
+                                    const score = parseInt(sentimentMatch[1]);
+                                    const mood = sentimentMatch[2];
+                                    const analysis = analysisMatch ? analysisMatch[1].trim() : '';
+                                    const action = actionMatch ? actionMatch[1].trim() : '';
+                                    const moodColor = score >= 70 ? 'text-green-400' : score >= 40 ? 'text-yellow-400' : 'text-red-400';
+                                    const barColor = score >= 70 ? 'bg-green-500' : score >= 40 ? 'bg-yellow-500' : 'bg-red-500';
+
+                                    return (
+                                        <div className="space-y-4">
+                                            {/* Sentiment Gauge */}
+                                            <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700/50">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <span className="text-slate-400 text-sm font-medium">Market Sentiment</span>
+                                                    <span className={`text-2xl font-bold ${moodColor}`}>{score}/100</span>
+                                                </div>
+                                                <div className="w-full bg-slate-700 rounded-full h-3 overflow-hidden">
+                                                    <div className={`${barColor} h-full rounded-full transition-all duration-500`} style={{ width: `${score}%` }}></div>
+                                                </div>
+                                                <div className={`text-center mt-2 text-lg font-bold ${moodColor}`}>
+                                                    {mood.includes('Optimistic') || mood.includes('Bullish') || mood.includes('Greed') ? '📈' : mood.includes('Fear') || mood.includes('Bearish') ? '📉' : '⚖️'} {mood}
+                                                </div>
                                             </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
+
+                                            {/* Analysis */}
+                                            {analysis && (
+                                                <div className="bg-slate-800/30 rounded-lg p-4 border border-slate-700/30">
+                                                    <h4 className="text-purple-400 text-xs font-bold uppercase tracking-wider mb-2">📊 Analysis</h4>
+                                                    <p className="text-slate-300 text-sm leading-relaxed">{analysis}</p>
+                                                </div>
+                                            )}
+
+                                            {/* Actionable Insight */}
+                                            {action && (
+                                                <div className="bg-gradient-to-r from-blue-900/40 to-purple-900/40 rounded-lg p-4 border border-blue-500/30">
+                                                    <h4 className="text-blue-400 text-xs font-bold uppercase tracking-wider mb-2">🎯 Actionable Insight</h4>
+                                                    <p className="text-white text-sm font-medium leading-relaxed">{action}</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                } else {
+                                    // Fallback: just show the raw text nicely formatted
+                                    return (
+                                        <div className="bg-slate-800/30 rounded-lg p-4 border border-slate-700/30 text-slate-300 text-sm leading-relaxed whitespace-pre-wrap">
+                                            {text.replace(/\*\*/g, '')}
+                                        </div>
+                                    );
+                                }
+                            })()}
+                        </div>
+                    )}
+                </div>
+
+                {/* Legacy Expert Summary (Fallback) */}
+                {expert_summary && !aiInsight && (
+                    <div className="bg-slate-900/20 border border-slate-800 rounded-xl p-4 opacity-70 hover:opacity-100 transition">
+                        <div className="flex items-center gap-2 mb-2">
+                            <span className="text-xs font-bold text-slate-500 uppercase">Legacy Briefing</span>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                            <div><strong className="text-slate-400">Setup:</strong> <span dangerouslySetInnerHTML={{ __html: formatExpertText(expert_summary.setup) }}></span></div>
+                            <div><strong className="text-slate-400">Internals:</strong> <span dangerouslySetInnerHTML={{ __html: formatExpertText(expert_summary.internals) }}></span></div>
+                            <div><strong className="text-blue-400">Action:</strong> "{expert_summary.play}"</div>
                         </div>
                     </div>
                 )}
@@ -4407,8 +4582,8 @@ function MarketDashboard({ onTickerClick }) {
                         </div>
                     </div>
                 </div>
-            </div>
-        </div>
+            </div >
+        </div >
     );
 }
 
@@ -4600,7 +4775,24 @@ function ArgentinaPanel() {
         underlying: '', strike: '', expiry: '', market_price: '', option_type: 'call'
     });
     const [optionResult, setOptionResult] = useState(null);
-    const [analyzing, setAnalyzing] = useState(false);
+    const [analyzingOption, setAnalyzingOption] = useState(false);
+
+    // AI Portfolio Analysis
+    const [aiInsight, setAiInsight] = useState(null);
+    const [aiAnalyzing, setAiAnalyzing] = useState(false);
+
+    const handleAnalyzePortfolio = async () => {
+        setAiAnalyzing(true);
+        try {
+            const res = await fetch(`${API_BASE}/argentina/ai/portfolio-insight`);
+            const data = await res.json();
+            setAiInsight(data.insight);
+        } catch (err) {
+            console.error('AI Analysis failed:', err);
+            setAiInsight('Error analyzing portfolio. Please try again.');
+        }
+        setAiAnalyzing(false);
+    };
 
     // Add Position form
     const [formData, setFormData] = useState({
@@ -4966,6 +5158,13 @@ function ArgentinaPanel() {
                     <button onClick={() => setActiveSubTab('options')} className="bg-purple-900/50 hover:bg-purple-800 text-purple-200 px-4 py-2 rounded-lg font-medium transition text-sm border border-purple-800">
                         📊 Options Analyzer
                     </button>
+                    <button
+                        onClick={handleAnalyzePortfolio}
+                        disabled={aiAnalyzing}
+                        className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white px-4 py-2 rounded-lg font-medium transition text-sm shadow-lg"
+                    >
+                        {aiAnalyzing ? '🔄 Analyzing...' : '🤖 AI Insights'}
+                    </button>
                 </div>
             </div>
 
@@ -4985,6 +5184,55 @@ function ArgentinaPanel() {
                     ))}
                 </div>
             </div>
+
+            {/* AI Insight Display */}
+            {aiInsight && (
+                <div className="mb-6 bg-gradient-to-r from-purple-900/30 to-blue-900/30 border border-purple-500/30 rounded-xl p-4">
+                    <div className="flex justify-between items-start mb-3">
+                        <h3 className="text-purple-400 font-bold flex items-center gap-2">
+                            🤖 AI Portfolio Analysis (Argentina)
+                        </h3>
+                        <button onClick={() => setAiInsight(null)} className="text-slate-500 hover:text-white text-sm">✕ Close</button>
+                    </div>
+                    {(() => {
+                        const text = aiInsight;
+                        const sentimentMatch = text.match(/\*\*Sentiment:\*\*\s*(\d+)\/100\s*\(([^)]+)\)/);
+                        const analysisMatch = text.match(/\*\*Analysis:\*\*\s*([\s\S]*?)(?=\*\*Actionable|$)/);
+                        const actionMatch = text.match(/\*\*Actionable Insight:\*\*\s*([\s\S]*?)$/);
+
+                        if (sentimentMatch) {
+                            const score = parseInt(sentimentMatch[1]);
+                            const mood = sentimentMatch[2];
+                            const analysis = analysisMatch ? analysisMatch[1].trim() : '';
+                            const action = actionMatch ? actionMatch[1].trim() : '';
+
+                            const moodColor = score >= 60 ? 'text-green-400' : score >= 40 ? 'text-yellow-400' : 'text-red-400';
+                            const barColor = score >= 60 ? 'bg-green-500' : score >= 40 ? 'bg-yellow-500' : 'bg-red-500';
+
+                            return (
+                                <div className="space-y-3">
+                                    <div className="flex items-center gap-4">
+                                        <div className="flex-1">
+                                            <div className="w-full bg-slate-700 rounded-full h-2 overflow-hidden">
+                                                <div className={`${barColor} h-full rounded-full transition-all duration-500`} style={{ width: `${score}%` }}></div>
+                                            </div>
+                                        </div>
+                                        <span className={`text-lg font-bold ${moodColor}`}>{score}/100 {mood}</span>
+                                    </div>
+                                    {analysis && <p className="text-slate-300 text-sm">{analysis}</p>}
+                                    {action && (
+                                        <div className="bg-blue-900/40 rounded-lg p-3 border border-blue-500/30">
+                                            <span className="text-blue-400 font-bold text-xs">🎯 ACTION:</span>
+                                            <p className="text-white text-sm mt-1">{action}</p>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        }
+                        return <p className="text-slate-300 text-sm whitespace-pre-wrap">{text.replace(/\*\*/g, '')}</p>;
+                    })()}
+                </div>
+            )}
 
             {/* Add Position Form - UPDATED with targets */}
             {showAddForm && (
@@ -5326,6 +5574,23 @@ function CryptoJournal() {
     const [showAddModal, setShowAddModal] = useState(false);
     const [showBinanceModal, setShowBinanceModal] = useState(false);
 
+    // AI Portfolio Analysis
+    const [aiInsight, setAiInsight] = useState(null);
+    const [aiAnalyzing, setAiAnalyzing] = useState(false);
+
+    const handleAnalyzePortfolio = async () => {
+        setAiAnalyzing(true);
+        try {
+            const res = await fetch('/api/crypto/ai/portfolio-insight');
+            const data = await res.json();
+            setAiInsight(data.insight);
+        } catch (err) {
+            console.error('AI Analysis failed:', err);
+            setAiInsight('Error analyzing portfolio. Please try again.');
+        }
+        setAiAnalyzing(false);
+    };
+
     const fetchData = async () => {
         try {
             const res = await fetch('/api/crypto/positions');
@@ -5373,6 +5638,13 @@ function CryptoJournal() {
                     <button onClick={() => setShowAddModal(true)} className="bg-orange-600 hover:bg-orange-500 text-white px-4 py-2 rounded-lg font-medium transition text-sm flex items-center gap-2">
                         <span>➕</span> Agregar Manual
                     </button>
+                    <button
+                        onClick={handleAnalyzePortfolio}
+                        disabled={aiAnalyzing}
+                        className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white px-4 py-2 rounded-lg font-medium transition text-sm shadow-lg"
+                    >
+                        {aiAnalyzing ? '🔄 Analyzing...' : '🤖 AI Insights'}
+                    </button>
                 </div>
             </div>
 
@@ -5397,6 +5669,55 @@ function CryptoJournal() {
                     <p className="text-2xl font-bold text-white">{positions.length}</p>
                 </div>
             </div>
+
+            {/* AI Insight Display */}
+            {aiInsight && (
+                <div className="mb-6 bg-gradient-to-r from-purple-900/30 to-blue-900/30 border border-purple-500/30 rounded-xl p-4">
+                    <div className="flex justify-between items-start mb-3">
+                        <h3 className="text-purple-400 font-bold flex items-center gap-2">
+                            🤖 AI Crypto Portfolio Analysis
+                        </h3>
+                        <button onClick={() => setAiInsight(null)} className="text-slate-500 hover:text-white text-sm">✕ Close</button>
+                    </div>
+                    {(() => {
+                        const text = aiInsight;
+                        const sentimentMatch = text.match(/\*\*Sentiment:\*\*\s*(\d+)\/100\s*\(([^)]+)\)/);
+                        const analysisMatch = text.match(/\*\*Analysis:\*\*\s*([\s\S]*?)(?=\*\*Actionable|$)/);
+                        const actionMatch = text.match(/\*\*Actionable Insight:\*\*\s*([\s\S]*?)$/);
+
+                        if (sentimentMatch) {
+                            const score = parseInt(sentimentMatch[1]);
+                            const mood = sentimentMatch[2];
+                            const analysis = analysisMatch ? analysisMatch[1].trim() : '';
+                            const action = actionMatch ? actionMatch[1].trim() : '';
+
+                            const moodColor = score >= 60 ? 'text-green-400' : score >= 40 ? 'text-yellow-400' : 'text-red-400';
+                            const barColor = score >= 60 ? 'bg-green-500' : score >= 40 ? 'bg-yellow-500' : 'bg-red-500';
+
+                            return (
+                                <div className="space-y-3">
+                                    <div className="flex items-center gap-4">
+                                        <div className="flex-1">
+                                            <div className="w-full bg-slate-700 rounded-full h-2 overflow-hidden">
+                                                <div className={`${barColor} h-full rounded-full transition-all duration-500`} style={{ width: `${score}%` }}></div>
+                                            </div>
+                                        </div>
+                                        <span className={`text-lg font-bold ${moodColor}`}>{score}/100 {mood}</span>
+                                    </div>
+                                    {analysis && <p className="text-slate-300 text-sm">{analysis}</p>}
+                                    {action && (
+                                        <div className="bg-blue-900/40 rounded-lg p-3 border border-blue-500/30">
+                                            <span className="text-blue-400 font-bold text-xs">🎯 ACTION:</span>
+                                            <p className="text-white text-sm mt-1">{action}</p>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        }
+                        return <p className="text-slate-300 text-sm whitespace-pre-wrap">{text.replace(/\*\*/g, '')}</p>;
+                    })()}
+                </div>
+            )}
 
             {/* Positions Table */}
             <div className="bg-[#0f0f0f] rounded-xl border border-[#2a2a2a] overflow-hidden">
@@ -6159,756 +6480,927 @@ function PortfolioDashboardView() {
 
 
 
-// Main App Component
-function App() {
-    const [view, setView] = useState('dashboard');
-    const [selectedTicker, setSelectedTicker] = useState(() => {
-        const params = new URLSearchParams(window.location.search);
-        return params.get('ticker');
-    });
-    const [overrideMetrics, setOverrideMetrics] = useState(() => {
-        const params = new URLSearchParams(window.location.search);
-        const entry = parseFloat(params.get('entry') || 0);
-        const stop = parseFloat(params.get('stop') || 0);
-        const target = parseFloat(params.get('target') || 0);
-        if (entry || stop || target) {
-            return { entry, stop_loss: stop, target };
-        }
-        return {};
-    });
-    const [showConnectModal, setShowConnectModal] = useState(false);
 
-    // PWA Install Logic (Global)
-    const [deferredPrompt, setDeferredPrompt] = useState(null);
+
+
+// Watchlist Panel Component
+function WatchlistPanel() {
+    const [watchlist, setWatchlist] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [showAddForm, setShowAddForm] = useState(false);
+    const [formData, setFormData] = useState({
+        ticker: '',
+        entry_price: '',
+        alert_price: '',
+        stop_alert: '',
+        strategy: '',
+        notes: ''
+    });
+
+    const loadWatchlist = async () => {
+        try {
+            const response = await fetch('/api/watchlist');
+            const data = await response.json();
+            setWatchlist(Array.isArray(data) ? data : []);
+        } catch (error) {
+            console.error('Error loading watchlist:', error);
+            setWatchlist([]);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     useEffect(() => {
-        const handler = (e) => {
-            e.preventDefault();
-            setDeferredPrompt(e);
-        };
-        window.addEventListener('beforeinstallprompt', handler);
-        return () => window.removeEventListener('beforeinstallprompt', handler);
+        loadWatchlist();
+        // Refresh prices every 30 seconds
+        const interval = setInterval(loadWatchlist, 30000);
+        return () => clearInterval(interval);
     }, []);
 
-    const handleInstallClick = async () => {
-        if (!deferredPrompt) return;
-        deferredPrompt.prompt();
-        const { outcome } = await deferredPrompt.userChoice;
-        console.log(`User response to the install prompt: ${outcome}`);
-        setDeferredPrompt(null);
-    };
-
-    const handleTickerClick = (ticker) => {
-        // Open in new tab with ticker parameter
-        window.open(`/?ticker=${ticker}`, '_blank');
-        // Still set it locally in case the user prefers the current tab (optional, but keep it for robustness)
-        setSelectedTicker(ticker);
-        setOverrideMetrics({});
-    };
-
-    // Watchlist Panel Component
-    function WatchlistPanel() {
-        const [watchlist, setWatchlist] = useState([]);
-        const [loading, setLoading] = useState(true);
-        const [showAddForm, setShowAddForm] = useState(false);
-        const [formData, setFormData] = useState({
-            ticker: '',
-            entry_price: '',
-            alert_price: '',
-            stop_alert: '',
-            strategy: '',
-            notes: ''
-        });
-
-        const loadWatchlist = async () => {
-            try {
-                const response = await fetch('/api/watchlist');
-                const data = await response.json();
-                setWatchlist(Array.isArray(data) ? data : []);
-            } catch (error) {
-                console.error('Error loading watchlist:', error);
-                setWatchlist([]);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        useEffect(() => {
-            loadWatchlist();
-            // Refresh prices every 30 seconds
-            const interval = setInterval(loadWatchlist, 30000);
-            return () => clearInterval(interval);
-        }, []);
-
-        const handleAdd = async (e) => {
-            e.preventDefault();
-            try {
-                const response = await fetch('/api/watchlist', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        ...formData,
-                        entry_price: formData.entry_price ? parseFloat(formData.entry_price) : null,
-                        alert_price: formData.alert_price ? parseFloat(formData.alert_price) : null,
-                        stop_alert: formData.stop_alert ? parseFloat(formData.stop_alert) : null
-                    })
-                });
-                if (response.ok) {
-                    setFormData({ ticker: '', entry_price: '', alert_price: '', stop_alert: '', strategy: '', notes: '' });
-                    setShowAddForm(false);
-                    loadWatchlist();
-                }
-            } catch (error) {
-                console.error('Error adding to watchlist:', error);
-            }
-        };
-
-        const handleUpdate = async (ticker, field, value) => {
-            try {
-                const item = watchlist.find(i => i.ticker === ticker);
-                if (!item) return;
-
-                const updatedItem = {
-                    ...item,
-                    [field]: field === 'strategy' || field === 'notes' ? value : parseFloat(value)
-                };
-
-                const response = await fetch(`/api/watchlist/${ticker}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(updatedItem)
-                });
-
-                if (response.ok) {
-                    loadWatchlist();
-                }
-            } catch (error) {
-                console.error('Error updating watchlist item:', error);
-            }
-        };
-
-        const handleDelete = async (ticker) => {
-            if (!confirm(`Remove ${ticker} from watchlist?`)) return;
-            try {
-                await fetch(`/api/watchlist/${ticker}`, { method: 'DELETE' });
+    const handleAdd = async (e) => {
+        e.preventDefault();
+        try {
+            const response = await fetch('/api/watchlist', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    ...formData,
+                    entry_price: formData.entry_price ? parseFloat(formData.entry_price) : null,
+                    alert_price: formData.alert_price ? parseFloat(formData.alert_price) : null,
+                    stop_alert: formData.stop_alert ? parseFloat(formData.stop_alert) : null
+                })
+            });
+            if (response.ok) {
+                setFormData({ ticker: '', entry_price: '', alert_price: '', stop_alert: '', strategy: '', notes: '' });
+                setShowAddForm(false);
                 loadWatchlist();
-            } catch (error) {
-                console.error('Error removing from watchlist:', error);
             }
-        };
-
-        if (loading) {
-            return (
-                <div className="flex items-center justify-center h-screen">
-                    <div className="text-white">Loading watchlist...</div>
-                </div>
-            );
+        } catch (error) {
+            console.error('Error adding to watchlist:', error);
         }
+    };
 
-        return (
-            <div className="p-8">
-                <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-2xl font-bold text-white">Watchlist & Alerts</h2>
-                    <button
-                        onClick={() => setShowAddForm(!showAddForm)}
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium transition"
-                    >
-                        {showAddForm ? 'Cancel' : '+ Add Symbol'}
-                    </button>
-                </div>
+    const handleUpdate = async (ticker, field, value) => {
+        try {
+            const item = watchlist.find(i => i.ticker === ticker);
+            if (!item) return;
 
-                {showAddForm && (
-                    <form onSubmit={handleAdd} className="bg-slate-800 p-6 rounded-xl mb-6 border border-slate-700">
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-                            <input
-                                type="text"
-                                placeholder="Ticker"
-                                required
-                                value={formData.ticker}
-                                onChange={(e) => setFormData({ ...formData, ticker: e.target.value.toUpperCase() })}
-                                className="bg-slate-900 text-white px-4 py-2 rounded-lg border border-slate-700 focus:border-indigo-500 outline-none"
-                            />
-                            <input
-                                type="number"
-                                step="0.01"
-                                placeholder="Added Price (optional)"
-                                value={formData.entry_price}
-                                onChange={(e) => setFormData({ ...formData, entry_price: e.target.value })}
-                                className="bg-slate-900 text-white px-4 py-2 rounded-lg border border-slate-700 focus:border-indigo-500 outline-none"
-                            />
-                            <input
-                                type="number"
-                                step="0.01"
-                                placeholder="Buy Alert Price"
-                                value={formData.alert_price}
-                                onChange={(e) => setFormData({ ...formData, alert_price: e.target.value })}
-                                className="bg-slate-900 text-white px-4 py-2 rounded-lg border border-slate-700 focus:border-indigo-500 outline-none"
-                            />
-                            <input
-                                type="number"
-                                step="0.01"
-                                placeholder="SL (Watchlist)"
-                                value={formData.stop_alert}
-                                onChange={(e) => setFormData({ ...formData, stop_alert: e.target.value })}
-                                className="bg-slate-900 text-white px-4 py-2 rounded-lg border border-slate-700 focus:border-indigo-500 outline-none"
-                            />
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <input
-                                type="text"
-                                placeholder="Strategy (e.g. Weekly RSI)"
-                                value={formData.strategy}
-                                onChange={(e) => setFormData({ ...formData, strategy: e.target.value })}
-                                className="bg-slate-900 text-white px-4 py-2 rounded-lg border border-slate-700 focus:border-indigo-500 outline-none"
-                            />
-                            <input
-                                type="text"
-                                placeholder="Notes (optional)"
-                                value={formData.notes}
-                                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                                className="bg-slate-900 text-white px-4 py-2 rounded-lg border border-slate-700 focus:border-indigo-500 outline-none"
-                            />
-                        </div>
-                        <button type="submit" className="mt-4 bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-medium transition">
-                            Add to Watchlist
-                        </button>
-                    </form>
-                )}
+            const updatedItem = {
+                ...item,
+                [field]: field === 'strategy' || field === 'notes' ? value : parseFloat(value)
+            };
 
-                <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
-                    <div className="overflow-x-auto">
-                        <table className="w-full">
-                            <thead className="bg-slate-900">
-                                <tr>
-                                    <th className="px-6 py-4 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Ticker</th>
-                                    <th className="px-6 py-4 text-center text-xs font-semibold text-slate-400 uppercase tracking-wider">Fecha</th>
-                                    <th className="px-6 py-4 text-right text-xs font-semibold text-slate-400 uppercase tracking-wider">Agregado</th>
-                                    <th className="px-6 py-4 text-right text-xs font-semibold text-slate-400 uppercase tracking-wider">Actual</th>
-                                    <th className="px-6 py-4 text-center text-xs font-semibold text-slate-400 uppercase tracking-wider">SL (Watchlist)</th>
-                                    <th className="px-6 py-4 text-center text-xs font-semibold text-slate-400 uppercase tracking-wider">Alerta Buy</th>
-                                    <th className="px-6 py-4 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Estrategia</th>
-                                    <th className="px-6 py-4 text-center text-xs font-semibold text-slate-400 uppercase tracking-wider">Action</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-700">
-                                {watchlist.length === 0 ? (
-                                    <tr>
-                                        <td colSpan="8" className="px-6 py-8 text-center text-slate-500">
-                                            No symbols in watchlist. Click "+ Add Symbol" to get started.
-                                        </td>
-                                    </tr>
-                                ) : (
-                                    watchlist.map((item) => (
-                                        <tr key={item.ticker} className={`hover:bg-slate-700/50 transition ${item.is_triggered ? 'opacity-40 grayscale-[0.5]' : ''}`}>
-                                            <td className="px-6 py-4">
-                                                <div className="flex flex-col">
-                                                    <span className={`text-white font-bold ${item.is_triggered ? 'line-through' : ''}`}>{item.ticker}</span>
-                                                    <span className={`text-[10px] font-bold ${(item.change_pct || 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                                        {(item.change_pct || 0) >= 0 ? '+' : ''}{(item.change_pct || 0).toFixed(2)}%
-                                                    </span>
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-4 text-center text-slate-400 text-sm">
-                                                {item.added_date ? new Date(item.added_date).toLocaleDateString() : '-'}
-                                            </td>
-                                            <td className="px-6 py-4 text-right font-mono text-slate-400">
-                                                ${(item.entry_price || 0).toFixed(2)}
-                                            </td>
-                                            <td className="px-6 py-4 text-right font-mono text-white font-bold">
-                                                ${(item.current_price || 0).toFixed(2)}
-                                            </td>
-                                            <td className="px-6 py-4 text-center font-mono">
-                                                <EditableCell
-                                                    value={item.stop_alert || 0}
-                                                    onSave={(val) => handleUpdate(item.ticker, 'stop_alert', val)}
-                                                    prefix="$"
-                                                    type="number"
-                                                    className="text-rose-500 font-bold"
-                                                />
-                                            </td>
-                                            <td className="px-6 py-4 text-center font-mono">
-                                                <EditableCell
-                                                    value={item.alert_price || 0}
-                                                    onSave={(val) => handleUpdate(item.ticker, 'alert_price', val)}
-                                                    prefix="$"
-                                                    type="number"
-                                                    className="text-amber-500 font-bold"
-                                                />
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <EditableCell
-                                                    value={item.strategy || 'N/A'}
-                                                    onSave={(val) => handleUpdate(item.ticker, 'strategy', val)}
-                                                    width="w-32"
-                                                    className="text-slate-300 italic text-sm"
-                                                />
-                                            </td>
-                                            <td className="px-6 py-4 text-center">
-                                                <button
-                                                    onClick={() => handleDelete(item.ticker)}
-                                                    className="text-red-500 hover:text-red-400 transition"
-                                                    title="Remove from watchlist"
-                                                >
-                                                    🗑️
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    ))
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                {/* News for Watchlist Tickers */}
-                {watchlist.length > 0 && (
-                    <div className="mt-6">
-                        <PortfolioNewsWidget tickers={watchlist.map(w => w.ticker)} />
-                    </div>
-                )}
-            </div>
-        );
-    }
-
-    // TradingView Embedded Widget Component
-    function TradingViewWidget({ ticker }) {
-        const containerRef = useRef(null);
-
-        useEffect(() => {
-            if (!containerRef.current) return;
-
-            // Clear previous widget
-            containerRef.current.innerHTML = '';
-
-            // Create TradingView widget script
-            const script = document.createElement('script');
-            script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
-            script.type = 'text/javascript';
-            script.async = true;
-            script.innerHTML = JSON.stringify({
-                "autosize": true,
-                "symbol": ticker,
-                "interval": "D",
-                "timezone": "America/New_York",
-                "theme": "dark",
-                "style": "1",
-                "locale": "en",
-                "enable_publishing": false,
-                "hide_top_toolbar": false,
-                "hide_legend": false,
-                "save_image": true,
-                "calendar": false,
-                "hide_volume": false,
-                "support_host": "https://www.tradingview.com",
-                "studies": [
-                    "MAExp@tv-basicstudies",
-                    "RSI@tv-basicstudies"
-                ]
+            const response = await fetch(`/api/watchlist/${ticker}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(updatedItem)
             });
 
-            containerRef.current.appendChild(script);
-        }, [ticker]);
+            if (response.ok) {
+                loadWatchlist();
+            }
+        } catch (error) {
+            console.error('Error updating watchlist item:', error);
+        }
+    };
 
+    const handleDelete = async (ticker) => {
+        if (!confirm(`Remove ${ticker} from watchlist?`)) return;
+        try {
+            await fetch(`/api/watchlist/${ticker}`, { method: 'DELETE' });
+            loadWatchlist();
+        } catch (error) {
+            console.error('Error removing from watchlist:', error);
+        }
+    };
+
+    if (loading) {
         return (
-            <div className="tradingview-widget-container h-full" ref={containerRef}>
-                <div className="tradingview-widget-container__widget h-full"></div>
+            <div className="flex items-center justify-center h-screen">
+                <div className="text-white">Loading watchlist...</div>
             </div>
         );
     }
 
-    // Charts Panel Component
-    function ChartsPanel() {
-        const [selectedTicker, setSelectedTicker] = useState('NVDA');
-        const [searchQuery, setSearchQuery] = useState('');
-        const [analysisData, setAnalysisData] = useState(null);
-        const [loading, setLoading] = useState(false);
-        const [chartMode, setChartMode] = useState('custom'); // 'custom' or 'tradingview'
-        const [fetchError, setFetchError] = useState(null);
-        const abortControllerRef = useRef(null);
+    return (
+        <div className="p-8">
+            <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold text-white">Watchlist & Alerts</h2>
+                <button
+                    onClick={() => setShowAddForm(!showAddForm)}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium transition"
+                >
+                    {showAddForm ? 'Cancel' : '+ Add Symbol'}
+                </button>
+            </div>
 
-        const handleSearch = async (ticker) => {
-            if (!ticker) return;
+            {showAddForm && (
+                <form onSubmit={handleAdd} className="bg-slate-800 p-6 rounded-xl mb-6 border border-slate-700">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                        <input
+                            type="text"
+                            placeholder="Ticker"
+                            required
+                            value={formData.ticker}
+                            onChange={(e) => setFormData({ ...formData, ticker: e.target.value.toUpperCase() })}
+                            className="bg-slate-900 text-white px-4 py-2 rounded-lg border border-slate-700 focus:border-indigo-500 outline-none"
+                        />
+                        <input
+                            type="number"
+                            step="0.01"
+                            placeholder="Added Price (optional)"
+                            value={formData.entry_price}
+                            onChange={(e) => setFormData({ ...formData, entry_price: e.target.value })}
+                            className="bg-slate-900 text-white px-4 py-2 rounded-lg border border-slate-700 focus:border-indigo-500 outline-none"
+                        />
+                        <input
+                            type="number"
+                            step="0.01"
+                            placeholder="Buy Alert Price"
+                            value={formData.alert_price}
+                            onChange={(e) => setFormData({ ...formData, alert_price: e.target.value })}
+                            className="bg-slate-900 text-white px-4 py-2 rounded-lg border border-slate-700 focus:border-indigo-500 outline-none"
+                        />
+                        <input
+                            type="number"
+                            step="0.01"
+                            placeholder="SL (Watchlist)"
+                            value={formData.stop_alert}
+                            onChange={(e) => setFormData({ ...formData, stop_alert: e.target.value })}
+                            className="bg-slate-900 text-white px-4 py-2 rounded-lg border border-slate-700 focus:border-indigo-500 outline-none"
+                        />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <input
+                            type="text"
+                            placeholder="Strategy (e.g. Weekly RSI)"
+                            value={formData.strategy}
+                            onChange={(e) => setFormData({ ...formData, strategy: e.target.value })}
+                            className="bg-slate-900 text-white px-4 py-2 rounded-lg border border-slate-700 focus:border-indigo-500 outline-none"
+                        />
+                        <input
+                            type="text"
+                            placeholder="Notes (optional)"
+                            value={formData.notes}
+                            onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                            className="bg-slate-900 text-white px-4 py-2 rounded-lg border border-slate-700 focus:border-indigo-500 outline-none"
+                        />
+                    </div>
+                    <button type="submit" className="mt-4 bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-medium transition">
+                        Add to Watchlist
+                    </button>
+                </form>
+            )}
 
-            // Abort any previous request
+            <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
+                <div className="overflow-x-auto">
+                    <table className="w-full">
+                        <thead className="bg-slate-900">
+                            <tr>
+                                <th className="px-6 py-4 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Ticker</th>
+                                <th className="px-6 py-4 text-center text-xs font-semibold text-slate-400 uppercase tracking-wider">Fecha</th>
+                                <th className="px-6 py-4 text-right text-xs font-semibold text-slate-400 uppercase tracking-wider">Agregado</th>
+                                <th className="px-6 py-4 text-right text-xs font-semibold text-slate-400 uppercase tracking-wider">Actual</th>
+                                <th className="px-6 py-4 text-center text-xs font-semibold text-slate-400 uppercase tracking-wider">SL (Watchlist)</th>
+                                <th className="px-6 py-4 text-center text-xs font-semibold text-slate-400 uppercase tracking-wider">Alerta Buy</th>
+                                <th className="px-6 py-4 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Estrategia</th>
+                                <th className="px-6 py-4 text-center text-xs font-semibold text-slate-400 uppercase tracking-wider">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-700">
+                            {watchlist.length === 0 ? (
+                                <tr>
+                                    <td colSpan="8" className="px-6 py-8 text-center text-slate-500">
+                                        No symbols in watchlist. Click "+ Add Symbol" to get started.
+                                    </td>
+                                </tr>
+                            ) : (
+                                watchlist.map((item) => (
+                                    <tr key={item.ticker} className={`hover:bg-slate-700/50 transition ${item.is_triggered ? 'opacity-40 grayscale-[0.5]' : ''}`}>
+                                        <td className="px-6 py-4">
+                                            <div className="flex flex-col">
+                                                <span className={`text-white font-bold ${item.is_triggered ? 'line-through' : ''}`}>{item.ticker}</span>
+                                                <span className={`text-[10px] font-bold ${(item.change_pct || 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                                    {(item.change_pct || 0) >= 0 ? '+' : ''}{(item.change_pct || 0).toFixed(2)}%
+                                                </span>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4 text-center text-slate-400 text-sm">
+                                            {item.added_date ? new Date(item.added_date).toLocaleDateString() : '-'}
+                                        </td>
+                                        <td className="px-6 py-4 text-right font-mono text-slate-400">
+                                            ${(item.entry_price || 0).toFixed(2)}
+                                        </td>
+                                        <td className="px-6 py-4 text-right font-mono text-white font-bold">
+                                            ${(item.current_price || 0).toFixed(2)}
+                                        </td>
+                                        <td className="px-6 py-4 text-center font-mono">
+                                            <EditableCell
+                                                value={item.stop_alert || 0}
+                                                onSave={(val) => handleUpdate(item.ticker, 'stop_alert', val)}
+                                                prefix="$"
+                                                type="number"
+                                                className="text-rose-500 font-bold"
+                                            />
+                                        </td>
+                                        <td className="px-6 py-4 text-center font-mono">
+                                            <EditableCell
+                                                value={item.alert_price || 0}
+                                                onSave={(val) => handleUpdate(item.ticker, 'alert_price', val)}
+                                                prefix="$"
+                                                type="number"
+                                                className="text-amber-500 font-bold"
+                                            />
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <EditableCell
+                                                value={item.strategy || 'N/A'}
+                                                onSave={(val) => handleUpdate(item.ticker, 'strategy', val)}
+                                                width="w-32"
+                                                className="text-slate-300 italic text-sm"
+                                            />
+                                        </td>
+                                        <td className="px-6 py-4 text-center">
+                                            <button
+                                                onClick={() => handleDelete(item.ticker)}
+                                                className="text-red-500 hover:text-red-400 transition"
+                                                title="Remove from watchlist"
+                                            >
+                                                🗑️
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            {/* News for Watchlist Tickers */}
+            {watchlist.length > 0 && (
+                <div className="mt-6">
+                    <PortfolioNewsWidget tickers={watchlist.map(w => w.ticker)} />
+                </div>
+            )}
+        </div>
+    );
+}
+
+// TradingView Embedded Widget Component
+function TradingViewWidget({ ticker }) {
+    const containerRef = useRef(null);
+
+    useEffect(() => {
+        if (!containerRef.current) return;
+
+        // Clear previous widget
+        containerRef.current.innerHTML = '';
+
+        // Create TradingView widget script
+        const script = document.createElement('script');
+        script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
+        script.type = 'text/javascript';
+        script.async = true;
+        script.innerHTML = JSON.stringify({
+            "autosize": true,
+            "symbol": ticker,
+            "interval": "D",
+            "timezone": "America/New_York",
+            "theme": "dark",
+            "style": "1",
+            "locale": "en",
+            "enable_publishing": false,
+            "hide_top_toolbar": false,
+            "hide_legend": false,
+            "save_image": true,
+            "calendar": false,
+            "hide_volume": false,
+            "support_host": "https://www.tradingview.com",
+            "studies": [
+                "MAExp@tv-basicstudies",
+                "RSI@tv-basicstudies"
+            ]
+        });
+
+        containerRef.current.appendChild(script);
+    }, [ticker]);
+
+    return (
+        <div className="tradingview-widget-container h-full" ref={containerRef}>
+            <div className="tradingview-widget-container__widget h-full"></div>
+        </div>
+    );
+}
+
+// Charts Panel Component
+function ChartsPanel() {
+    const [selectedTicker, setSelectedTicker] = useState('NVDA');
+    const [searchQuery, setSearchQuery] = useState('');
+    const [analysisData, setAnalysisData] = useState(null);
+    const [loading, setLoading] = useState(false);
+    const [chartMode, setChartMode] = useState('custom'); // 'custom' or 'tradingview'
+    const [fetchError, setFetchError] = useState(null);
+    const abortControllerRef = useRef(null);
+
+    const handleSearch = async (ticker) => {
+        if (!ticker) return;
+
+        // Abort any previous request
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+        }
+
+        setLoading(true);
+        setFetchError(null);
+        setSelectedTicker(ticker.toUpperCase());
+
+        // Only fetch if in custom mode
+        if (chartMode === 'tradingview') {
+            setLoading(false);
+            return;
+        }
+
+        // Create new AbortController with 12s timeout
+        abortControllerRef.current = new AbortController();
+        const timeoutId = setTimeout(() => {
             if (abortControllerRef.current) {
                 abortControllerRef.current.abort();
             }
+        }, 12000);
 
-            setLoading(true);
+        try {
+            const response = await fetch(`/api/analyze`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ticker: ticker.toUpperCase() }),
+                signal: abortControllerRef.current.signal
+            });
+            clearTimeout(timeoutId);
+            const data = await response.json();
+            console.log('Charts API Response:', data);
+            setAnalysisData(data);
             setFetchError(null);
-            setSelectedTicker(ticker.toUpperCase());
-
-            // Only fetch if in custom mode
-            if (chartMode === 'tradingview') {
-                setLoading(false);
-                return;
+        } catch (error) {
+            clearTimeout(timeoutId);
+            if (error.name === 'AbortError') {
+                console.warn('Chart fetch timed out, falling back to TradingView');
+                setFetchError('timeout');
+                // Auto-switch to TradingView on timeout
+                setChartMode('tradingview');
+            } else {
+                console.error('Error fetching chart data:', error);
+                setFetchError('error');
             }
+            setAnalysisData(null);
+        } finally {
+            setLoading(false);
+        }
+    };
 
-            // Create new AbortController with 12s timeout
-            abortControllerRef.current = new AbortController();
-            const timeoutId = setTimeout(() => {
-                if (abortControllerRef.current) {
-                    abortControllerRef.current.abort();
-                }
-            }, 12000);
-
-            try {
-                const response = await fetch(`/api/analyze`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ticker: ticker.toUpperCase() }),
-                    signal: abortControllerRef.current.signal
-                });
-                clearTimeout(timeoutId);
-                const data = await response.json();
-                console.log('Charts API Response:', data);
-                setAnalysisData(data);
-                setFetchError(null);
-            } catch (error) {
-                clearTimeout(timeoutId);
-                if (error.name === 'AbortError') {
-                    console.warn('Chart fetch timed out, falling back to TradingView');
-                    setFetchError('timeout');
-                    // Auto-switch to TradingView on timeout
-                    setChartMode('tradingview');
-                } else {
-                    console.error('Error fetching chart data:', error);
-                    setFetchError('error');
-                }
-                setAnalysisData(null);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        // Re-fetch when mode changes to custom
-        useEffect(() => {
-            if (chartMode === 'custom' && selectedTicker) {
-                handleSearch(selectedTicker);
-            }
-        }, [chartMode]);
-
-        useEffect(() => {
+    // Re-fetch when mode changes to custom
+    useEffect(() => {
+        if (chartMode === 'custom' && selectedTicker) {
             handleSearch(selectedTicker);
-        }, []);
+        }
+    }, [chartMode]);
 
-        return (
-            <div className="p-8">
-                <div className="mb-6">
-                    <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-2xl font-bold text-white">Advanced Charts</h2>
+    useEffect(() => {
+        handleSearch(selectedTicker);
+    }, []);
 
-                        {/* Chart Mode Toggle */}
-                        <div className="flex items-center gap-2 bg-slate-800 p-1 rounded-lg border border-slate-700">
-                            <button
-                                onClick={() => setChartMode('custom')}
-                                className={`px-4 py-2 rounded-md text-sm font-medium transition ${chartMode === 'custom' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
-                            >
-                                📊 Custom
-                            </button>
-                            <button
-                                onClick={() => setChartMode('tradingview')}
-                                className={`px-4 py-2 rounded-md text-sm font-medium transition ${chartMode === 'tradingview' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
-                            >
-                                📈 TradingView
-                            </button>
-                        </div>
-                    </div>
+    return (
+        <div className="p-8">
+            <div className="mb-6">
+                <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-2xl font-bold text-white">Advanced Charts</h2>
 
-                    <div className="flex gap-4">
-                        <div className="flex-1 relative">
-                            <input
-                                type="text"
-                                placeholder="Search ticker (e.g. AAPL, TSLA, NVDA)..."
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value.toUpperCase())}
-                                onKeyPress={(e) => {
-                                    if (e.key === 'Enter' && searchQuery) {
-                                        handleSearch(searchQuery);
-                                    }
-                                }}
-                                className="w-full bg-slate-800 text-white px-4 py-3 rounded-lg border border-slate-700 focus:border-indigo-500 outline-none pl-12"
-                            />
-                            <span className="absolute left-4 top-3.5 text-slate-500 text-xl">🔍</span>
-                        </div>
+                    {/* Chart Mode Toggle */}
+                    <div className="flex items-center gap-2 bg-slate-800 p-1 rounded-lg border border-slate-700">
                         <button
-                            onClick={() => handleSearch(searchQuery)}
-                            disabled={!searchQuery}
-                            className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-700 disabled:cursor-not-allowed text-white px-6 py-3 rounded-lg font-medium transition"
+                            onClick={() => setChartMode('custom')}
+                            className={`px-4 py-2 rounded-md text-sm font-medium transition ${chartMode === 'custom' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
                         >
-                            Search
+                            📊 Custom
+                        </button>
+                        <button
+                            onClick={() => setChartMode('tradingview')}
+                            className={`px-4 py-2 rounded-md text-sm font-medium transition ${chartMode === 'tradingview' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
+                        >
+                            📈 TradingView
                         </button>
                     </div>
-
-                    {/* Timeout Warning Banner */}
-                    {fetchError === 'timeout' && (
-                        <div className="mt-4 p-3 bg-amber-500/20 border border-amber-500/50 rounded-lg flex items-center justify-between">
-                            <span className="text-amber-400 text-sm">⚠️ Data provider slow. Switched to TradingView mode.</span>
-                            <button
-                                onClick={() => { setChartMode('custom'); setFetchError(null); }}
-                                className="text-xs bg-amber-600 hover:bg-amber-700 text-white px-3 py-1 rounded"
-                            >
-                                Retry Custom
-                            </button>
-                        </div>
-                    )}
                 </div>
 
-
-                {/* TradingView Mode */}
-                {chartMode === 'tradingview' ? (
-                    <div className="bg-slate-800 rounded-xl border border-slate-700 p-0 h-[600px] overflow-hidden">
-                        <TradingViewWidget ticker={selectedTicker} />
-                    </div>
-                ) : loading ? (
-                    <div className="flex flex-col items-center justify-center h-96 bg-slate-800 rounded-xl border border-slate-700">
-                        <div className="animate-spin w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full mb-4"></div>
-                        <div className="text-white">Loading chart for {selectedTicker}...</div>
-                        <div className="text-slate-500 text-xs mt-2">Timeout in 12s → auto-switch to TradingView</div>
-                    </div>
-                ) : analysisData && analysisData.chart_data && analysisData.chart_data.length > 0 ? (
-                    <div className="bg-slate-800 rounded-xl border border-slate-700 p-4 h-[600px]">
-                        <TradingViewChart
-                            ticker={selectedTicker}
-                            chartData={analysisData.chart_data}
-                            metrics={analysisData.metrics || {}}
-                            tradeHistory={[]}
-                            elliottWave={analysisData.elliott_wave || null}
+                <div className="flex gap-4">
+                    <div className="flex-1 relative">
+                        <input
+                            type="text"
+                            placeholder="Search ticker (e.g. AAPL, TSLA, NVDA)..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value.toUpperCase())}
+                            onKeyPress={(e) => {
+                                if (e.key === 'Enter' && searchQuery) {
+                                    handleSearch(searchQuery);
+                                }
+                            }}
+                            className="w-full bg-slate-800 text-white px-4 py-3 rounded-lg border border-slate-700 focus:border-indigo-500 outline-none pl-12"
                         />
+                        <span className="absolute left-4 top-3.5 text-slate-500 text-xl">🔍</span>
                     </div>
-                ) : (
-                    <div className="flex items-center justify-center h-96 bg-slate-800 rounded-xl border border-slate-700">
-                        <div className="text-slate-500">
-                            {analysisData ? 'No data available for this ticker' : 'Enter a ticker and press Search to view charts'}
-                        </div>
+                    <button
+                        onClick={() => handleSearch(searchQuery)}
+                        disabled={!searchQuery}
+                        className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-700 disabled:cursor-not-allowed text-white px-6 py-3 rounded-lg font-medium transition"
+                    >
+                        Search
+                    </button>
+                </div>
+
+                {/* Timeout Warning Banner */}
+                {fetchError === 'timeout' && (
+                    <div className="mt-4 p-3 bg-amber-500/20 border border-amber-500/50 rounded-lg flex items-center justify-between">
+                        <span className="text-amber-400 text-sm">⚠️ Data provider slow. Switched to TradingView mode.</span>
+                        <button
+                            onClick={() => { setChartMode('custom'); setFetchError(null); }}
+                            className="text-xs bg-amber-600 hover:bg-amber-700 text-white px-3 py-1 rounded"
+                        >
+                            Retry Custom
+                        </button>
                     </div>
                 )}
             </div>
-        );
-    }
 
-    // Listen for custom tickerClick events (from dangerouslySetInnerHTML)
-    useEffect(() => {
-        const handler = (e) => handleTickerClick(e.detail);
-        window.addEventListener('tickerClick', handler);
-        return () => window.removeEventListener('tickerClick', handler);
-    }, []);
 
-    const handleCloseDetail = () => {
-        setSelectedTicker(null);
-        setOverrideMetrics({});
-        // Clean URL without reloading
-        const url = new URL(window.location);
-        url.searchParams.delete('ticker');
-        url.searchParams.delete('entry');
-        url.searchParams.delete('stop');
-        url.searchParams.delete('target');
-        window.history.replaceState({}, '', url);
+            {/* TradingView Mode */}
+            {chartMode === 'tradingview' ? (
+                <div className="bg-slate-800 rounded-xl border border-slate-700 p-0 h-[600px] overflow-hidden">
+                    <TradingViewWidget ticker={selectedTicker} />
+                </div>
+            ) : loading ? (
+                <div className="flex flex-col items-center justify-center h-96 bg-slate-800 rounded-xl border border-slate-700">
+                    <div className="animate-spin w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full mb-4"></div>
+                    <div className="text-white">Loading chart for {selectedTicker}...</div>
+                    <div className="text-slate-500 text-xs mt-2">Timeout in 12s → auto-switch to TradingView</div>
+                </div>
+            ) : analysisData && analysisData.chart_data && analysisData.chart_data.length > 0 ? (
+                <div className="bg-slate-800 rounded-xl border border-slate-700 p-4 h-[600px]">
+                    <TradingViewChart
+                        ticker={selectedTicker}
+                        chartData={analysisData.chart_data}
+                        metrics={analysisData.metrics || {}}
+                        tradeHistory={[]}
+                        elliottWave={analysisData.elliott_wave || null}
+                    />
+                </div>
+            ) : (
+                <div className="flex items-center justify-center h-96 bg-slate-800 rounded-xl border border-slate-700">
+                    <div className="text-slate-500">
+                        {analysisData ? 'No data available for this ticker' : 'Enter a ticker and press Search to view charts'}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+// --- Chatbot Copilot Component ---
+function ChatCopilot() {
+    const [isOpen, setIsOpen] = useState(false);
+    const [messages, setMessages] = useState([
+        { role: 'assistant', content: "Hello! I'm your Portfolio Copilot. Ask me anything about your positions, risk, or market trends. 📈" }
+    ]);
+    const [inputValue, setInputValue] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const messagesEndRef = useRef(null);
+    const inputRef = useRef(null);
+
+    const scrollToBottom = () => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     };
 
+    useEffect(() => {
+        if (isOpen) {
+            scrollToBottom();
+            inputRef.current?.focus();
+        }
+    }, [isOpen, messages]);
+
+    const handleSend = async (text = null) => {
+        const query = text || inputValue.trim();
+        if (!query) return;
+
+        // Add user message
+        const newMessages = [...messages, { role: 'user', content: query }];
+        setMessages(newMessages);
+        setInputValue('');
+        setIsLoading(true);
+
+        try {
+            // Prepare history for API (exclude first welcome message if needed, or keep it)
+            const history = newMessages.length > 0 ? newMessages.map(m => ({ role: m.role, content: m.content })) : [];
+
+            const res = await fetch(`${API_BASE}/chat/query`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query, history })
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                setMessages([...newMessages, { role: 'assistant', content: data.response }]);
+            } else {
+                setMessages([...newMessages, { role: 'assistant', content: "⚠️ Sorry, I couldn't process your request. Please try again." }]);
+            }
+        } catch (err) {
+            console.error(err);
+            setMessages([...newMessages, { role: 'assistant', content: "❌ Network error. Please check your connection." }]);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleKeyDown = (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleSend();
+        }
+    };
+
+    const suggestions = [
+        "How is my portfolio doing today?",
+        "What is my biggest risk right now?",
+        "Should I take profit on any winners?",
+        "Summarize my sector exposure"
+    ];
+
     return (
-        <div className="min-h-screen bg-[#0a0a0a] text-slate-100 font-sans selection:bg-blue-500 selection:text-white">
-            <div className="flex h-screen overflow-hidden">
-                {/* Sidebar Navigation - Hidden in Dedicated Chart View */}
-                {!selectedTicker && (
-                    <nav className="w-16 bg-[#0a0a0a] border-r border-[#1a1a1a] flex flex-col justify-between flex-shrink-0 relative z-20">
-                        <div>
-                            {/* Logo */}
-                            <div className="p-4 flex justify-center border-b border-[#1a1a1a]">
-                                <div className="w-9 h-9 rounded-lg bg-gradient-to-tr from-blue-500 to-indigo-600 flex items-center justify-center font-black text-white text-sm shadow-lg shadow-blue-900/30">
-                                    M
+        <div className="fixed bottom-6 right-6 z-[100] flex flex-col items-end pointer-events-none">
+            {/* Chat Window */}
+            {isOpen && (
+                <div className="bg-[#1e293b] w-[350px] h-[500px] rounded-2xl shadow-2xl border border-slate-700 flex flex-col overflow-hidden mb-4 pointer-events-auto animate-fade-in-up">
+                    {/* Header */}
+                    <div className="bg-gradient-to-r from-purple-900 to-blue-900 p-4 flex justify-between items-center border-b border-white/10">
+                        <div className="flex items-center gap-2">
+                            <span className="text-xl">🤖</span>
+                            <div>
+                                <h3 className="font-bold text-white text-sm">Portfolio Copilot</h3>
+                                <p className="text-[10px] text-blue-200">Powered by Gemini 2.0</p>
+                            </div>
+                        </div>
+                        <button onClick={() => setIsOpen(false)} className="text-white/70 hover:text-white transition">✕</button>
+                    </div>
+
+                    {/* Messages Area */}
+                    <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#0f172a]">
+                        {messages.map((msg, idx) => (
+                            <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-xs sm:text-sm leading-relaxed shadow-sm ${msg.role === 'user'
+                                    ? 'bg-blue-600 text-white rounded-br-none'
+                                    : 'bg-[#334155] text-slate-200 rounded-bl-none border border-slate-600'
+                                    }`}>
+                                    {msg.role === 'assistant' ? (
+                                        <div className="markdown-body" dangerouslySetInnerHTML={{
+                                            __html: msg.content.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br/>')
+                                        }} />
+                                    ) : (
+                                        msg.content
+                                    )}
                                 </div>
                             </div>
-
-                            {/* Navigation Items */}
-                            <div className="py-4 space-y-1 flex flex-col items-center">
-                                {/* 1. Market Dashboard */}
-                                <button
-                                    onClick={() => setView('dashboard')}
-                                    className={`group relative w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200 ${view === 'dashboard' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' : 'hover:bg-[#151515] text-slate-500 hover:text-white'}`}
-                                    title="Market Dashboard"
-                                >
-                                    <span className="text-lg">📊</span>
-                                    <span className="absolute left-full ml-3 px-3 py-1.5 bg-[#1a1a1a] text-white text-xs font-medium rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap transition-opacity border border-[#2a2a2a] shadow-xl z-50">
-                                        Market Dashboard
-                                    </span>
-                                </button>
-
-                                {/* 2. Portfolio Global */}
-                                <button
-                                    onClick={() => setView('portfolio')}
-                                    className={`group relative w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200 ${view === 'portfolio' ? 'bg-gradient-to-r from-green-600 to-blue-600 text-white shadow-lg' : 'hover:bg-[#151515] text-slate-500 hover:text-white'}`}
-                                    title="Portfolio Global"
-                                >
-                                    <span className="text-lg">🥧</span>
-                                    <span className="absolute left-full ml-3 px-3 py-1.5 bg-[#1a1a1a] text-white text-xs font-medium rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap transition-opacity border border-[#2a2a2a] shadow-xl z-50">
-                                        Portfolio Global
-                                    </span>
-                                </button>
-
-                                {/* 3. Portfolio US */}
-                                <button
-                                    onClick={() => setView('journal')}
-                                    className={`group relative w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200 ${view === 'journal' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' : 'hover:bg-[#151515] text-slate-500 hover:text-white'}`}
-                                    title="Portfolio US"
-                                >
-                                    <span className="text-lg">🇺🇸</span>
-                                    <span className="absolute left-full ml-3 px-3 py-1.5 bg-[#1a1a1a] text-white text-xs font-medium rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap transition-opacity border border-[#2a2a2a] shadow-xl z-50">
-                                        Portfolio US
-                                    </span>
-                                </button>
-
-                                {/* 4. Portfolio Argentina */}
-                                <button
-                                    onClick={() => setView('argentina')}
-                                    className={`group relative w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200 ${view === 'argentina' ? 'bg-sky-600 text-white shadow-lg shadow-sky-900/40' : 'hover:bg-[#151515] text-slate-500 hover:text-white'}`}
-                                    title="Portfolio Argentina"
-                                >
-                                    <span className="text-lg">🇦🇷</span>
-                                    <span className="absolute left-full ml-3 px-3 py-1.5 bg-[#1a1a1a] text-white text-xs font-medium rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap transition-opacity border border-[#2a2a2a] shadow-xl z-50">
-                                        Portfolio Argentina
-                                    </span>
-                                </button>
-
-                                {/* 5. Portfolio Crypto */}
-                                <button
-                                    onClick={() => setView('crypto')}
-                                    className={`group relative w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200 ${view === 'crypto' ? 'bg-orange-600 text-white shadow-lg shadow-orange-900/40' : 'hover:bg-[#151515] text-slate-500 hover:text-white'}`}
-                                    title="Portfolio Crypto"
-                                >
-                                    <span className="text-lg">₿</span>
-                                    <span className="absolute left-full ml-3 px-3 py-1.5 bg-[#1a1a1a] text-white text-xs font-medium rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap transition-opacity border border-[#2a2a2a] shadow-xl z-50">
-                                        Portfolio Crypto
-                                    </span>
-                                </button>
-
-                                {/* Divider */}
-                                <div className="w-8 h-px bg-[#1a1a1a] my-2"></div>
-
-                                {/* 6. Weekly RSI Scanner */}
-                                <button
-                                    onClick={() => setView('scanner')}
-                                    className={`group relative w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200 ${view === 'scanner' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' : 'hover:bg-[#151515] text-slate-500 hover:text-white'}`}
-                                    title="Weekly RSI Scanner"
-                                >
-                                    <span className="text-lg">📡</span>
-                                    <span className="absolute left-full ml-3 px-3 py-1.5 bg-[#1a1a1a] text-white text-xs font-medium rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap transition-opacity border border-[#2a2a2a] shadow-xl z-50">
-                                        Weekly RSI Scanner
-                                    </span>
-                                </button>
-
-                                {/* 7. Fundamental Scanner */}
-                                <button
-                                    onClick={() => setView('sharpe')}
-                                    className={`group relative w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200 ${view === 'sharpe' ? 'bg-purple-600 text-white shadow-lg shadow-purple-900/40' : 'hover:bg-[#151515] text-slate-500 hover:text-white'}`}
-                                    title="Fundamental Scanner"
-                                >
-                                    <span className="text-lg">📈</span>
-                                    <span className="absolute left-full ml-3 px-3 py-1.5 bg-[#1a1a1a] text-white text-xs font-medium rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap transition-opacity border border-[#2a2a2a] shadow-xl z-50">
-                                        Fundamental Scanner
-                                    </span>
-                                </button>
-
-                                {/* Options Scanner */}
-                                <button
-                                    onClick={() => setView('options')}
-                                    className={`group relative w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200 ${view === 'options' ? 'bg-purple-600 text-white shadow-lg shadow-purple-900/40' : 'hover:bg-[#151515] text-slate-500 hover:text-white'}`}
-                                    title="Options Scanner"
-                                >
-                                    <span className="text-lg">🔮</span>
-                                    <span className="absolute left-full ml-3 px-3 py-1.5 bg-[#1a1a1a] text-white text-xs font-medium rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap transition-opacity border border-[#2a2a2a] shadow-xl z-50">
-                                        Options Scanner
-                                    </span>
-                                </button>
-
-                                {/* 8. Watchlist */}
-                                <button
-                                    onClick={() => setView('watchlist')}
-                                    className={`group relative w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200 ${view === 'watchlist' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' : 'hover:bg-[#151515] text-slate-500 hover:text-white'}`}
-                                    title="Watchlist"
-                                >
-                                    <span className="text-lg">⭐</span>
-                                    <span className="absolute left-full ml-3 px-3 py-1.5 bg-[#1a1a1a] text-white text-xs font-medium rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap transition-opacity border border-[#2a2a2a] shadow-xl z-50">
-                                        Watchlist
-                                    </span>
-                                </button>
-
-                                {/* 9. Advanced Charts */}
-                                <button
-                                    onClick={() => setView('charts')}
-                                    className={`group relative w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200 ${view === 'charts' ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-900/40' : 'hover:bg-[#151515] text-slate-500 hover:text-white'}`}
-                                    title="Advanced Charts"
-                                >
-                                    <span className="text-lg">🕯️</span>
-                                    <span className="absolute left-full ml-3 px-3 py-1.5 bg-[#1a1a1a] text-white text-xs font-medium rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap transition-opacity border border-[#2a2a2a] shadow-xl z-50">
-                                        Advanced Charts
-                                    </span>
-                                </button>
+                        ))}
+                        {isLoading && (
+                            <div className="flex justify-start">
+                                <div className="bg-[#334155] rounded-2xl rounded-bl-none px-4 py-3 border border-slate-600 flex gap-1.5 items-center">
+                                    <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                                    <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                                    <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                                </div>
                             </div>
-                        </div>
+                        )}
+                        <div ref={messagesEndRef} />
+                    </div>
 
-                        {/* Settings at bottom */}
-                        <div className="p-4 border-t border-[#1a1a1a] flex flex-col items-center gap-2">
-                            <button
-                                onClick={() => setView('settings')}
-                                className={`group relative w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200 ${view === 'settings' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' : 'hover:bg-[#151515] text-slate-500 hover:text-white'}`}
-                                title="Settings"
-                            >
-                                <span className="text-lg">⚙️</span>
-                                <span className="absolute left-full ml-3 px-3 py-1.5 bg-[#1a1a1a] text-white text-xs font-medium rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap transition-opacity border border-[#2a2a2a] shadow-xl z-50">
-                                    Settings
-                                </span>
-                            </button>
-                            <div className="text-[9px] text-slate-700 font-mono">v3.0</div>
-                        </div>
-                    </nav>
-                )}
-
-                {/* Main Content Area */}
-                <main className="flex-1 overflow-y-auto bg-[#0f0f0f] relative">
-                    {/* Top Bar / Header - Hidden in Dedicated Chart View */}
-                    {!selectedTicker && (
-                        <div className="sticky top-0 z-10 bg-[#0a0a0a]/90 backdrop-blur-md border-b border-[#1a1a1a] px-8 py-4 flex justify-between items-center">
-                            <h1 className="text-xl font-bold text-white uppercase tracking-wider">
-                                {view === 'dashboard' && 'Market Dashboard'}
-                                {view === 'scanner' && 'Weekly RSI Scanner'}
-                                {view === 'options' && 'Options Flow'}
-                                {view === 'journal' && 'Portfolio US 🇺🇸'}
-                                {view === 'watchlist' && 'Watchlist'}
-                                {view === 'charts' && 'Advanced Charts'}
-                                {view === 'argentina' && 'Portfolio Argentina 🇦🇷'}
-                                {view === 'crypto' && 'Portfolio Crypto ₿'}
-                                {view === 'portfolio' && 'Portfolio Global 🌍'}
-                                {view === 'sharpe' && 'Fundamental Scanner'}
-                                {view === 'settings' && 'Settings'}
-                            </h1>
-                            <div className="flex items-center gap-4">
-                                {deferredPrompt && (
-                                    <button onClick={handleInstallClick} className="bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white px-3 py-1.5 rounded-lg font-bold text-xs shadow-lg animate-pulse flex items-center gap-1">
-                                        <span>📲</span> Install App
-                                    </button>
-                                )}
-                                <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse"></div>
-                                <span className="text-xs font-mono text-green-500">SYSTEM ONLINE</span>
-                                <span className="text-xs font-mono text-slate-500">|</span>
-
-                                <MarketClock />
-
+                    {/* Suggestions (only if history is short) */}
+                    {messages.length < 3 && (
+                        <div className="px-4 pb-2 bg-[#0f172a] flex flex-wrap gap-2">
+                            {suggestions.map((s, i) => (
                                 <button
-                                    onClick={() => setShowConnectModal(true)}
-                                    className="bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white px-3 py-1.5 rounded-lg font-medium text-xs border border-slate-700 transition flex items-center gap-2"
+                                    key={i}
+                                    onClick={() => handleSend(s)}
+                                    className="text-[10px] bg-slate-800 text-slate-300 border border-slate-700 px-2 py-1 rounded-full hover:bg-slate-700 hover:text-white transition"
                                 >
-                                    <span>🔗</span> <span className="hidden sm:inline">Connect Device</span>
+                                    {s}
                                 </button>
-                            </div>
+                            ))}
                         </div>
                     )}
 
-                    {showConnectModal && <ConnectModal onClose={() => setShowConnectModal(false)} />}
+                    {/* Input Area */}
+                    <div className="p-3 bg-[#1e293b] border-t border-slate-700">
+                        <div className="flex gap-2">
+                            <input
+                                ref={inputRef}
+                                type="text"
+                                value={inputValue}
+                                onChange={(e) => setInputValue(e.target.value)}
+                                onKeyDown={handleKeyDown}
+                                placeholder="Ask about your portfolio..."
+                                className="flex-1 bg-slate-900 text-white text-xs sm:text-sm rounded-lg px-3 py-2 border border-slate-700 focus:outline-none focus:border-blue-500 transition placeholder-slate-500"
+                                disabled={isLoading}
+                            />
+                            <button
+                                onClick={() => handleSend()}
+                                disabled={isLoading || !inputValue.trim()}
+                                className="bg-blue-600 hover:bg-blue-500 text-white rounded-lg px-3 py-2 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                ➤
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
+            {/* Toggle Button */}
+            <button
+                onClick={() => setIsOpen(!isOpen)}
+                className="bg-blue-600 hover:bg-blue-500 text-white p-4 rounded-full shadow-lg transition-transform hover:scale-110 pointer-events-auto flex items-center justify-center relative group"
+            >
+                {isOpen ? <span className="text-xl font-bold">✕</span> : <span className="text-2xl">💬</span>}
+
+                {/* Tooltip */}
+                {!isOpen && (
+                    <span className="absolute right-full mr-4 px-3 py-1.5 bg-blue-600 text-white text-xs font-bold rounded-xl opacity-0 group-hover:opacity-100 transition whitespace-nowrap shadow-xl">
+                        AI Copilot
+                    </span>
+                )}
+            </button>
+        </div>
+    );
+}
+
+// -----------------------------------------------------------------------------
+// MAIN APP COMPONENT
+// -----------------------------------------------------------------------------
+
+function App() {
+    const [view, setView] = useState('dashboard'); // 'dashboard', 'scanner', 'options', 'journal', etc.
+    const [selectedTicker, setSelectedTicker] = useState(null);
+    const [overrideMetrics, setOverrideMetrics] = useState(null);
+    const [showConnectModal, setShowConnectModal] = useState(false);
+    const [deferredPrompt, setDeferredPrompt] = useState(null);
+
+    // Initial Load & PWA Install Prompt
+    useEffect(() => {
+        const handleBeforeInstallPrompt = (e) => {
+            e.preventDefault();
+            setDeferredPrompt(e);
+        };
+        window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+        // Check URL params for deep linking (e.g. ?ticker=AAPL)
+        const params = new URLSearchParams(window.location.search);
+        const tickerParam = params.get('ticker');
+        if (tickerParam) {
+            handleTickerClick(tickerParam);
+        }
+
+        return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    }, []);
+
+    const handleInstallClick = () => {
+        if (!deferredPrompt) return;
+        deferredPrompt.prompt();
+        deferredPrompt.userChoice.then((choiceResult) => {
+            if (choiceResult.outcome === 'accepted') {
+                console.log('User accepted the install prompt');
+            }
+            setDeferredPrompt(null);
+        });
+    };
+
+    const handleTickerClick = (ticker, metrics = null) => {
+        setOverrideMetrics(metrics);
+        setSelectedTicker(ticker);
+    };
+
+    const handleCloseDetail = () => {
+        setSelectedTicker(null);
+        setOverrideMetrics(null);
+    };
+
+    return (
+        <div className="flex h-screen overflow-hidden text-slate-300 selection:bg-blue-500/30 selection:text-white">
+            {/* Sidebar Navigation */}
+            <div className={`w-[70px] sm:w-[240px] flex-shrink-0 border-r border-[#1a1a1a] bg-[#0a0a0a] flex flex-col transition-all duration-300 z-50 ${selectedTicker ? 'hidden md:flex' : 'flex'}`}>
+                {/* Logo Area */}
+                <div className="h-16 flex items-center justify-center sm:justify-start sm:px-6 border-b border-[#1a1a1a]">
+                    <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-900/20 shrink-0">
+                        <span className="text-white font-black text-lg">M</span>
+                    </div>
+                    <span className="ml-3 font-bold text-white text-lg tracking-tight hidden sm:block">
+                        Momentum
+                    </span>
+                </div>
+
+                {/* Navigation Items */}
+                <nav className="flex-1 overflow-y-auto p-3 space-y-1 custom-scrollbar">
+                    <div className="text-[10px] uppercase font-bold text-slate-600 px-3 mb-2 mt-2 hidden sm:block">Platform</div>
+
+                    {/* 1. Dashboard */}
+                    <button
+                        onClick={() => setView('dashboard')}
+                        className={`group relative w-full flex items-center p-3 rounded-xl transition-all duration-200 ${view === 'dashboard' ? 'bg-blue-600/10 text-white' : 'hover:bg-[#151515] text-slate-400 hover:text-white'}`}
+                    >
+                        <span className={`text-xl ${view === 'dashboard' ? 'text-blue-500' : 'text-slate-500 group-hover:text-blue-400'}`}>⚡</span>
+                        <span className="ml-3 text-sm font-medium hidden sm:block">Dashboard</span>
+                        {/* Tooltip for collapsed mode */}
+                        <span className="absolute left-full ml-3 px-3 py-1.5 bg-[#1a1a1a] text-white text-xs font-medium rounded-lg opacity-0 group-hover:opacity-100 sm:hidden pointer-events-none whitespace-nowrap transition-opacity border border-[#2a2a2a] shadow-xl z-50">
+                            Dashboard
+                        </span>
+                    </button>
+
+                    {/* 2. Global Portfolio */}
+                    <button
+                        onClick={() => setView('portfolio')}
+                        className={`group relative w-full flex items-center p-3 rounded-xl transition-all duration-200 ${view === 'portfolio' ? 'bg-purple-600/10 text-white' : 'hover:bg-[#151515] text-slate-400 hover:text-white'}`}
+                    >
+                        <span className={`text-xl ${view === 'portfolio' ? 'text-purple-500' : 'text-slate-500 group-hover:text-purple-400'}`}>🌍</span>
+                        <span className="ml-3 text-sm font-medium hidden sm:block">Global Portfolio</span>
+                        <span className="absolute left-full ml-3 px-3 py-1.5 bg-[#1a1a1a] text-white text-xs font-medium rounded-lg opacity-0 group-hover:opacity-100 sm:hidden pointer-events-none whitespace-nowrap transition-opacity border border-[#2a2a2a] shadow-xl z-50">
+                            Global Portfolio
+                        </span>
+                    </button>
+
+                    <div className="my-2 border-t border-[#1a1a1a]"></div>
+                    <div className="text-[10px] uppercase font-bold text-slate-600 px-3 mb-2 hidden sm:block">Trading</div>
+
+                    {/* 3. Scanner */}
+                    <button
+                        onClick={() => setView('scanner')}
+                        className={`group relative w-full flex items-center p-3 rounded-xl transition-all duration-200 ${view === 'scanner' ? 'bg-green-600/10 text-white' : 'hover:bg-[#151515] text-slate-400 hover:text-white'}`}
+                    >
+                        <span className={`text-xl ${view === 'scanner' ? 'text-green-500' : 'text-slate-500 group-hover:text-green-400'}`}>📡</span>
+                        <span className="ml-3 text-sm font-medium hidden sm:block">Scanner</span>
+                        <span className="absolute left-full ml-3 px-3 py-1.5 bg-[#1a1a1a] text-white text-xs font-medium rounded-lg opacity-0 group-hover:opacity-100 sm:hidden pointer-events-none whitespace-nowrap transition-opacity border border-[#2a2a2a] shadow-xl z-50">
+                            Scanner
+                        </span>
+                    </button>
+
+                    {/* 4. Options */}
+                    <button
+                        onClick={() => setView('options')}
+                        className={`group relative w-full flex items-center p-3 rounded-xl transition-all duration-200 ${view === 'options' ? 'bg-yellow-600/10 text-white' : 'hover:bg-[#151515] text-slate-400 hover:text-white'}`}
+                    >
+                        <span className={`text-xl ${view === 'options' ? 'text-yellow-500' : 'text-slate-500 group-hover:text-yellow-400'}`}>🌊</span>
+                        <span className="ml-3 text-sm font-medium hidden sm:block">Options Flow</span>
+                        <span className="absolute left-full ml-3 px-3 py-1.5 bg-[#1a1a1a] text-white text-xs font-medium rounded-lg opacity-0 group-hover:opacity-100 sm:hidden pointer-events-none whitespace-nowrap transition-opacity border border-[#2a2a2a] shadow-xl z-50">
+                            Options Flow
+                        </span>
+                    </button>
+
+                    {/* 5. Fundamental Scanner (Sharpe) */}
+                    <button
+                        onClick={() => setView('sharpe')}
+                        className={`group relative w-full flex items-center p-3 rounded-xl transition-all duration-200 ${view === 'sharpe' ? 'bg-violet-600/10 text-white' : 'hover:bg-[#151515] text-slate-400 hover:text-white'}`}
+                    >
+                        <span className={`text-xl ${view === 'sharpe' ? 'text-violet-500' : 'text-slate-500 group-hover:text-violet-400'}`}>🧠</span>
+                        <span className="ml-3 text-sm font-medium hidden sm:block">Fundamentals</span>
+                        <span className="absolute left-full ml-3 px-3 py-1.5 bg-[#1a1a1a] text-white text-xs font-medium rounded-lg opacity-0 group-hover:opacity-100 sm:hidden pointer-events-none whitespace-nowrap transition-opacity border border-[#2a2a2a] shadow-xl z-50">
+                            Fundamentals
+                        </span>
+                    </button>
+
+                    <div className="my-2 border-t border-[#1a1a1a]"></div>
+                    <div className="text-[10px] uppercase font-bold text-slate-600 px-3 mb-2 hidden sm:block">Journals</div>
+
+                    {/* 6. US Journal */}
+                    <button
+                        onClick={() => setView('journal')}
+                        className={`group relative w-full flex items-center p-3 rounded-xl transition-all duration-200 ${view === 'journal' ? 'bg-teal-600/10 text-white' : 'hover:bg-[#151515] text-slate-400 hover:text-white'}`}
+                    >
+                        <span className={`text-xl ${view === 'journal' ? 'text-teal-500' : 'text-slate-500 group-hover:text-teal-400'}`}>🇺🇸</span>
+                        <span className="ml-3 text-sm font-medium hidden sm:block">Wall St.</span>
+                        <span className="absolute left-full ml-3 px-3 py-1.5 bg-[#1a1a1a] text-white text-xs font-medium rounded-lg opacity-0 group-hover:opacity-100 sm:hidden pointer-events-none whitespace-nowrap transition-opacity border border-[#2a2a2a] shadow-xl z-50">
+                            Wall St Journal
+                        </span>
+                    </button>
+
+                    {/* 6.b Argentina Journal */}
+                    <button
+                        onClick={() => setView('argentina')}
+                        className={`group relative w-full flex items-center p-3 rounded-xl transition-all duration-200 ${view === 'argentina' ? 'bg-sky-600/10 text-white' : 'hover:bg-[#151515] text-slate-400 hover:text-white'}`}
+                    >
+                        <span className={`text-xl ${view === 'argentina' ? 'text-sky-500' : 'text-slate-500 group-hover:text-sky-400'}`}>🇦🇷</span>
+                        <span className="ml-3 text-sm font-medium hidden sm:block">Merval</span>
+                        <span className="absolute left-full ml-3 px-3 py-1.5 bg-[#1a1a1a] text-white text-xs font-medium rounded-lg opacity-0 group-hover:opacity-100 sm:hidden pointer-events-none whitespace-nowrap transition-opacity border border-[#2a2a2a] shadow-xl z-50">
+                            Argentina
+                        </span>
+                    </button>
+
+                    {/* 7. Crypto Journal */}
+                    <button
+                        onClick={() => setView('crypto')}
+                        className={`group relative w-full flex items-center p-3 rounded-xl transition-all duration-200 ${view === 'crypto' ? 'bg-orange-600/10 text-white' : 'hover:bg-[#151515] text-slate-400 hover:text-white'}`}
+                    >
+                        <span className={`text-xl ${view === 'crypto' ? 'text-orange-500' : 'text-slate-500 group-hover:text-orange-400'}`}>₿</span>
+                        <span className="ml-3 text-sm font-medium hidden sm:block">Crypto</span>
+                        <span className="absolute left-full ml-3 px-3 py-1.5 bg-[#1a1a1a] text-white text-xs font-medium rounded-lg opacity-0 group-hover:opacity-100 sm:hidden pointer-events-none whitespace-nowrap transition-opacity border border-[#2a2a2a] shadow-xl z-50">
+                            Crypto
+                        </span>
+                    </button>
+
+                    <div className="my-2 border-t border-[#1a1a1a]"></div>
+
+                    {/* 8. Watchlist */}
+                    <button
+                        onClick={() => setView('watchlist')}
+                        className={`group relative w-full flex items-center p-3 rounded-xl transition-all duration-200 ${view === 'watchlist' ? 'bg-amber-600/10 text-white' : 'hover:bg-[#151515] text-slate-500 hover:text-white'}`}
+                    >
+                        <span className={`text-xl ${view === 'watchlist' ? 'text-amber-500' : 'text-slate-500 group-hover:text-amber-400'}`}>⭐</span>
+                        <span className="ml-3 text-sm font-medium hidden sm:block">Watchlist</span>
+                        <span className="absolute left-full ml-3 px-3 py-1.5 bg-[#1a1a1a] text-white text-xs font-medium rounded-lg opacity-0 group-hover:opacity-100 sm:hidden pointer-events-none whitespace-nowrap transition-opacity border border-[#2a2a2a] shadow-xl z-50">
+                            Watchlist
+                        </span>
+                    </button>
+
+                    {/* 9. Advanced Charts */}
+                    <button
+                        onClick={() => setView('charts')}
+                        className={`group relative w-full flex items-center p-3 rounded-xl transition-all duration-200 ${view === 'charts' ? 'bg-cyan-600/10 text-white' : 'hover:bg-[#151515] text-slate-500 hover:text-white'}`}
+                    >
+                        <span className={`text-xl ${view === 'charts' ? 'text-cyan-500' : 'text-slate-500 group-hover:text-cyan-400'}`}>🕯️</span>
+                        <span className="ml-3 text-sm font-medium hidden sm:block">Advanced Charts</span>
+                        <span className="absolute left-full ml-3 px-3 py-1.5 bg-[#1a1a1a] text-white text-xs font-medium rounded-lg opacity-0 group-hover:opacity-100 sm:hidden pointer-events-none whitespace-nowrap transition-opacity border border-[#2a2a2a] shadow-xl z-50">
+                            Charts
+                        </span>
+                    </button>
+
+                </nav>
+
+                {/* Settings at bottom */}
+                <div className="p-4 border-t border-[#1a1a1a]">
+                    <button
+                        onClick={() => setView('settings')}
+                        className={`group relative w-full flex items-center p-3 rounded-xl transition-all duration-200 ${view === 'settings' ? 'bg-blue-600/10 text-white' : 'hover:bg-[#151515] text-slate-500 hover:text-white'}`}
+                    >
+                        <span className={`text-xl ${view === 'settings' ? 'text-blue-500' : 'text-slate-500 group-hover:text-blue-400'}`}>⚙️</span>
+                        <span className="ml-3 text-sm font-medium hidden sm:block">Settings</span>
+                        <span className="absolute left-full ml-3 px-3 py-1.5 bg-[#1a1a1a] text-white text-xs font-medium rounded-lg opacity-0 group-hover:opacity-100 sm:hidden pointer-events-none whitespace-nowrap transition-opacity border border-[#2a2a2a] shadow-xl z-50">
+                            Settings
+                        </span>
+                    </button>
+                    <div className="text-[9px] text-slate-700 font-mono text-center mt-2 hidden sm:block">v3.0</div>
+                </div>
+            </div>
+
+            {/* Main Content Area */}
+            <div className="flex-1 flex flex-col h-full bg-[#0f0f0f] relative overflow-hidden">
+                {/* Top Bar / Header - Hidden in Dedicated Chart View */}
+                {!selectedTicker && (
+                    <header className="sticky top-0 z-30 bg-[#0a0a0a]/90 backdrop-blur-md border-b border-[#1a1a1a] px-6 py-4 flex justify-between items-center shrink-0">
+                        <h1 className="text-xl font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                            {view === 'dashboard' && '⚡ Market Dashboard'}
+                            {view === 'scanner' && '📡 Weekly RSI Scanner'}
+                            {view === 'options' && '🌊 Options Flow'}
+                            {view === 'journal' && '🇺🇸 Portfolio Wall St'}
+                            {view === 'watchlist' && '⭐ Watchlist'}
+                            {view === 'charts' && '🕯️ Advanced Charts'}
+                            {view === 'argentina' && '🇦🇷 Portfolio Merval'}
+                            {view === 'crypto' && '₿ Portfolio Crypto'}
+                            {view === 'portfolio' && '🌍 Global Portfolio'}
+                            {view === 'sharpe' && '📊 Fundamental Scanner'}
+                            {view === 'settings' && '⚙️ Settings'}
+                        </h1>
+                        <div className="flex items-center gap-4">
+                            {deferredPrompt && (
+                                <button onClick={handleInstallClick} className="bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white px-3 py-1.5 rounded-lg font-bold text-xs shadow-lg animate-pulse flex items-center gap-1">
+                                    <span>📲</span> Install App
+                                </button>
+                            )}
+                            <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse"></div>
+                            <span className="text-xs font-mono text-green-500 hidden sm:inline">SYSTEM ONLINE</span>
+                            <span className="text-xs font-mono text-slate-500 hidden sm:inline">|</span>
+
+                            <MarketClock />
+
+                            <button
+                                onClick={() => setShowConnectModal(true)}
+                                className="bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white px-3 py-1.5 rounded-lg font-medium text-xs border border-slate-700 transition flex items-center gap-2"
+                            >
+                                <span>🔗</span> <span className="hidden sm:inline">Connect Device</span>
+                            </button>
+                        </div>
+                    </header>
+                )}
+
+                {showConnectModal && <ConnectModal onClose={() => setShowConnectModal(false)} />}
+
+                {/* Main Content Scrollable Area */}
+                <main className="flex-1 overflow-y-auto relative custom-scrollbar">
                     {/* Views and Dedicated Analysis */}
                     {!selectedTicker ? (
-                        <React.Fragment>
+                        <div className="min-h-full">
                             {view === 'dashboard' && <MarketDashboard onTickerClick={handleTickerClick} />}
                             {view === 'scanner' && <Scanner onTickerClick={handleTickerClick} />}
                             {view === 'options' && <OptionsScanner />}
@@ -6920,7 +7412,7 @@ function App() {
                             {view === 'portfolio' && <PortfolioDashboardView />}
                             {view === 'sharpe' && <SharpePortfolioView />}
                             {view === 'settings' && <Settings />}
-                        </React.Fragment>
+                        </div>
                     ) : (
                         <DetailView
                             ticker={selectedTicker}
@@ -6929,6 +7421,9 @@ function App() {
                         />
                     )}
                 </main>
+
+                {/* Global Chatbot Copilot */}
+                <ChatCopilot />
             </div>
         </div>
     );
