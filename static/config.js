@@ -15,7 +15,8 @@
     // "const API_URL = ... ? 'http://localhost:8000' : 'https://tu-url.up.railway.app';"
 
     // Let's set a placeholder that the user MUST update after Railway deploy
-    const RAILWAY_URL = "https://CHANGE_ME_TO_YOUR_RAILWAY_URL.up.railway.app";
+    // URL de Producción (Railway)
+    const RAILWAY_URL = "https://web-production-5f603.up.railway.app";
 
     window.API_BASE = isLocal ? "http://localhost:8000/api" : `${RAILWAY_URL}/api`;
 
