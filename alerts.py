@@ -230,6 +230,95 @@ Consider trimming position
         print(f"Error in check_price_alerts: {e}")
 
 
+def check_watchlist_alerts():
+    """
+    Check all watchlist items for alert conditions (Multi-tenant via SQLAlchemy):
+    1. Price hit buy alert (alert_price)
+    2. Price hit stop loss alert (stop_alert)
+    """
+    settings = get_alert_settings()
+    if not settings or not settings["enabled"] or not settings["telegram_chat_id"]:
+        return
+    
+    try:
+        from database import SessionLocal
+        import models
+        
+        db = SessionLocal()
+        
+        try:
+            # Get all watchlist items with alerts set
+            items = db.query(models.Watchlist).filter(
+                (models.Watchlist.alert_price != None) | (models.Watchlist.stop_alert != None)
+            ).all()
+            
+            if not items:
+                return
+                
+            # Get batch prices
+            tickers = list(set([i.ticker for i in items]))
+            prices_map = market_data.get_batch_latest_prices(tickers)
+            
+            for item in items:
+                current_price = prices_map.get(item.ticker)
+                if not current_price or current_price <= 0:
+                    continue
+                
+                # Check 1: Buy Alert Hit
+                if item.alert_price and current_price >= item.alert_price:
+                    alert_key = f"WATCHLIST_BUY_{item.ticker}_{item.user_id}"
+                    if not watchlist_alert_sent_recently(alert_key):
+                        message = f"""
+🟢 <b>WATCHLIST BUY ALERT</b>
+
+Ticker: <b>{item.ticker}</b>
+Target: ${item.alert_price:.2f}
+Current: ${current_price:.2f}
+
+📈 Price reached your buy target!
+"""
+                        send_telegram(settings["telegram_chat_id"], message)
+                        mark_watchlist_alert_sent(alert_key)
+                
+                # Check 2: Stop Loss Alert Hit
+                if item.stop_alert and current_price <= item.stop_alert:
+                    alert_key = f"WATCHLIST_SL_{item.ticker}_{item.user_id}"
+                    if not watchlist_alert_sent_recently(alert_key):
+                        message = f"""
+🔴 <b>WATCHLIST STOP ALERT</b>
+
+Ticker: <b>{item.ticker}</b>
+Stop Level: ${item.stop_alert:.2f}
+Current: ${current_price:.2f}
+
+⚠️ Price hit your stop level!
+"""
+                        send_telegram(settings["telegram_chat_id"], message)
+                        mark_watchlist_alert_sent(alert_key)
+                        
+        finally:
+            db.close()
+            
+    except Exception as e:
+        print(f"Error in check_watchlist_alerts: {e}")
+
+
+# Simple in-memory cache to avoid spam (resets on server restart)
+_watchlist_alert_cache = {}
+
+def watchlist_alert_sent_recently(key: str, hours: int = 24) -> bool:
+    """Check if watchlist alert was sent recently"""
+    from datetime import datetime, timedelta
+    if key not in _watchlist_alert_cache:
+        return False
+    sent_time = _watchlist_alert_cache[key]
+    return datetime.now() - sent_time < timedelta(hours=hours)
+
+def mark_watchlist_alert_sent(key: str):
+    """Mark watchlist alert as sent"""
+    from datetime import datetime
+    _watchlist_alert_cache[key] = datetime.now()
+
 def alert_recently_sent(cursor, trade_id: int, alert_type: str, hours: int = 24) -> bool:
     """Check if alert was sent recently to avoid spam"""
     cursor.execute("""

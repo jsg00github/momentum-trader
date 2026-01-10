@@ -876,6 +876,7 @@ async def alert_monitor_loop():
             if settings and settings.get('enabled'):
                 print(f"[{datetime.now()}] Running alert check...")
                 await asyncio.to_thread(alerts.check_price_alerts)
+                await asyncio.to_thread(alerts.check_watchlist_alerts)
             
             # Record Portfolio Snapshot (Intra-day updates or closing)
             from trade_journal import capture_daily_snapshot
