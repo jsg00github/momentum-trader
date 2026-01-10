@@ -12,9 +12,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copiar todo el código
 COPY . .
 
-# Puerto (Railway usa $PORT dinámico)
+# Puerto (Railway inyecta $PORT)
 ENV PORT=8000
-EXPOSE $PORT
+EXPOSE 8000
 
-# Comando (shell form para expandir $PORT)
-CMD uvicorn main:app --host 0.0.0.0 --port $PORT
+# Comando usando shell explícito para expandir $PORT
+CMD ["/bin/sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
