@@ -1,5 +1,6 @@
 const { useState, useEffect, useMemo, useRef, Fragment } = React;
-const API_BASE = "/api";
+// Use global API_BASE from config.js, or fallback to relative (for safety)
+const API_BASE = window.API_BASE || "http://localhost:8000/api";
 
 // --- Trading Calendar Utilities ---
 // US Market Holidays (NYSE/NASDAQ) - Updated annually

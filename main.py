@@ -18,6 +18,11 @@ import os
 import market_data 
 import ai_advisor # New Import
 import health # Healthcheck module
+from database import engine, Base
+import models
+
+# Create Tables
+Base.metadata.create_all(bind=engine)
 
 # Import trade journal router
 import trade_journal
