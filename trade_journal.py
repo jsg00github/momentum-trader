@@ -465,3 +465,41 @@ def get_open_prices(db: Session = Depends(get_db)):
         
     return results
 
+# --- PORTFOLIO SNAPSHOT & ANALYTICS STUBS (To be fully ported to SQLAlchemy) ---
+
+@router.get("/api/trades/analytics/open")
+def get_open_trades_analytics():
+    """
+    STUB: Get aggregate risk/exposure analytics for OPEN trades.
+    Full implementation pending port from SQLite to SQLAlchemy.
+    """
+    return {
+        "exposure": {"total_invested": 0, "total_risk_r": 0, "unrealized_pnl": 0, "active_count": 0},
+        "suggestions": []
+    }
+
+def capture_daily_snapshot():
+    """
+    STUB: Capture a snapshot of the current portfolio state.
+    Full implementation pending port from SQLite to SQLAlchemy.
+    """
+    # print("[Snapshot] Feature pending SQLAlchemy port.")
+    return False
+
+@router.get("/api/trades/snapshots")
+def get_snapshots(days: int = 30):
+    """Serve historical portfolio snapshots for charting (STUB)"""
+    return []
+
+@router.get("/api/trades/analytics/performance")
+def get_portfolio_performance():
+    """Detailed performance analysis vs SPY benchmark (STUB)"""
+    return {
+            "line_data": {
+                "dates": [],
+                "portfolio": [],
+                "spy": []
+            },
+            "monthly_data": [],
+            "period_start": None
+        }
