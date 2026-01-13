@@ -82,21 +82,28 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
 
 @router.post("/register", response_model=Token)
 def register(user: UserCreate, db: Session = Depends(get_db)):
-    # Check if user exists
-    db_user = db.query(models.User).filter(models.User.email == user.email).first()
-    if db_user:
-        raise HTTPException(status_code=400, detail="Email already registered")
-    
-    # Create User
-    hashed_password = get_password_hash(user.password)
-    new_user = models.User(
-        email=user.email,
-        hashed_password=hashed_password,
-        full_name=user.full_name
-    )
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
+    try:
+        # Check if user exists
+        db_user = db.query(models.User).filter(models.User.email == user.email).first()
+        if db_user:
+            raise HTTPException(status_code=400, detail="Email already registered")
+        
+        # Create User
+        hashed_password = get_password_hash(user.password)
+        new_user = models.User(
+            email=user.email,
+            hashed_password=hashed_password,
+            full_name=user.full_name
+        )
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"[AUTH] Registration error: {e}")
+        raise HTTPException(status_code=500, detail=f"Registration failed: {str(e)}")
     
     # Generate Token
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
