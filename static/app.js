@@ -15,6 +15,18 @@ const authFetch = (url, options = {}) => {
     return fetch(url, { ...options, headers });
 };
 
+// Configure axios to include auth token in all requests
+axios.interceptors.request.use(
+    (config) => {
+        const token = localStorage.getItem('token');
+        if (token) {
+            config.headers.Authorization = `Bearer ${token}`;
+        }
+        return config;
+    },
+    (error) => Promise.reject(error)
+);
+
 // --- Trading Calendar Utilities ---
 // US Market Holidays (NYSE/NASDAQ) - Updated annually
 // Format: 'YYYY-MM-DD'
@@ -4518,9 +4530,10 @@ function MarketDashboard({ onTickerClick }) {
             });
 
         // Fetch portfolio metrics for P&L display
-        axios.get(`${API_BASE}/trades/unified/metrics`)
-            .then(res => {
-                setPortfolioMetrics(res.data);
+        authFetch(`${API_BASE}/trades/unified/metrics`)
+            .then(res => res.ok ? res.json() : Promise.reject('Auth failed'))
+            .then(data => {
+                setPortfolioMetrics(data);
             })
             .catch(err => {
                 console.error('Portfolio metrics error:', err);
