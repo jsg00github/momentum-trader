@@ -100,6 +100,41 @@ def api_get_positions(status: str = "open", current_user: models.User = Depends(
 @router.post("/positions")
 def api_add_position(pos: ArgentinaPositionCreate, current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
     """Add a new Argentine position."""
+    
+    # Auto-detect country for CEDEARs
+    underlying_country = None
+    if pos.asset_type.lower() == 'cedear':
+        try:
+            import yfinance as yf
+            # CEDEARs trade the underlying US ticker (e.g., MSTR, AAPL, etc.)
+            ticker_info = yf.Ticker(pos.ticker.upper())
+            info = ticker_info.info
+            underlying_country = info.get('country', 'United States')  # Most CEDEARs are US stocks
+            # Normalize country names
+            country_map = {
+                'United States': 'USA',
+                'Brazil': 'Brazil',
+                'China': 'China',
+                'Hong Kong': 'China',
+                'Germany': 'Europe',
+                'United Kingdom': 'Europe',
+                'France': 'Europe',
+                'Spain': 'Europe',
+                'Italy': 'Europe',
+                'Switzerland': 'Europe',
+                'Netherlands': 'Europe',
+                'Japan': 'Japan',
+                'South Korea': 'South Korea',
+                'India': 'India',
+                'Mexico': 'Mexico'
+            }
+            underlying_country = country_map.get(underlying_country, underlying_country)
+        except Exception as e:
+            print(f"[CEDEAR] Could not detect country for {pos.ticker}: {e}")
+            underlying_country = 'USA'  # Default to USA for most CEDEARs
+    elif pos.asset_type.lower() == 'stock':
+        underlying_country = 'Argentina'  # Local Argentine stocks
+    
     new_pos = models.ArgentinaPosition(
         user_id=current_user.id,
         ticker=pos.ticker.upper(),
@@ -117,13 +152,14 @@ def api_add_position(pos: ArgentinaPositionCreate, current_user: models.User = D
         option_strike=pos.option_strike,
         option_expiry=pos.option_expiry,
         option_type=pos.option_type,
-        status="OPEN"
+        status="OPEN",
+        underlying_country=underlying_country
     )
     
     db.add(new_pos)
     db.commit()
     db.refresh(new_pos)
-    return {"id": new_pos.id, "status": "created"}
+    return {"id": new_pos.id, "status": "created", "detected_country": underlying_country}
 
 @router.post("/positions/{position_id}/close")
 def api_close_position(position_id: int, exit_price: float, current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
@@ -234,40 +270,37 @@ def api_get_rates():
 
 @router.get("/prices")
 def api_get_prices(current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
-    """Get live prices for all open Argentine positions."""
-    # Similar logic to get_portfolio but just returns price map
+    """Get live prices for all open Argentine positions - Uses price_service cache for speed."""
+    import price_service
+    
     positions = db.query(models.ArgentinaPosition).filter(
         models.ArgentinaPosition.user_id == current_user.id,
-        models.ArgentinaPosition.exit_price == None
+        models.ArgentinaPosition.status == "OPEN"
     ).all()
     
     prices = {}
-    tickers = list(set([p.ticker for p in positions]))
+    tickers = list(set([p.ticker for p in positions if p.ticker]))
     
     for ticker in tickers:
-        quote = argentina_data.get_market_quote(ticker)
+        # Use price_service cache (fast) with fallback to entry price
+        price_data = price_service.get_argentina_price(ticker.upper())
         
-        # Fallback to IOL if yahoo fails (but change_pct is tricky unless we calc it manually or IOL gives it)
-        # For simplicity, if market_quote fails price is 0, we check IOL
-        
-        price = quote["price"]
-        change = quote["change_pct"]
-        
-        if price <= 0:
-             iol_quote = argentina_data.get_iol_quote(ticker)
-             if iol_quote: 
-                 price = iol_quote.get("ultimoPrecio")
-                 # IOL quote usually has 'variacion' or similar?
-                 # {"ultimoPrecio": 123, "variacion": 1.5, ...}
-                 # Assuming minimal structure for now
-                 change = iol_quote.get("variacionPorcentual", 0)
-        
-        if price > 0:
+        if price_data and price_data.get('price'):
             prices[ticker] = {
-                "price": price,
-                "change_pct": change,
-                "ema_8": price # Mock
+                "price": round(price_data['price'], 2),
+                "change_pct": round(price_data.get('change_pct', 0), 2),
+                "source": price_data.get('source', 'yfinance')
             }
+        else:
+            # Fallback to entry price if no live data
+            pos = next((p for p in positions if p.ticker == ticker), None)
+            if pos:
+                prices[ticker] = {
+                    "price": pos.entry_price,
+                    "change_pct": 0,
+                    "source": "entry_fallback"
+                }
+    
     return prices
 
 # Options endpoints check (No auth needed for calculator but okay to protect)
@@ -581,3 +614,297 @@ def download_template():
     response = StreamingResponse(iter([stream.getvalue()]), media_type="text/csv")
     response.headers["Content-Disposition"] = "attachment; filename=argentina_trades_template.csv"
     return response
+
+
+# ============================================
+# FRONTEND COMPATIBILITY ENDPOINTS
+# These match the URL patterns the frontend expects
+# ============================================
+
+@router.get("/trades/list")
+def api_trades_list(status: str = None, current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    """List all trades (frontend compatibility endpoint)."""
+    query = db.query(models.ArgentinaPosition).filter(models.ArgentinaPosition.user_id == current_user.id)
+    
+    if status:
+        query = query.filter(models.ArgentinaPosition.status == status.upper())
+    
+    positions = query.order_by(models.ArgentinaPosition.entry_date.desc()).all()
+    
+    result = []
+    for p in positions:
+        pnl = None
+        pnl_pct = None
+        if p.exit_price and p.entry_price:
+            pnl = (p.exit_price - p.entry_price) * p.shares
+            pnl_pct = ((p.exit_price / p.entry_price) - 1) * 100
+        
+        result.append({
+            "id": p.id,
+            "ticker": p.ticker,
+            "asset_type": p.asset_type,
+            "direction": "LONG",
+            "entry_date": p.entry_date,
+            "entry_price": p.entry_price,
+            "shares": p.shares,
+            "status": p.status or "OPEN",
+            "exit_date": p.exit_date,
+            "exit_price": p.exit_price,
+            "stop_loss": p.stop_loss,
+            "target": p.target,
+            "target2": p.target2,
+            "target3": p.target3,
+            "strategy": p.strategy,
+            "notes": p.notes,
+            "pnl": round(pnl, 2) if pnl else None,
+            "pnl_pct": round(pnl_pct, 2) if pnl_pct else None
+        })
+    return result
+
+
+@router.get("/trades/metrics")
+def api_trades_metrics(current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    """Get portfolio metrics (frontend compatibility endpoint)."""
+    positions = db.query(models.ArgentinaPosition).filter(
+        models.ArgentinaPosition.user_id == current_user.id
+    ).all()
+    
+    open_trades = [p for p in positions if (p.status or "").upper() == "OPEN"]
+    closed_trades = [p for p in positions if (p.status or "").upper() == "CLOSED"]
+    
+    total_invested = sum(p.entry_price * p.shares for p in open_trades)
+    
+    # Calculate realized P&L from closed trades
+    realized_pnl = 0
+    for t in closed_trades:
+        if t.exit_price and t.entry_price:
+            realized_pnl += (t.exit_price - t.entry_price) * t.shares
+    
+    win_count = sum(1 for t in closed_trades if t.exit_price and t.entry_price and t.exit_price > t.entry_price)
+    win_rate = (win_count / len(closed_trades) * 100) if closed_trades else 0
+    
+    return {
+        "total_invested": round(total_invested, 2),
+        "open_pnl": 0,  # Would need live prices
+        "realized_pnl": round(realized_pnl, 2),
+        "win_rate": round(win_rate, 1),
+        "total_trades": len(positions),
+        "open_trades": len(open_trades),
+        "closed_trades": len(closed_trades)
+    }
+
+
+@router.get("/trades/equity-curve")
+def api_equity_curve(current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    """Get equity curve data (frontend compatibility endpoint)."""
+    # Simplified - returns empty for now
+    return []
+
+
+@router.get("/trades/calendar")
+def api_calendar(current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    """Get calendar data (frontend compatibility endpoint)."""
+    return {}
+
+
+@router.get("/trades/analytics/open")
+def api_analytics_open(current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    """Get open positions analytics for Argentina portfolio."""
+    import argentina_data
+    
+    # Get CCL rate for USD conversion
+    rates = argentina_data.get_dolar_rates()
+    ccl = rates.get('ccl', 1200)
+    
+    # Get open positions
+    open_positions = db.query(models.ArgentinaPosition).filter(
+        models.ArgentinaPosition.user_id == current_user.id,
+        models.ArgentinaPosition.status == "OPEN"
+    ).all()
+    
+    total_invested_ars = 0
+    total_invested_usd = 0
+    total_risk_r = 0
+    unrealized_pnl = 0
+    active_count = len(open_positions)
+    
+    # Asset type breakdown and holdings
+    asset_types = {'CEDEAR': 0, 'Stock': 0, 'Option': 0}
+    sector_data = {}
+    holdings_data = []
+    
+    # Beta/PE mappings for common CEDEARs
+    CEDEAR_BETAS = {'MSTR': 2.5, 'TSLA': 2.1, 'NVDA': 1.7, 'AAPL': 1.2, 'GOOGL': 1.1, 'META': 1.3, 'AMZN': 1.4}
+    CEDEAR_PES = {'MSTR': 0, 'TSLA': 65, 'NVDA': 55, 'AAPL': 30, 'GOOGL': 25, 'META': 28, 'AMZN': 50}
+    
+    for pos in open_positions:
+        cost_ars = (pos.entry_price or 0) * (pos.shares or 0)
+        cost_usd = cost_ars / ccl if ccl > 0 else 0
+        total_invested_ars += cost_ars
+        total_invested_usd += cost_usd
+        
+        # Track by asset type
+        asset_type = (pos.asset_type or 'stock').upper()
+        if asset_type == 'CEDEAR':
+            asset_types['CEDEAR'] += cost_usd
+        elif asset_type == 'OPTION':
+            asset_types['Option'] += cost_usd
+        else:
+            asset_types['Stock'] += cost_usd
+        
+        # Sector tracking
+        sector = pos.underlying_country or 'Argentina'
+        if sector not in sector_data:
+            sector_data[sector] = 0
+        sector_data[sector] += cost_usd
+        
+        # Calculate risk if SL hit
+        if pos.stop_loss and pos.stop_loss > 0:
+            risk = (pos.entry_price - pos.stop_loss) * (pos.shares or 0)
+            total_risk_r += max(0, risk)
+        
+        # Get beta/PE
+        ticker_base = pos.ticker.upper().replace('.BA', '')
+        stock_beta = CEDEAR_BETAS.get(ticker_base, 1.0)
+        stock_pe = CEDEAR_PES.get(ticker_base, 20)
+        
+        # Holdings data
+        pct = (cost_usd / total_invested_usd * 100) if total_invested_usd > 0 else 0
+        holdings_data.append({
+            'ticker': pos.ticker,
+            'name': pos.ticker,
+            'shares': pos.shares,
+            'value': round(cost_usd, 2),
+            'pnl': 0,
+            'pct': round(pct, 2),
+            'beta': round(stock_beta, 2),
+            'pe': round(stock_pe, 1)
+        })
+    
+    # Sort holdings by value
+    holdings_data.sort(key=lambda x: x['value'], reverse=True)
+    
+    # Recalculate percentages
+    for h in holdings_data:
+        h['pct'] = round((h['value'] / total_invested_usd * 100) if total_invested_usd > 0 else 0, 2)
+    
+    # Calculate weighted portfolio beta and P/E
+    weighted_beta = 0
+    weighted_pe = 0
+    if total_invested_usd > 0:
+        for h in holdings_data:
+            weight = h['value'] / total_invested_usd
+            weighted_beta += h['beta'] * weight
+            if h['pe'] > 0:
+                weighted_pe += h['pe'] * weight
+    
+    # Convert to list formats
+    sector_allocation = [{'sector': k, 'value': round(v, 2)} for k, v in sector_data.items()]
+    sector_allocation.sort(key=lambda x: x['value'], reverse=True)
+    asset_allocation = [{'type': k, 'value': round(v, 2)} for k, v in asset_types.items() if v > 0]
+    
+    suggestions = []
+    if total_risk_r > total_invested_ars * 0.1:
+        suggestions.append({"type": "warning", "message": f"Alto riesgo: ARS {total_risk_r:,.0f} en riesgo"})
+    if active_count > 10:
+        suggestions.append({"type": "info", "message": f"Tienes {active_count} posiciones. Considera consolidar."})
+    
+    return {
+        "exposure": {
+            "total_invested_ars": round(total_invested_ars, 2),
+            "total_invested_usd": round(total_invested_usd, 2),
+            "total_invested": round(total_invested_usd, 2),
+            "total_risk_r": round(total_risk_r, 2),
+            "unrealized_pnl": round(unrealized_pnl, 2),
+            "active_count": active_count,
+            "portfolio_beta": round(weighted_beta, 2),
+            "portfolio_pe": round(weighted_pe, 1)
+        },
+        "asset_allocation": asset_allocation,
+        "sector_allocation": sector_allocation,
+        "holdings": holdings_data[:10],
+        "suggestions": suggestions,
+        "upcoming_dividends": []
+    }
+
+
+@router.get("/trades/analytics/performance")
+def api_analytics_performance(current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    """Get Argentina performance analytics."""
+    from datetime import datetime
+    import argentina_data
+    
+    rates = argentina_data.get_dolar_rates()
+    ccl = rates.get('ccl', 1200)
+    
+    # Get closed positions
+    closed_positions = db.query(models.ArgentinaPosition).filter(
+        models.ArgentinaPosition.user_id == current_user.id,
+        models.ArgentinaPosition.status == "CLOSED"
+    ).all()
+    
+    # Calculate monthly P&L
+    monthly_data = {}
+    total_pnl_ars = 0
+    
+    for pos in closed_positions:
+        if pos.exit_date and pos.exit_price:
+            try:
+                if isinstance(pos.exit_date, str):
+                    exit_dt = datetime.strptime(pos.exit_date, "%Y-%m-%d")
+                else:
+                    exit_dt = pos.exit_date
+                month_key = exit_dt.strftime("%Y-%m")
+                
+                # Calculate P&L
+                cost = (pos.entry_price or 0) * (pos.shares or 0)
+                exit_value = (pos.exit_price or 0) * (pos.shares or 0)
+                pnl = exit_value - cost
+                total_pnl_ars += pnl
+                
+                if month_key not in monthly_data:
+                    monthly_data[month_key] = {"pnl": 0, "trades": 0, "wins": 0}
+                monthly_data[month_key]["pnl"] += pnl
+                monthly_data[month_key]["trades"] += 1
+                if pnl > 0:
+                    monthly_data[month_key]["wins"] += 1
+            except:
+                pass
+    
+    # Build monthly list
+    sorted_months = sorted(monthly_data.keys())
+    monthly_list = []
+    for month in sorted_months:
+        data = monthly_data[month]
+        win_rate = (data["wins"] / data["trades"] * 100) if data["trades"] > 0 else 0
+        monthly_list.append({
+            "month": month,
+            "pnl_ars": round(data["pnl"], 2),
+            "pnl_usd": round(data["pnl"] / ccl, 2) if ccl > 0 else 0,
+            "trades": data["trades"],
+            "win_rate": round(win_rate, 1)
+        })
+    
+    return {
+        "monthly_data": monthly_list,
+        "total_closed_trades": len(closed_positions),
+        "total_realized_pnl_ars": round(total_pnl_ars, 2),
+        "total_realized_pnl_usd": round(total_pnl_ars / ccl, 2) if ccl > 0 else 0,
+        "period_start": sorted_months[0] if sorted_months else None
+    }
+
+
+@router.get("/trades/snapshots")
+def api_snapshots(current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    """Get portfolio snapshots for Argentina."""
+    snapshots = db.query(models.PortfolioSnapshot).filter(
+        models.PortfolioSnapshot.user_id == current_user.id
+    ).order_by(models.PortfolioSnapshot.date.desc()).limit(30).all()
+    
+    return [{
+        "date": s.date,
+        "argentina_invested_usd": s.argentina_invested_usd or 0,
+        "argentina_value_usd": s.argentina_value_usd or 0,
+        "argentina_pnl_usd": s.argentina_pnl_usd or 0
+    } for s in snapshots]
+

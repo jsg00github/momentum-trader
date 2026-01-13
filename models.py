@@ -110,6 +110,9 @@ class ArgentinaPosition(Base):
     hypothesis = Column(String, nullable=True)
     notes = Column(String, nullable=True)
     
+    # For CEDEARs: store the country of the underlying asset (auto-detected)
+    underlying_country = Column(String, nullable=True)  # USA, Brazil, China, etc.
+    
     status = Column(String, default="OPEN")
     exit_date = Column(String, nullable=True)
     exit_price = Column(Float, nullable=True)

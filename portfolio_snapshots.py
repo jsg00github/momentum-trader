@@ -85,9 +85,20 @@ def take_snapshot(user_id: int = None, db: Session = None):
                 pass
 
             # --- Argentina Metrics ---
+            # Argentina positions are in ARS - must convert to USD using CCL rate
             arg_query = db.query(models.ArgentinaPosition).filter(models.ArgentinaPosition.user_id == user.id).all()
-            arg_invested = sum(p.entry_price * p.shares for p in arg_query) # This is ARS or USD? Model needs clarification.
-            # Assuming consolidated USD for simplicity or 0 if complex
+            arg_invested_ars = sum(p.entry_price * p.shares for p in arg_query)
+            
+            # Get CCL rate for conversion
+            try:
+                import argentina_data
+                rates = argentina_data.get_dolar_rates()
+                ccl_rate = rates.get('ccl', 1200)  # Default to 1200 if not available
+            except:
+                ccl_rate = 1200
+            
+            # Convert ARS to USD
+            arg_invested = arg_invested_ars / ccl_rate if ccl_rate > 0 else 0
             arg_value = arg_invested 
             arg_pnl = 0
 
@@ -153,6 +164,19 @@ def take_snapshot(user_id: int = None, db: Session = None):
         if close_db:
             db.close()
 
+import math
+
+def clean_nan(val, default=0):
+    """Replace NaN/None values with default for JSON serialization"""
+    if val is None:
+        return default
+    try:
+        if math.isnan(val) or math.isinf(val):
+            return default
+    except (TypeError, ValueError):
+        pass
+    return val
+
 def get_history(user_id: int, days: int = 365, db: Session = None):
     """Get portfolio history for a specific user."""
     close_db = False
@@ -166,7 +190,36 @@ def get_history(user_id: int, days: int = 365, db: Session = None):
             models.PortfolioSnapshot.user_id == user_id,
             models.PortfolioSnapshot.date >= cutoff
         ).order_by(models.PortfolioSnapshot.date.asc()).all()
-        return snapshots
+        
+        # Build history with calculated daily changes
+        history = []
+        prev_value = None
+        for s in snapshots:
+            current_value = clean_nan(s.total_value_usd) or 0
+            daily_change = 0
+            daily_change_pct = 0
+            
+            if prev_value is not None and prev_value > 0:
+                daily_change = current_value - prev_value
+                daily_change_pct = (daily_change / prev_value) * 100
+            
+            history.append({
+                "date": s.date,
+                "total_invested_usd": clean_nan(s.total_invested_usd),
+                "total_value_usd": clean_nan(s.total_value_usd),
+                "total_pnl_usd": clean_nan(s.total_pnl_usd),
+                "total_pnl_pct": clean_nan(s.total_pnl_pct),
+                "usa_invested_usd": clean_nan(s.usa_invested_usd),
+                "usa_value_usd": clean_nan(s.usa_value_usd),
+                "usa_pnl_usd": clean_nan(s.usa_pnl_usd),
+                # Additional fields for frontend charts
+                "total_equity": current_value,
+                "dailyChange": round(daily_change, 2),
+                "dailyChangePct": round(daily_change_pct, 2)
+            })
+            prev_value = current_value
+        
+        return history
     finally:
         if close_db:
             db.close()
@@ -178,25 +231,149 @@ def get_latest(user_id: int, db: Session = None):
         db = SessionLocal()
         close_db = True
     try:
-        return db.query(models.PortfolioSnapshot).filter(
+        s = db.query(models.PortfolioSnapshot).filter(
             models.PortfolioSnapshot.user_id == user_id
         ).order_by(models.PortfolioSnapshot.date.desc()).first()
+        if not s:
+            return None
+        return {
+            "date": s.date,
+            "total_invested_usd": clean_nan(s.total_invested_usd),
+            "total_value_usd": clean_nan(s.total_value_usd),
+            "total_pnl_usd": clean_nan(s.total_pnl_usd),
+            "total_pnl_pct": clean_nan(s.total_pnl_pct),
+            "usa_value_usd": clean_nan(s.usa_value_usd),
+            "argentina_value_usd": clean_nan(s.argentina_value_usd),
+            "crypto_value_usd": clean_nan(s.crypto_value_usd),
+        }
     finally:
         if close_db:
             db.close()
 
 def get_geographic_distribution(user_id: int, db: Session = None):
-    """Get geo distribution for a user."""
-    snapshot = get_latest(user_id, db)
-    if not snapshot:
-        return {}
-        
-    total = snapshot.total_value_usd or 1
-    return {
-        "usa": {"value": snapshot.usa_value_usd, "pct": (snapshot.usa_value_usd/total)*100},
-        "argentina": {"value": snapshot.argentina_value_usd, "pct": (snapshot.argentina_value_usd/total)*100},
-        "crypto": {"value": snapshot.crypto_value_usd, "pct": (snapshot.crypto_value_usd/total)*100},
+    """
+    Get geographic distribution for a user.
+    - CEDEARs are classified by their underlying country (from DB or fallback mapping)
+    - Crypto is EXCLUDED from geographic distribution
+    - Only includes trades and argentina_positions
+    """
+    import price_service
+    
+    # CEDEAR origin mapping (fallback for positions without underlying_country)
+    CEDEAR_ORIGINS = {
+        # USA
+        'AAPL': 'usa', 'MSFT': 'usa', 'GOOGL': 'usa', 'GOOG': 'usa', 'AMZN': 'usa', 'TSLA': 'usa',
+        'META': 'usa', 'NVDA': 'usa', 'NFLX': 'usa', 'AMD': 'usa', 'INTC': 'usa', 'PYPL': 'usa',
+        'DIS': 'usa', 'KO': 'usa', 'PEP': 'usa', 'MCD': 'usa', 'NKE': 'usa', 'BA': 'usa',
+        'JPM': 'usa', 'GS': 'usa', 'V': 'usa', 'MA': 'usa', 'WMT': 'usa', 'HD': 'usa',
+        'PFE': 'usa', 'JNJ': 'usa', 'MRNA': 'usa', 'CVX': 'usa', 'XOM': 'usa', 'T': 'usa',
+        'VZ': 'usa', 'SBUX': 'usa', 'UBER': 'usa', 'ABNB': 'usa', 'COIN': 'usa', 'SQ': 'usa',
+        'SNAP': 'usa', 'SPOT': 'usa', 'ZM': 'usa', 'DOCU': 'usa', 'SHOP': 'usa', 'ETSY': 'usa',
+        'SPY': 'usa', 'QQQ': 'usa', 'ARKK': 'usa', 'MELI': 'usa', 'GLOB': 'usa', 'MSTR': 'usa',
+        # Brasil
+        'VALE': 'brasil', 'PBR': 'brasil', 'ITUB': 'brasil', 'BBD': 'brasil', 'ABEV': 'brasil',
+        # China
+        'BABA': 'china', 'JD': 'china', 'PDD': 'china', 'BIDU': 'china', 'NIO': 'china',
+        'XPEV': 'china', 'LI': 'china', 'TME': 'china',
+        # Europe
+        'SAP': 'europa', 'ASML': 'europa', 'NVO': 'europa', 'AZN': 'europa', 'BP': 'europa',
+        'HSBC': 'europa', 'UL': 'europa', 'DEO': 'europa',
     }
+    
+    # Normalize country names from DB to our internal keys
+    COUNTRY_NORMALIZE = {
+        'USA': 'usa', 'United States': 'usa',
+        'Brazil': 'brasil', 'Brasil': 'brasil',
+        'China': 'china',
+        'Europe': 'europa', 'Germany': 'europa', 'United Kingdom': 'europa', 
+        'France': 'europa', 'Spain': 'europa', 'Italy': 'europa',
+        'Switzerland': 'europa', 'Netherlands': 'europa',
+        'Argentina': 'argentina',
+        'Japan': 'japan',
+        'South Korea': 'south_korea', 'Korea': 'south_korea',
+        'India': 'india',
+        'Mexico': 'mexico',
+    }
+    
+    # Initialize distribution
+    distribution = {
+        'usa': {'value': 0, 'count': 0},
+        'brasil': {'value': 0, 'count': 0},
+        'china': {'value': 0, 'count': 0},
+        'europa': {'value': 0, 'count': 0},
+        'argentina': {'value': 0, 'count': 0},
+        'japan': {'value': 0, 'count': 0},
+        'south_korea': {'value': 0, 'count': 0},
+        'india': {'value': 0, 'count': 0},
+        'mexico': {'value': 0, 'count': 0},
+    }
+    
+    # Get CCL rate for Argentina ARS to USD conversion
+    try:
+        import argentina_data
+        rates = argentina_data.get_dolar_rates()
+        ccl_rate = rates.get('ccl', 1200)
+    except:
+        ccl_rate = 1200
+    
+    # 1. Get USA direct trades
+    usa_trades = db.query(models.Trade).filter(
+        models.Trade.user_id == user_id,
+        models.Trade.status == "OPEN"
+    ).all()
+    
+    for t in usa_trades:
+        if not t.ticker:
+            continue
+        # All USA direct trades are classified as USA (values already in USD)
+        value = (t.entry_price or 0) * (t.shares or 0)
+        distribution['usa']['value'] += value
+        distribution['usa']['count'] += 1
+    
+    # 2. Get Argentina positions (CEDEARs and local stocks)
+    arg_positions = db.query(models.ArgentinaPosition).filter(
+        models.ArgentinaPosition.user_id == user_id,
+        models.ArgentinaPosition.status == "OPEN"
+    ).all()
+    
+    for pos in arg_positions:
+        if not pos.ticker:
+            continue
+        ticker_upper = pos.ticker.upper().replace('.BA', '')
+        # Argentina values are in ARS - convert to USD
+        value_ars = (pos.entry_price or 0) * (pos.shares or 0)
+        value = value_ars / ccl_rate if ccl_rate > 0 else 0
+        
+        # Priority 1: Use underlying_country from DB (auto-detected when position was created)
+        origin = None
+        if pos.underlying_country:
+            origin = COUNTRY_NORMALIZE.get(pos.underlying_country, pos.underlying_country.lower())
+        
+        # Priority 2: Fallback to hardcoded mapping for CEDEARs
+        if not origin or origin not in distribution:
+            origin = CEDEAR_ORIGINS.get(ticker_upper)
+        
+        # Priority 3: Default to Argentina for unknown local stocks
+        if not origin or origin not in distribution:
+            origin = 'argentina'
+        
+        distribution[origin]['value'] += value
+        distribution[origin]['count'] += 1
+    
+    # Calculate total (excluding crypto)
+    total = sum(d['value'] for d in distribution.values()) or 1
+    
+    # Calculate percentages and filter empty regions
+    result = {}
+    for region, data in distribution.items():
+        if data['value'] > 0 or data['count'] > 0:
+            result[region] = {
+                'value': round(data['value'], 2),
+                'count': data['count'],
+                'pct': round((data['value'] / total) * 100, 2)
+            }
+    
+    return result
 
 def rebuild_history(user_id: int, db: Session):
     """
@@ -228,10 +405,19 @@ def rebuild_history(user_id: int, db: Session):
         if not dates: return
         
         start_date = min(dates)
+        # SANITY CHECK: Don't process dates significantly in the past (e.g. bad CSV imports with year 0001)
+        if start_date.year < 2000:
+            print(f"[Snapshots] Warning: Found suspiciously old date {start_date}. Clamping to 2020-01-01.")
+            from datetime import date
+            start_date = date(2020, 1, 1) # Default to recent history if bad dates found
+
         end_date = datetime.now().date()
         
+        print(f"[Snapshots] Rebuilding from {start_date} to {end_date}")
+
         # 3. Iterate days
         current = start_date
+        batch_counter = 0
         while current <= end_date:
             curr_str = current.strftime("%Y-%m-%d")
             
@@ -302,9 +488,16 @@ def rebuild_history(user_id: int, db: Session):
             # Safer to sum them if we have ARG data, but ARG data might not be historical in this loop.
             # We'll just update totals to match USA for now to ensure chart works.
             # If we had Arg data we should sum it.
+            # Update Global Totals
             snapshot.total_invested_usd = snapshot.usa_invested_usd + (snapshot.argentina_invested_usd or 0) + (snapshot.crypto_invested_usd or 0)
             snapshot.total_pnl_usd = snapshot.usa_pnl_usd + (snapshot.argentina_pnl_usd or 0) + (snapshot.crypto_pnl_usd or 0)
             snapshot.total_value_usd = snapshot.total_invested_usd + snapshot.total_pnl_usd
+            
+            # Batch commit to prevent massive transactions
+            batch_counter += 1
+            if batch_counter >= 30:
+                db.commit()
+                batch_counter = 0
             
             current += timedelta(days=1)
             

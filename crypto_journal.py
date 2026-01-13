@@ -118,21 +118,18 @@ def get_positions(current_user: models.User = Depends(auth.get_current_user), db
         pos_list.append(p)
         tickers_to_fetch.add(p.ticker)
     
-    # 3. Live Prices (Optional, but good for Manual trades updates)
+    # 3. Live Prices from price_service cache (fast)
+    import price_service
     live_prices = {}
-    try:
-        import ccxt
-        exchange = ccxt.binance()
-        all_tickers = exchange.fetch_tickers()
-        for symbol, data in all_tickers.items():
-             if symbol.endswith('/USDT'):
-                base = symbol.split('/')[0]
-                if base in tickers_to_fetch:
-                    live_prices[base] = data['last']
-    except:
-        pass
     
-    for stable in ['USDT', 'USDC']: live_prices[stable] = 1.0
+    for ticker in tickers_to_fetch:
+        price_data = price_service.get_crypto_price(ticker.upper())
+        if price_data and price_data.get('price'):
+            live_prices[ticker] = price_data['price']
+    
+    # Stablecoins always = 1.0
+    for stable in ['USDT', 'USDC', 'DAI', 'FDUSD']: 
+        live_prices[stable] = 1.0
     
     # 4. Enrich
     enriched_positions = []
@@ -361,3 +358,188 @@ def download_template():
     response = StreamingResponse(iter([stream.getvalue()]), media_type="text/csv")
     response.headers["Content-Disposition"] = "attachment; filename=crypto_trades_template.csv"
     return response
+
+
+# --- ANALYTICS ENDPOINTS ---
+
+@router.get("/api/crypto/trades/analytics/open")
+def get_crypto_open_analytics(current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    """Get open positions analytics for Crypto portfolio."""
+    
+    # Get positions
+    positions = db.query(models.CryptoPosition).filter(
+        models.CryptoPosition.user_id == current_user.id
+    ).all()
+    
+    total_invested = 0
+    total_value = 0
+    active_count = len(positions)
+    
+    # Holdings and distributions
+    holdings_data = []
+    sector_data = {}  # Category: Layer1, DeFi, Stablecoin, etc
+    asset_types = {'Layer1': 0, 'DeFi': 0, 'Stablecoin': 0, 'Other': 0}
+    
+    # Crypto categories
+    CRYPTO_CATEGORIES = {
+        'BTC': 'Layer1', 'ETH': 'Layer1', 'SOL': 'Layer1', 'ADA': 'Layer1', 'DOT': 'Layer1',
+        'LINK': 'DeFi', 'UNI': 'DeFi', 'AAVE': 'DeFi', 'CAKE': 'DeFi', 'SUSHI': 'DeFi',
+        'USDT': 'Stablecoin', 'USDC': 'Stablecoin', 'DAI': 'Stablecoin', 'FDUSD': 'Stablecoin'
+    }
+    
+    # Get live prices from price_service cache (fast)
+    import price_service
+    live_prices = {}
+    
+    for pos in positions:
+        price_data = price_service.get_crypto_price(pos.ticker.upper())
+        if price_data and price_data.get('price'):
+            live_prices[pos.ticker] = price_data['price']
+    
+    # Stablecoins always = 1.0
+    for stable in ['USDT', 'USDC', 'DAI', 'FDUSD']: 
+        live_prices[stable] = 1.0
+    
+    for pos in positions:
+        invested = pos.amount * pos.entry_price
+        price = live_prices.get(pos.ticker, pos.current_price or pos.entry_price)
+        value = pos.amount * price
+        pnl = value - invested
+        
+        total_invested += invested
+        total_value += value
+        
+        # Asset type and sector tracking
+        category = CRYPTO_CATEGORIES.get(pos.ticker.upper(), 'Other')
+        if category in asset_types:
+            asset_types[category] += value
+        else:
+            asset_types['Other'] += value
+            
+        if category not in sector_data:
+            sector_data[category] = 0
+        sector_data[category] += value
+        
+        # Holdings data
+        pct = (value / total_value * 100) if total_value > 0 else 0
+        holdings_data.append({
+            'ticker': pos.ticker,
+            'name': pos.ticker,
+            'shares': pos.amount,
+            'value': round(value, 2),
+            'pnl': round(pnl, 2),
+            'pct': round(pct, 2),
+            'beta': 1.5,  # Crypto is generally high beta
+            'pe': 0  # N/A for crypto
+        })
+    
+    # Sort holdings by value
+    holdings_data.sort(key=lambda x: x['value'], reverse=True)
+    
+    # Recalculate percentages
+    for h in holdings_data:
+        h['pct'] = round((h['value'] / total_value * 100) if total_value > 0 else 0, 2)
+    
+    unrealized_pnl = total_value - total_invested
+    
+    # Convert to list formats
+    sector_allocation = [{'sector': k, 'value': round(v, 2)} for k, v in sector_data.items()]
+    sector_allocation.sort(key=lambda x: x['value'], reverse=True)
+    asset_allocation = [{'type': k, 'value': round(v, 2)} for k, v in asset_types.items() if v > 0]
+    
+    # Suggestions
+    suggestions = []
+    if total_invested > 0:
+        pnl_pct = (unrealized_pnl / total_invested) * 100
+        if pnl_pct < -20:
+            suggestions.append({"type": "warning", "message": f"Portfolio down {pnl_pct:.1f}%. Consider DCA or rebalancing."})
+        elif pnl_pct > 50:
+            suggestions.append({"type": "info", "message": f"Excellent gains! +{pnl_pct:.1f}%. Consider taking profits."})
+    
+    if len(holdings_data) < 3:
+        suggestions.append({"type": "info", "message": "Low diversification. Consider adding more assets."})
+    
+    return {
+        "exposure": {
+            "total_invested": round(total_invested, 2),
+            "total_value": round(total_value, 2),
+            "unrealized_pnl": round(unrealized_pnl, 2),
+            "active_count": active_count,
+            "portfolio_beta": 1.5,
+            "portfolio_pe": 0
+        },
+        "asset_allocation": asset_allocation,
+        "sector_allocation": sector_allocation,
+        "holdings": holdings_data[:10],
+        "suggestions": suggestions,
+        "upcoming_dividends": []
+    }
+
+
+@router.get("/api/crypto/trades/analytics/performance")
+def get_crypto_performance(current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    """Get crypto performance analytics (P&L over time)."""
+    
+    # Get snapshots for crypto data
+    snapshots = db.query(models.PortfolioSnapshot).filter(
+        models.PortfolioSnapshot.user_id == current_user.id
+    ).order_by(models.PortfolioSnapshot.date.asc()).all()
+    
+    line_data = {
+        "dates": [s.date for s in snapshots],
+        "crypto_value": [s.crypto_value_usd or 0 for s in snapshots],
+        "crypto_invested": [s.crypto_invested_usd or 0 for s in snapshots],
+        "crypto_pnl": [s.crypto_pnl_usd or 0 for s in snapshots]
+    }
+    
+    # Current portfolio metrics
+    positions = db.query(models.CryptoPosition).filter(
+        models.CryptoPosition.user_id == current_user.id
+    ).all()
+    
+    current_invested = sum(p.amount * p.entry_price for p in positions)
+    current_value = sum(p.amount * (p.current_price or p.entry_price) for p in positions)
+    current_pnl = current_value - current_invested
+    
+    # Top gainers/losers
+    performance_by_coin = []
+    for pos in positions:
+        invested = pos.amount * pos.entry_price
+        value = pos.amount * (pos.current_price or pos.entry_price)
+        pnl = value - invested
+        pnl_pct = (pnl / invested * 100) if invested > 0 else 0
+        performance_by_coin.append({
+            "ticker": pos.ticker,
+            "pnl": round(pnl, 2),
+            "pnl_pct": round(pnl_pct, 2)
+        })
+    
+    # Sort by P&L%
+    performance_by_coin.sort(key=lambda x: x["pnl_pct"], reverse=True)
+    
+    return {
+        "line_data": line_data,
+        "current_metrics": {
+            "total_invested": round(current_invested, 2),
+            "total_value": round(current_value, 2),
+            "total_pnl": round(current_pnl, 2),
+            "roi_pct": round((current_pnl / current_invested * 100) if current_invested > 0 else 0, 2)
+        },
+        "top_performers": performance_by_coin[:5],
+        "worst_performers": performance_by_coin[-5:][::-1] if len(performance_by_coin) > 5 else []
+    }
+
+
+@router.get("/api/crypto/trades/snapshots")
+def get_crypto_snapshots(current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    """Get crypto portfolio snapshots."""
+    snapshots = db.query(models.PortfolioSnapshot).filter(
+        models.PortfolioSnapshot.user_id == current_user.id
+    ).order_by(models.PortfolioSnapshot.date.desc()).limit(30).all()
+    
+    return [{
+        "date": s.date,
+        "crypto_invested_usd": s.crypto_invested_usd or 0,
+        "crypto_value_usd": s.crypto_value_usd or 0,
+        "crypto_pnl_usd": s.crypto_pnl_usd or 0
+    } for s in snapshots]

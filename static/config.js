@@ -4,21 +4,16 @@
 (function () {
     const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
-    // If local, assume backend is on port 8000 (standard FastAPI default)
-    // If production (Vercel/Railway), assume relative path /api or specific URL
-
-    // NOTE: If using Vercel rewrites to backend, relative '/api' is best.
-    // If Vercel is just frontend and hits Railway directly, we need full URL.
-    // For now, let's assume Vercel rewrites or standard relative path behavior.
-
-    // However, the guide implies separating them. 
-    // "const API_URL = ... ? 'http://localhost:8000' : 'https://tu-url.up.railway.app';"
-
-    // Let's set a placeholder that the user MUST update after Railway deploy
     // URL de Producción (Railway)
     const RAILWAY_URL = "https://web-production-5f603.up.railway.app";
 
-    window.API_BASE = isLocal ? "http://localhost:8000/api" : `${RAILWAY_URL}/api`;
+    // For local dev, use the SAME hostname as the browser to avoid CORS issues
+    // This ensures 127.0.0.1:8000 or localhost:8000 matches the frontend origin
+    if (isLocal) {
+        window.API_BASE = `http://${window.location.hostname}:8000/api`;
+    } else {
+        window.API_BASE = `${RAILWAY_URL}/api`;
+    }
 
     console.log("[Config] API_BASE set to:", window.API_BASE);
 })();

@@ -2,6 +2,19 @@ const { useState, useEffect, useMemo, useRef, Fragment } = React;
 // Use global API_BASE from config.js, or fallback to relative (for safety)
 const API_BASE = window.API_BASE || "http://localhost:8000/api";
 
+// Helper function for authenticated fetch calls
+const authFetch = (url, options = {}) => {
+    const token = localStorage.getItem('token');
+    const headers = {
+        'Content-Type': 'application/json',
+        ...(options.headers || {}),
+    };
+    if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+    }
+    return fetch(url, { ...options, headers });
+};
+
 // --- Trading Calendar Utilities ---
 // US Market Holidays (NYSE/NASDAQ) - Updated annually
 // Format: 'YYYY-MM-DD'
@@ -144,12 +157,14 @@ function SectorAllocationChart({ data }) {
 // 2. Portfolio Benchmark Chart (Line vs Monthly Comparison)
 function PortfolioBenchmarkChart({ performanceData }) {
     const [viewMode, setViewMode] = useState('line'); // 'line' or 'bar'
+    const [valueMode, setValueMode] = useState('percent'); // 'percent' or 'dollar'
     const chartContainerRef = useRef(null);
     const chartRef = useRef(null);
     const { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid, Cell, PieChart, Pie } = Recharts;
 
     useEffect(() => {
         if (viewMode === 'bar' || !chartContainerRef.current || !performanceData || !performanceData.line_data) return;
+        if (!performanceData.line_data.dates || !performanceData.line_data.portfolio) return;
 
         const chart = LightweightCharts.createChart(chartContainerRef.current, {
             layout: { background: { color: 'transparent' }, textColor: '#94a3b8' },
@@ -173,13 +188,25 @@ function PortfolioBenchmarkChart({ performanceData }) {
         });
 
         const lineData = performanceData.line_data;
+
+        // Calculate data based on valueMode
+        let pValues = lineData.portfolio || [];
+        let sValues = lineData.spy || [];
+
+        if (valueMode === 'dollar' && lineData.portfolio_dollar) {
+            pValues = lineData.portfolio_dollar;
+        }
+        if (valueMode === 'dollar' && lineData.spy_dollar) {
+            sValues = lineData.spy_dollar;
+        }
+
         const pData = lineData.dates.map((date, i) => ({
             time: date,
-            value: lineData.portfolio[i]
+            value: pValues[i] || 0
         }));
         const sData = lineData.dates.map((date, i) => ({
             time: date,
-            value: lineData.spy[i]
+            value: sValues[i] || 0
         }));
 
         portfolioSeries.setData(pData);
@@ -188,25 +215,35 @@ function PortfolioBenchmarkChart({ performanceData }) {
         // Add Floating Labels at the end of the lines
         if (pData.length > 0) {
             const lastP = pData[pData.length - 1];
-            portfolioSeries.createPriceLine({
-                price: lastP.value,
-                color: '#3b82f6',
-                lineWidth: 1,
-                lineStyle: 2,
-                axisLabelVisible: true,
-                title: `${lastP.value >= 0 ? '+' : ''}${lastP.value.toFixed(2)}%`,
-            });
+            if (lastP && lastP.value !== undefined && lastP.value !== null) {
+                const labelText = valueMode === 'percent'
+                    ? `${lastP.value >= 0 ? '+' : ''}${(lastP.value || 0).toFixed(2)}%`
+                    : `$${(lastP.value || 0).toLocaleString()}`;
+                portfolioSeries.createPriceLine({
+                    price: lastP.value,
+                    color: '#3b82f6',
+                    lineWidth: 1,
+                    lineStyle: 2,
+                    axisLabelVisible: true,
+                    title: labelText,
+                });
+            }
         }
         if (sData.length > 0) {
             const lastS = sData[sData.length - 1];
-            spySeries.createPriceLine({
-                price: lastS.value,
-                color: '#d946ef',
-                lineWidth: 1,
-                lineStyle: 2,
-                axisLabelVisible: true,
-                title: `${lastS.value >= 0 ? '+' : ''}${lastS.value.toFixed(2)}%`,
-            });
+            if (lastS && lastS.value !== undefined && lastS.value !== null) {
+                const labelText = valueMode === 'percent'
+                    ? `${lastS.value >= 0 ? '+' : ''}${(lastS.value || 0).toFixed(2)}%`
+                    : `$${(lastS.value || 0).toLocaleString()}`;
+                spySeries.createPriceLine({
+                    price: lastS.value,
+                    color: '#d946ef',
+                    lineWidth: 1,
+                    lineStyle: 2,
+                    axisLabelVisible: true,
+                    title: labelText,
+                });
+            }
         }
 
         chart.timeScale().fitContent();
@@ -223,27 +260,47 @@ function PortfolioBenchmarkChart({ performanceData }) {
             window.removeEventListener('resize', handleResize);
             chart.remove();
         }
-    }, [viewMode, performanceData]);
+    }, [viewMode, valueMode, performanceData]);
 
     return (
         <div className="bg-slate-800/40 p-6 rounded-2xl border border-slate-700 shadow-2xl backdrop-blur-sm">
-            <div className="flex justify-between items-center mb-6">
-                <h3 className="text-slate-400 text-xs font-bold uppercase tracking-widest flex items-center gap-2">
-                    <span className="text-lg">📈</span> Performance vs Benchmark
-                </h3>
-                <div className="flex items-center gap-2 bg-slate-900/50 p-1 rounded-lg border border-slate-700">
-                    <button
-                        onClick={() => setViewMode('line')}
-                        className={`px-3 py-1 rounded-md text-[10px] font-bold transition flex items-center gap-1.5 ${viewMode === 'line' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' : 'text-slate-500 hover:text-slate-300'}`}
-                    >
-                        <span>📉</span> LINE
-                    </button>
-                    <button
-                        onClick={() => setViewMode('bar')}
-                        className={`px-3 py-1 rounded-md text-[10px] font-bold transition flex items-center gap-1.5 ${viewMode === 'bar' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' : 'text-slate-500 hover:text-slate-300'}`}
-                    >
-                        <span>📊</span> MONTHLY BARS
-                    </button>
+            <div className="flex flex-col gap-3 mb-6">
+                <div className="flex justify-between items-center">
+                    <h3 className="text-slate-400 text-xs font-bold uppercase tracking-widest flex items-center gap-2">
+                        <span className="text-lg">📈</span> Performance vs Benchmark
+                    </h3>
+                    <div className="flex items-center gap-2">
+                        {/* Dollar/Percent Toggle */}
+                        <div className="flex items-center gap-1 bg-slate-900/50 p-1 rounded-lg border border-slate-700">
+                            <button
+                                onClick={() => setValueMode('percent')}
+                                className={`px-2 py-1 rounded-md text-[10px] font-bold transition ${valueMode === 'percent' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' : 'text-slate-500 hover:text-slate-300'}`}
+                            >
+                                📈 %
+                            </button>
+                            <button
+                                onClick={() => setValueMode('dollar')}
+                                className={`px-2 py-1 rounded-md text-[10px] font-bold transition ${valueMode === 'dollar' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/40' : 'text-slate-500 hover:text-slate-300'}`}
+                            >
+                                💵 $
+                            </button>
+                        </div>
+                        {/* Line/Bar Toggle */}
+                        <div className="flex items-center gap-1 bg-slate-900/50 p-1 rounded-lg border border-slate-700">
+                            <button
+                                onClick={() => setViewMode('line')}
+                                className={`px-2 py-1 rounded-md text-[10px] font-bold transition flex items-center gap-1 ${viewMode === 'line' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' : 'text-slate-500 hover:text-slate-300'}`}
+                            >
+                                📉 LINE
+                            </button>
+                            <button
+                                onClick={() => setViewMode('bar')}
+                                className={`px-2 py-1 rounded-md text-[10px] font-bold transition flex items-center gap-1 ${viewMode === 'bar' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' : 'text-slate-500 hover:text-slate-300'}`}
+                            >
+                                📊 BARS
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -351,6 +408,7 @@ function RiskGauge({ riskAmount, totalCapital }) {
 // 4. Historical Portfolio Analytics (Snapshots)
 function PortfolioHistoryChart({ data }) {
     const [plViewMode, setPlViewMode] = useState('dollar'); // 'dollar' or 'percent'
+    const [timeframe, setTimeframe] = useState('1M'); // '1D', '1W', '1M', 'YTD', '1Y', 'Max'
 
     if (!data || data.length < 2) {
         return (
@@ -367,15 +425,67 @@ function PortfolioHistoryChart({ data }) {
         CartesianGrid, BarChart, Bar, Cell, ReferenceLine
     } = Recharts;
 
-    const processed = data.map((d, i) => {
-        const prev = i > 0 ? data[i - 1] : d;
-        const dailyChange = d.total_equity - prev.total_equity;
-        const dailyChangePct = prev.total_equity > 0 ? (dailyChange / prev.total_equity) * 100 : 0;
+    // Filter data by timeframe
+    const filterByTimeframe = (inputData) => {
+        const now = new Date();
+        let cutoffDate = new Date(0); // Default to include all
+
+        switch (timeframe) {
+            case '1D':
+                cutoffDate = new Date(now);
+                cutoffDate.setDate(cutoffDate.getDate() - 1);
+                break;
+            case '1W':
+                cutoffDate = new Date(now);
+                cutoffDate.setDate(cutoffDate.getDate() - 7);
+                break;
+            case '1M':
+                cutoffDate = new Date(now);
+                cutoffDate.setMonth(cutoffDate.getMonth() - 1);
+                break;
+            case 'YTD':
+                cutoffDate = new Date(now.getFullYear(), 0, 1);
+                break;
+            case '1Y':
+                cutoffDate = new Date(now);
+                cutoffDate.setFullYear(cutoffDate.getFullYear() - 1);
+                break;
+            case 'Max':
+            default:
+                cutoffDate = new Date(0);
+        }
+
+        return inputData.filter(d => {
+            const itemDate = new Date(d.date);
+            return itemDate >= cutoffDate;
+        });
+    };
+
+    const filteredData = filterByTimeframe(data);
+
+    const processed = filteredData.map((d, i) => {
+        const prev = i > 0 ? filteredData[i - 1] : d;
+        const equity = d.total_equity || d.total_value_usd || 0;
+        const prevEquity = prev.total_equity || prev.total_value_usd || 0;
+        const dailyChange = equity - prevEquity;
+        const dailyChangePct = prevEquity > 0 ? (dailyChange / prevEquity) * 100 : 0;
+
+        // Use 'date' field from backend (not snapshot_date)
+        const dateStr = d.date || '';
+        let displayDate = 'N/A';
+        try {
+            const dateObj = new Date(dateStr);
+            if (!isNaN(dateObj.getTime())) {
+                displayDate = dateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+            }
+        } catch (e) { }
+
         return {
             ...d,
+            total_equity: equity,
             dailyChange,
             dailyChangePct,
-            displayDate: new Date(d.snapshot_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+            displayDate
         };
     });
 
@@ -433,24 +543,38 @@ function PortfolioHistoryChart({ data }) {
             </div>
 
             <div className="bg-slate-800/50 rounded-xl border border-slate-700 p-5 shadow-xl">
-                <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-slate-300 font-bold text-xs uppercase tracking-wider flex items-center gap-2">
-                        <span>📊 Daily P&L</span>
-                    </h3>
-                    {/* Toggle Buttons */}
-                    <div className="flex items-center gap-1 bg-slate-900/50 p-1 rounded-lg border border-slate-700">
-                        <button
-                            onClick={() => setPlViewMode('dollar')}
-                            className={`px-2.5 py-1 rounded-md text-[10px] font-bold transition ${plViewMode === 'dollar' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/40' : 'text-slate-500 hover:text-slate-300'}`}
-                        >
-                            💵 $
-                        </button>
-                        <button
-                            onClick={() => setPlViewMode('percent')}
-                            className={`px-2.5 py-1 rounded-md text-[10px] font-bold transition ${plViewMode === 'percent' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' : 'text-slate-500 hover:text-slate-300'}`}
-                        >
-                            📈 %
-                        </button>
+                <div className="flex flex-col gap-3 mb-4">
+                    <div className="flex justify-between items-center">
+                        <h3 className="text-slate-300 font-bold text-xs uppercase tracking-wider flex items-center gap-2">
+                            <span>📊 P&L</span>
+                        </h3>
+                        {/* Dollar/Percent Toggle */}
+                        <div className="flex items-center gap-1 bg-slate-900/50 p-1 rounded-lg border border-slate-700">
+                            <button
+                                onClick={() => setPlViewMode('dollar')}
+                                className={`px-2.5 py-1 rounded-md text-[10px] font-bold transition ${plViewMode === 'dollar' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/40' : 'text-slate-500 hover:text-slate-300'}`}
+                            >
+                                💵 $
+                            </button>
+                            <button
+                                onClick={() => setPlViewMode('percent')}
+                                className={`px-2.5 py-1 rounded-md text-[10px] font-bold transition ${plViewMode === 'percent' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' : 'text-slate-500 hover:text-slate-300'}`}
+                            >
+                                📈 %
+                            </button>
+                        </div>
+                    </div>
+                    {/* Timeframe Toggle */}
+                    <div className="flex justify-center gap-1">
+                        {['1D', '1W', '1M', 'YTD', '1Y', 'Max'].map(tf => (
+                            <button
+                                key={tf}
+                                onClick={() => setTimeframe(tf)}
+                                className={`px-2 py-1 rounded-md text-[9px] font-bold transition ${timeframe === tf ? 'bg-blue-600 text-white' : 'bg-[#1a1a1a] text-slate-400 hover:text-white border border-[#2a2a2a]'}`}
+                            >
+                                {tf}
+                            </button>
+                        ))}
                     </div>
                 </div>
                 <div className="h-[130px] w-full">
@@ -1061,6 +1185,7 @@ function TradeJournal() {
     const [premarket, setPremarket] = useState({}); // Pre-market data per ticker
     const [openAnalytics, setOpenAnalytics] = useState(null);
     const [snapshotData, setSnapshotData] = useState([]);
+    const [cachedSummary, setCachedSummary] = useState(null); // Instant load from last snapshot
     const [showSplitModal, setShowSplitModal] = useState(false);
     const [splitForm, setSplitForm] = useState({ ticker: '', splitType: 'reverse', ratio: '' });
     const [showAlertModal, setShowAlertModal] = useState(false);
@@ -1262,11 +1387,25 @@ function TradeJournal() {
         return sortConfig.direction === 'asc' ? '↑' : '↓';
     };
 
+    // STAGE 0: Instant load from cache (no external API calls)
+    const fetchCachedData = async () => {
+        try {
+            const cachedRes = await axios.get(`${API_BASE}/trades/cached-summary`);
+            const cached = cachedRes.data;
+            // Set cached values immediately for instant UI
+            if (cached) {
+                setCachedSummary(cached);
+            }
+        } catch (err) {
+            console.error("Cached summary not available:", err);
+        }
+    };
+
     // STAGE 1: Fast essential data (trades list + metrics from DB)
     const fetchEssentialData = async () => {
         setLoading(true);
         try {
-            // Load trades first (Crtical)
+            // Load trades first (Critical)
             try {
                 const tradesRes = await axios.get(`${API_BASE}/trades/list`);
                 setTrades(tradesRes.data.trades || []);
@@ -1320,17 +1459,7 @@ function TradeJournal() {
             const res = await axios.get(`${API_BASE}/trades/open-prices`);
             setLiveData(res.data);
             setLastUpdated(new Date());
-
-            // Also fetch pre-market for all open tickers
-            const openTickers = Object.keys(res.data);
-            openTickers.forEach(async (ticker) => {
-                try {
-                    const pm = await axios.get(`${API_BASE}/premarket/${ticker}`);
-                    setPremarket(prev => ({ ...prev, [ticker]: pm.data }));
-                } catch (e) {
-                    // Silently fail for individual tickers
-                }
-            });
+            // Removed: individual premarket calls per ticker - too slow
         } catch (e) {
             console.error(e);
         } finally {
@@ -1376,7 +1505,10 @@ function TradeJournal() {
 
 
     useEffect(() => {
-        // STAGE 1: Load essential data immediately (trades table renders fast)
+        // STAGE 0: Immediate load from cache (instant UI)
+        fetchCachedData();
+
+        // STAGE 1: Load essential data (trades table renders fast)
         fetchEssentialData();
         loadAlertSettings();
 
@@ -1505,7 +1637,8 @@ ${res.data.errors.join("\n")}`);
         }
     };
 
-    if (loading) return <div className="p-12 text-center text-slate-500">Loading Journal...</div>;
+    // Only show loading spinner if NO cached data AND no trades loaded yet
+    if (loading && !cachedSummary && trades.length === 0) return <div className="p-12 text-center text-slate-500">Loading Journal...</div>;
 
     // Helper for coloring EMAs
     const getEmaColor = (price, ema) => {
@@ -1520,8 +1653,18 @@ ${res.data.errors.join("\n")}`);
                 <div>
                     <h2 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2">
                         📊 Journal USA
+                        {(loading || refreshing) && (
+                            <span className="text-xs bg-blue-600/20 text-blue-400 px-2 py-1 rounded-full animate-pulse">
+                                ⟳ Syncing...
+                            </span>
+                        )}
+                        {!loading && !refreshing && cachedSummary?.snapshot_date && (
+                            <span className="text-xs text-slate-500">
+                                📸 {cachedSummary.snapshot_date}
+                            </span>
+                        )}
                         <button onClick={fetchLivePrices} disabled={refreshing} className="text-sm bg-slate-800 hover:bg-slate-700 border border-slate-700 px-2 py-1 rounded transition text-slate-400">
-                            {refreshing ? '↻ Syncing...' : `↻ Refresh Prices ${lastUpdated ? `(${lastUpdated.toLocaleTimeString()})` : ''}`}
+                            {refreshing ? '↻ Syncing...' : `↻ Refresh ${lastUpdated ? `(${lastUpdated.toLocaleTimeString()})` : ''}`}
                         </button>
                     </h2>
                 </div>
@@ -2235,23 +2378,48 @@ ${res.data.errors.join("\n")}`);
                             <div className="flex items-center gap-1"><div className="w-3 h-3 bg-red-900/40 rounded"></div> Price {'<'} EMA</div>
                         </div>
 
-                        {/* DEBUG PANEL */}
-                        <div className="mt-8 p-4 bg-slate-800/50 rounded border border-yellow-500/30 text-xs font-mono text-yellow-500">
-                            <h3 className="font-bold border-b border-yellow-500/30 mb-2">🔍 SYSTEM DIAGNOSTICS</h3>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <p>Total Trades Loaded: {trades.length}</p>
-                                    <p>Active Groups: {Object.keys(activeGroups).length}</p>
-                                    <p>History Groups: {Object.keys(historyGroups).length}</p>
-                                    <p>Active Tab: {activeTab}</p>
+                        {/* Trade History Summary Totals */}
+                        {activeTab === 'history' && Object.keys(historyGroups).length > 0 && (() => {
+                            const closedTrades = Object.values(historyGroups).flat();
+                            const totalClosedPL = closedTrades.reduce((sum, t) => sum + (t.pnl || 0), 0);
+                            const avgTradePercent = closedTrades.length > 0
+                                ? closedTrades.reduce((sum, t) => sum + ((t.pnl / (t.entry_price * t.shares)) * 100 || 0), 0) / closedTrades.length
+                                : 0;
+                            const avgDays = closedTrades.length > 0
+                                ? closedTrades.reduce((sum, t) => {
+                                    if (t.exit_date && t.entry_date) {
+                                        const days = Math.floor((new Date(t.exit_date) - new Date(t.entry_date)) / (1000 * 60 * 60 * 24));
+                                        return sum + days;
+                                    }
+                                    return sum;
+                                }, 0) / closedTrades.length
+                                : 0;
+                            return (
+                                <div className="mt-6 p-4 bg-slate-800/50 rounded-xl border border-slate-700">
+                                    <h3 className="text-sm font-bold text-slate-300 mb-3">📊 Trade History Summary</h3>
+                                    <div className="grid grid-cols-3 gap-4">
+                                        <div className="text-center">
+                                            <div className="text-[10px] text-slate-500 uppercase">Total Closed P&L</div>
+                                            <div className={`text-lg font-bold ${totalClosedPL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                                {totalClosedPL >= 0 ? '+' : ''}${totalClosedPL.toFixed(2)}
+                                            </div>
+                                        </div>
+                                        <div className="text-center">
+                                            <div className="text-[10px] text-slate-500 uppercase">Avg % per Trade</div>
+                                            <div className={`text-lg font-bold ${avgTradePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                                {avgTradePercent >= 0 ? '+' : ''}{avgTradePercent.toFixed(2)}%
+                                            </div>
+                                        </div>
+                                        <div className="text-center">
+                                            <div className="text-[10px] text-slate-500 uppercase">Avg Days Held</div>
+                                            <div className="text-lg font-bold text-white">
+                                                {Math.round(avgDays)} days
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div>
-                                    <p>API Status: {loading ? 'Loading...' : 'Idle'}</p>
-                                    <p>First Trade: {trades.length > 0 ? JSON.stringify(trades[0].ticker) : 'None'}</p>
-                                    <p>Live Data Keys: {Object.keys(liveData).length}</p>
-                                </div>
-                            </div>
-                        </div>
+                            );
+                        })()}
                     </div>
                 )
             }
@@ -3170,7 +3338,7 @@ function DetailView({ ticker, onClose, overrideMetrics }) {
                 notes: 'Added from Details'
             };
 
-            const response = await fetch('/api/watchlist/', {
+            const response = await authFetch('/api/watchlist/', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
@@ -4284,18 +4452,29 @@ function MarketDashboard({ onTickerClick }) {
 
     // AI Analyst State
     const [aiInsight, setAiInsight] = useState(null);
+    const [aiInsightMeta, setAiInsightMeta] = useState(null); // Cache info: session, generated_at, cached
     const [analyzing, setAnalyzing] = useState(false);
+
+    // Portfolio P&L State for Dashboard
+    const [portfolioMetrics, setPortfolioMetrics] = useState(null);
 
     const fetchInsight = () => {
         setAnalyzing(true);
         axios.get(`${API_BASE}/ai/insight?_t=${Date.now()}`)
             .then(res => {
                 setAiInsight(res.data.insight);
+                setAiInsightMeta({
+                    session: res.data.session || 'Live',
+                    generated_at: res.data.generated_at || 'Just now',
+                    cached: res.data.cached || false,
+                    next_update: res.data.next_update
+                });
                 setAnalyzing(false);
             })
             .catch(err => {
                 console.error("AI Error:", err);
                 setAiInsight("Error contacting AI Analyst.");
+                setAiInsightMeta(null);
                 setAnalyzing(false);
             });
     };
@@ -4326,6 +4505,8 @@ function MarketDashboard({ onTickerClick }) {
 
     useEffect(() => {
         setLoading(true);
+
+        // Fetch market status
         axios.get(`${API_BASE}/market-status?_t=${Date.now()}`)
             .then(res => {
                 setMarketData(res.data);
@@ -4334,6 +4515,15 @@ function MarketDashboard({ onTickerClick }) {
             .catch(err => {
                 console.error(err);
                 setLoading(false);
+            });
+
+        // Fetch portfolio metrics for P&L display
+        axios.get(`${API_BASE}/trades/unified/metrics`)
+            .then(res => {
+                setPortfolioMetrics(res.data);
+            })
+            .catch(err => {
+                console.error('Portfolio metrics error:', err);
             });
     }, []);
 
@@ -4390,277 +4580,292 @@ function MarketDashboard({ onTickerClick }) {
     const sorted3m = [...sectors].sort((a, b) => b['3m'] - a['3m']).slice(0, 5);
 
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-            {/* Main Content (9 Columns) */}
-            <div className="lg:col-span-8 space-y-8">
-                {/* AI Analyst Section */}
-                <div className="bg-gradient-to-r from-purple-900/40 to-slate-900/40 border border-purple-700/30 rounded-xl p-6 relative overflow-hidden shadow-lg">
-                    <div className="absolute top-0 right-0 p-4 opacity-10 pointer-events-none">
-                        <svg className="w-32 h-32 text-purple-400" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z" /></svg>
-                    </div>
+        <div className="space-y-6">
+            {/* My Portfolio widget removed - user requested */}
 
-                    {!aiInsight ? (
-                        <div className="flex flex-col items-center justify-center text-center py-4 relative z-10">
-                            <h2 className="text-xl font-bold text-white mb-2">🧠 Market Brain (AI Analyst)</h2>
-                            <p className="text-slate-400 text-sm mb-4">Powered by Google Gemini AI</p>
-                            <div className="flex gap-3 flex-wrap justify-center">
-                                <button
-                                    onClick={fetchInsight}
-                                    disabled={analyzing}
-                                    className={`px-5 py-2 rounded-lg font-bold text-white transition-all shadow-lg flex items-center gap-2 ${analyzing ? 'bg-purple-600/50 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-500 hover:scale-105'}`}
-                                >
-                                    {analyzing ? (
-                                        <><span className="animate-spin">🔄</span> Analyzing...</>
-                                    ) : (
-                                        <><span>📊</span> Market Analysis</>
-                                    )}
-                                </button>
-                                <button
-                                    onClick={() => {
-                                        setAnalyzing(true);
-                                        axios.get(`${API_BASE}/ai/portfolio-insight?_t=${Date.now()}`)
-                                            .then(res => { setAiInsight(res.data.insight); setAnalyzing(false); })
-                                            .catch(err => { setAiInsight("Error: " + (err.response?.data?.detail || err.message)); setAnalyzing(false); });
-                                    }}
-                                    disabled={analyzing}
-                                    className={`px-5 py-2 rounded-lg font-bold text-white transition-all shadow-lg flex items-center gap-2 ${analyzing ? 'bg-green-600/50 cursor-not-allowed' : 'bg-green-600 hover:bg-green-500 hover:scale-105'}`}
-                                >
-                                    <span>💼</span> Analyze My Portfolio
-                                </button>
-                            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+                {/* Main Content (9 Columns) */}
+                <div className="lg:col-span-8 space-y-8">
+                    {/* AI Analyst Section */}
+                    <div className="bg-gradient-to-r from-purple-900/40 to-slate-900/40 border border-purple-700/30 rounded-xl p-6 relative overflow-hidden shadow-lg">
+                        <div className="absolute top-0 right-0 p-4 opacity-10 pointer-events-none">
+                            <svg className="w-32 h-32 text-purple-400" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z" /></svg>
                         </div>
-                    ) : (
-                        <div className="relative z-10">
-                            <div className="flex items-center justify-between mb-4">
-                                <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                                    <span>🧠</span> AI ANALYST INSIGHT
-                                </h2>
-                                <div className="flex gap-2">
-                                    <button onClick={fetchInsight} className="text-purple-400 hover:text-purple-300 text-xs px-2 py-1 border border-purple-500/30 rounded">🔄 Refresh</button>
-                                    <button onClick={() => setAiInsight(null)} className="text-slate-500 hover:text-white text-xs px-2 py-1 border border-slate-600 rounded">✕ Clear</button>
+
+                        {!aiInsight ? (
+                            <div className="flex flex-col items-center justify-center text-center py-4 relative z-10">
+                                <h2 className="text-xl font-bold text-white mb-2">🧠 Market Brain (AI Analyst)</h2>
+                                <p className="text-slate-400 text-sm mb-4">Powered by Google Gemini AI</p>
+                                <div className="flex gap-3 flex-wrap justify-center">
+                                    <button
+                                        onClick={fetchInsight}
+                                        disabled={analyzing}
+                                        className={`px-5 py-2 rounded-lg font-bold text-white transition-all shadow-lg flex items-center gap-2 ${analyzing ? 'bg-purple-600/50 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-500 hover:scale-105'}`}
+                                    >
+                                        {analyzing ? (
+                                            <><span className="animate-spin">🔄</span> Analyzing...</>
+                                        ) : (
+                                            <><span>📊</span> Market Analysis</>
+                                        )}
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            setAnalyzing(true);
+                                            axios.get(`${API_BASE}/ai/portfolio-insight?_t=${Date.now()}`)
+                                                .then(res => { setAiInsight(res.data.insight); setAnalyzing(false); })
+                                                .catch(err => { setAiInsight("Error: " + (err.response?.data?.detail || err.message)); setAnalyzing(false); });
+                                        }}
+                                        disabled={analyzing}
+                                        className={`px-5 py-2 rounded-lg font-bold text-white transition-all shadow-lg flex items-center gap-2 ${analyzing ? 'bg-green-600/50 cursor-not-allowed' : 'bg-green-600 hover:bg-green-500 hover:scale-105'}`}
+                                    >
+                                        <span>💼</span> Analyze My Portfolio
+                                    </button>
                                 </div>
                             </div>
+                        ) : (
+                            <div className="relative z-10">
+                                <div className="flex items-center justify-between mb-2">
+                                    <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                                        <span>🧠</span> AI ANALYST INSIGHT
+                                    </h2>
+                                    <div className="flex gap-2">
+                                        <button onClick={fetchInsight} className="text-purple-400 hover:text-purple-300 text-xs px-2 py-1 border border-purple-500/30 rounded">🔄 Refresh</button>
+                                        <button onClick={() => setAiInsight(null)} className="text-slate-500 hover:text-white text-xs px-2 py-1 border border-slate-600 rounded">✕ Clear</button>
+                                    </div>
+                                </div>
+                                {/* Cache Info Badge */}
+                                {aiInsightMeta && (
+                                    <div className="flex items-center gap-2 mb-3 text-xs">
+                                        <span className={`px-2 py-0.5 rounded-full ${aiInsightMeta.cached ? 'bg-green-900/50 text-green-400 border border-green-700' : 'bg-yellow-900/50 text-yellow-400 border border-yellow-700'}`}>
+                                            {aiInsightMeta.cached ? '📦 Cached' : '⚡ Live'}
+                                        </span>
+                                        <span className="text-slate-500">{aiInsightMeta.session}</span>
+                                        <span className="text-slate-600">•</span>
+                                        <span className="text-slate-500">{aiInsightMeta.generated_at}</span>
+                                    </div>
+                                )}
 
-                            {/* Parse and render the insight beautifully */}
-                            {(() => {
-                                const text = aiInsight;
-                                const sentimentMatch = text.match(/\*\*Sentiment:\*\*\s*(\d+)\/100\s*\(([^)]+)\)/);
-                                const analysisMatch = text.match(/\*\*Analysis:\*\*\s*([\s\S]*?)(?=\*\*Actionable|$)/);
-                                const actionMatch = text.match(/\*\*Actionable Insight:\*\*\s*([\s\S]*?)$/);
+                                {/* Parse and render the insight beautifully */}
+                                {(() => {
+                                    const text = aiInsight;
+                                    const sentimentMatch = text.match(/\*\*Sentiment:\*\*\s*(\d+)\/100\s*\(([^)]+)\)/);
+                                    const analysisMatch = text.match(/\*\*Analysis:\*\*\s*([\s\S]*?)(?=\*\*Actionable|$)/);
+                                    const actionMatch = text.match(/\*\*Actionable Insight:\*\*\s*([\s\S]*?)$/);
 
-                                if (sentimentMatch) {
-                                    const score = parseInt(sentimentMatch[1]);
-                                    const mood = sentimentMatch[2];
-                                    const analysis = analysisMatch ? analysisMatch[1].trim() : '';
-                                    const action = actionMatch ? actionMatch[1].trim() : '';
-                                    const moodColor = score >= 70 ? 'text-green-400' : score >= 40 ? 'text-yellow-400' : 'text-red-400';
-                                    const barColor = score >= 70 ? 'bg-green-500' : score >= 40 ? 'bg-yellow-500' : 'bg-red-500';
+                                    if (sentimentMatch) {
+                                        const score = parseInt(sentimentMatch[1]);
+                                        const mood = sentimentMatch[2];
+                                        const analysis = analysisMatch ? analysisMatch[1].trim() : '';
+                                        const action = actionMatch ? actionMatch[1].trim() : '';
+                                        const moodColor = score >= 70 ? 'text-green-400' : score >= 40 ? 'text-yellow-400' : 'text-red-400';
+                                        const barColor = score >= 70 ? 'bg-green-500' : score >= 40 ? 'bg-yellow-500' : 'bg-red-500';
 
-                                    return (
-                                        <div className="space-y-4">
-                                            {/* Sentiment Gauge */}
-                                            <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700/50">
-                                                <div className="flex items-center justify-between mb-2">
-                                                    <span className="text-slate-400 text-sm font-medium">Market Sentiment</span>
-                                                    <span className={`text-2xl font-bold ${moodColor}`}>{score}/100</span>
+                                        return (
+                                            <div className="space-y-4">
+                                                {/* Sentiment Gauge */}
+                                                <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700/50">
+                                                    <div className="flex items-center justify-between mb-2">
+                                                        <span className="text-slate-400 text-sm font-medium">Market Sentiment</span>
+                                                        <span className={`text-2xl font-bold ${moodColor}`}>{score}/100</span>
+                                                    </div>
+                                                    <div className="w-full bg-slate-700 rounded-full h-3 overflow-hidden">
+                                                        <div className={`${barColor} h-full rounded-full transition-all duration-500`} style={{ width: `${score}%` }}></div>
+                                                    </div>
+                                                    <div className={`text-center mt-2 text-lg font-bold ${moodColor}`}>
+                                                        {mood.includes('Optimistic') || mood.includes('Bullish') || mood.includes('Greed') ? '📈' : mood.includes('Fear') || mood.includes('Bearish') ? '📉' : '⚖️'} {mood}
+                                                    </div>
                                                 </div>
-                                                <div className="w-full bg-slate-700 rounded-full h-3 overflow-hidden">
-                                                    <div className={`${barColor} h-full rounded-full transition-all duration-500`} style={{ width: `${score}%` }}></div>
-                                                </div>
-                                                <div className={`text-center mt-2 text-lg font-bold ${moodColor}`}>
-                                                    {mood.includes('Optimistic') || mood.includes('Bullish') || mood.includes('Greed') ? '📈' : mood.includes('Fear') || mood.includes('Bearish') ? '📉' : '⚖️'} {mood}
-                                                </div>
+
+                                                {/* Analysis */}
+                                                {analysis && (
+                                                    <div className="bg-slate-800/30 rounded-lg p-4 border border-slate-700/30">
+                                                        <h4 className="text-purple-400 text-xs font-bold uppercase tracking-wider mb-2">📊 Analysis</h4>
+                                                        <p className="text-slate-300 text-sm leading-relaxed">{analysis}</p>
+                                                    </div>
+                                                )}
+
+                                                {/* Actionable Insight */}
+                                                {action && (
+                                                    <div className="bg-gradient-to-r from-blue-900/40 to-purple-900/40 rounded-lg p-4 border border-blue-500/30">
+                                                        <h4 className="text-blue-400 text-xs font-bold uppercase tracking-wider mb-2">🎯 Actionable Insight</h4>
+                                                        <p className="text-white text-sm font-medium leading-relaxed">{action}</p>
+                                                    </div>
+                                                )}
                                             </div>
-
-                                            {/* Analysis */}
-                                            {analysis && (
-                                                <div className="bg-slate-800/30 rounded-lg p-4 border border-slate-700/30">
-                                                    <h4 className="text-purple-400 text-xs font-bold uppercase tracking-wider mb-2">📊 Analysis</h4>
-                                                    <p className="text-slate-300 text-sm leading-relaxed">{analysis}</p>
-                                                </div>
-                                            )}
-
-                                            {/* Actionable Insight */}
-                                            {action && (
-                                                <div className="bg-gradient-to-r from-blue-900/40 to-purple-900/40 rounded-lg p-4 border border-blue-500/30">
-                                                    <h4 className="text-blue-400 text-xs font-bold uppercase tracking-wider mb-2">🎯 Actionable Insight</h4>
-                                                    <p className="text-white text-sm font-medium leading-relaxed">{action}</p>
-                                                </div>
-                                            )}
-                                        </div>
-                                    );
-                                } else {
-                                    // Fallback: just show the raw text nicely formatted
-                                    return (
-                                        <div className="bg-slate-800/30 rounded-lg p-4 border border-slate-700/30 text-slate-300 text-sm leading-relaxed whitespace-pre-wrap">
-                                            {text.replace(/\*\*/g, '')}
-                                        </div>
-                                    );
-                                }
-                            })()}
-                        </div>
-                    )}
-                </div>
-
-                {/* Legacy Expert Summary (Fallback) */}
-                {expert_summary && !aiInsight && (
-                    <div className="bg-slate-900/20 border border-slate-800 rounded-xl p-4 opacity-70 hover:opacity-100 transition">
-                        <div className="flex items-center gap-2 mb-2">
-                            <span className="text-xs font-bold text-slate-500 uppercase">Legacy Briefing</span>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-                            <div><strong className="text-slate-400">Setup:</strong> <span dangerouslySetInnerHTML={{ __html: formatExpertText(expert_summary.setup) }}></span></div>
-                            <div><strong className="text-slate-400">Internals:</strong> <span dangerouslySetInnerHTML={{ __html: formatExpertText(expert_summary.internals) }}></span></div>
-                            <div><strong className="text-blue-400">Action:</strong> "{expert_summary.play}"</div>
-                        </div>
-                    </div>
-                )}
-
-                {/* Section 1: Market Health Indices + Crypto */}
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                    {renderTrafficLight('SPY', indices.SPY)}
-                    {renderTrafficLight('QQQ', indices.QQQ)}
-                    {renderTrafficLight('IWM', indices.IWM)}
-
-                    {indices.VIX ? (
-                        <div
-                            onClick={() => onTickerClick('^VIX')}
-                            className={`p-4 rounded-xl border flex flex-col items-center justify-center cursor-pointer transition-all hover:brightness-110 hover:scale-[1.02] ${indices.VIX.level === 'Low' ? 'bg-blue-500/20 border-blue-500/50 text-blue-300' : 'bg-orange-500/20 border-orange-500/50 text-orange-300'}`}
-                        >
-                            <div className="text-sm font-bold opacity-70 mb-1">VIX (Risk)</div>
-                            <div className="text-2xl font-bold">{indices.VIX.price}</div>
-                            <div className="text-xs mt-2 opacity-80 uppercase tracking-widest">{indices.VIX.level}</div>
-                            <TinySparkline
-                                data={indices.VIX.sparkline}
-                                color={indices.VIX.level === 'Low' ? '#60a5fa' : '#fb923c'}
-                            />
-                        </div>
-                    ) : (
-                        <div className="p-4 rounded-xl border border-slate-700 bg-slate-800/50 flex flex-col items-center justify-center">
-                            <div className="text-sm font-bold opacity-50 mb-1">VIX (Risk)</div>
-                            <div className="text-xl font-bold text-slate-500">N/A</div>
-                        </div>
-                    )}
-
-                    {/* Bitcoin Card */}
-                    {indices.BTC ? (
-                        <div
-                            onClick={() => onTickerClick('BTC-USD')}
-                            className={`p-4 rounded-xl border flex flex-col items-center justify-center cursor-pointer transition-all hover:brightness-110 hover:scale-[1.02] ${indices.BTC.color === 'Green' ? 'bg-amber-500/20 border-amber-500/50 text-amber-300' : 'bg-orange-500/20 border-orange-500/50 text-orange-300'}`}
-                        >
-                            <div className="text-sm font-bold opacity-70 mb-1">₿ BTC</div>
-                            <div className="text-xl font-bold">${indices.BTC.price.toLocaleString()}</div>
-                            <div className={`text-xs mt-2 font-bold ${indices.BTC.change_24h >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                {indices.BTC.change_24h >= 0 ? '+' : ''}{indices.BTC.change_24h}% 24h
+                                        );
+                                    } else {
+                                        // Fallback: just show the raw text nicely formatted
+                                        return (
+                                            <div className="bg-slate-800/30 rounded-lg p-4 border border-slate-700/30 text-slate-300 text-sm leading-relaxed whitespace-pre-wrap">
+                                                {text.replace(/\*\*/g, '')}
+                                            </div>
+                                        );
+                                    }
+                                })()}
                             </div>
-                            <TinySparkline
-                                data={indices.BTC.sparkline}
-                                color={indices.BTC.change_24h >= 0 ? '#4ade80' : '#f87171'}
-                            />
-                        </div>
-                    ) : (
-                        <div className="p-4 rounded-xl border border-slate-700 bg-slate-800/50 flex flex-col items-center justify-center">
-                            <div className="text-sm font-bold opacity-50 mb-1">₿ BTC</div>
-                            <div className="text-xl font-bold text-slate-500">Loading...</div>
+                        )}
+                    </div>
+
+                    {/* Legacy Expert Summary (Fallback) */}
+                    {expert_summary && !aiInsight && (
+                        <div className="bg-slate-900/20 border border-slate-800 rounded-xl p-4 opacity-70 hover:opacity-100 transition">
+                            <div className="flex items-center gap-2 mb-2">
+                                <span className="text-xs font-bold text-slate-500 uppercase">Legacy Briefing</span>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                                <div><strong className="text-slate-400">Setup:</strong> <span dangerouslySetInnerHTML={{ __html: formatExpertText(expert_summary.setup) }}></span></div>
+                                <div><strong className="text-slate-400">Internals:</strong> <span dangerouslySetInnerHTML={{ __html: formatExpertText(expert_summary.internals) }}></span></div>
+                                <div><strong className="text-blue-400">Action:</strong> "{expert_summary.play}"</div>
+                            </div>
                         </div>
                     )}
+
+                    {/* Section 1: Market Health Indices + Crypto */}
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                        {renderTrafficLight('SPY', indices.SPY)}
+                        {renderTrafficLight('QQQ', indices.QQQ)}
+                        {renderTrafficLight('IWM', indices.IWM)}
+
+                        {indices.VIX ? (
+                            <div
+                                onClick={() => onTickerClick('^VIX')}
+                                className={`p-4 rounded-xl border flex flex-col items-center justify-center cursor-pointer transition-all hover:brightness-110 hover:scale-[1.02] ${indices.VIX.level === 'Low' ? 'bg-blue-500/20 border-blue-500/50 text-blue-300' : 'bg-orange-500/20 border-orange-500/50 text-orange-300'}`}
+                            >
+                                <div className="text-sm font-bold opacity-70 mb-1">VIX (Risk)</div>
+                                <div className="text-2xl font-bold">{indices.VIX.price}</div>
+                                <div className="text-xs mt-2 opacity-80 uppercase tracking-widest">{indices.VIX.level}</div>
+                                <TinySparkline
+                                    data={indices.VIX.sparkline}
+                                    color={indices.VIX.level === 'Low' ? '#60a5fa' : '#fb923c'}
+                                />
+                            </div>
+                        ) : (
+                            <div className="p-4 rounded-xl border border-slate-700 bg-slate-800/50 flex flex-col items-center justify-center">
+                                <div className="text-sm font-bold opacity-50 mb-1">VIX (Risk)</div>
+                                <div className="text-xl font-bold text-slate-500">N/A</div>
+                            </div>
+                        )}
+
+                        {/* Bitcoin Card */}
+                        {indices.BTC ? (
+                            <div
+                                onClick={() => onTickerClick('BTC-USD')}
+                                className={`p-4 rounded-xl border flex flex-col items-center justify-center cursor-pointer transition-all hover:brightness-110 hover:scale-[1.02] ${indices.BTC.color === 'Green' ? 'bg-amber-500/20 border-amber-500/50 text-amber-300' : 'bg-orange-500/20 border-orange-500/50 text-orange-300'}`}
+                            >
+                                <div className="text-sm font-bold opacity-70 mb-1">₿ BTC</div>
+                                <div className="text-xl font-bold">${indices.BTC.price.toLocaleString()}</div>
+                                <div className={`text-xs mt-2 font-bold ${indices.BTC.change_24h >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                    {indices.BTC.change_24h >= 0 ? '+' : ''}{indices.BTC.change_24h}% 24h
+                                </div>
+                                <TinySparkline
+                                    data={indices.BTC.sparkline}
+                                    color={indices.BTC.change_24h >= 0 ? '#4ade80' : '#f87171'}
+                                />
+                            </div>
+                        ) : (
+                            <div className="p-4 rounded-xl border border-slate-700 bg-slate-800/50 flex flex-col items-center justify-center">
+                                <div className="text-sm font-bold opacity-50 mb-1">₿ BTC</div>
+                                <div className="text-xl font-bold text-slate-500">Loading...</div>
+                            </div>
+                        )}
+                    </div>
+
+
                 </div>
 
+                {/* Sidebar (4 Columns) */}
+                <div className="lg:col-span-4 space-y-8">
+                    {/* Market Breadth Gauge */}
+                    <MarketBreadth breadth={breadth} />
 
-            </div>
+                    {/* Economic Calendar */}
+                    <EconomicCalendar events={calendar} />
+                </div>
 
-            {/* Sidebar (4 Columns) */}
-            <div className="lg:col-span-4 space-y-8">
-                {/* Market Breadth Gauge */}
-                <MarketBreadth breadth={breadth} />
-
-                {/* Economic Calendar */}
-                <EconomicCalendar events={calendar} />
-            </div>
-
-            {/* Section 3: Sector Rotation (Full Width Bottom) */}
-            <div className="lg:col-span-12">
-                <h3 className="text-slate-400 text-sm font-bold uppercase tracking-wide mb-4">Sector Leaders</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {/* 1 Month */}
-                    <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
-                        <div className="bg-slate-900/50 p-3 border-b border-slate-700 font-bold text-center text-slate-300">
-                            Top 1 Month
-                        </div>
-                        <div className="p-2 space-y-1">
-                            {sorted1m.map((s, i) => (
-                                <div
-                                    key={s.ticker}
-                                    onClick={() => onTickerClick(SECTOR_ETFS[s.name] || s.ticker)}
-                                    className="flex justify-between items-center p-2 rounded hover:bg-slate-700/50 cursor-pointer transition-all"
-                                >
-                                    <span className="text-sm font-medium text-slate-200">
-                                        <span className="text-slate-500 mr-2">#{i + 1}</span> {s.name}
-                                    </span>
-                                    <span className={`text-sm font-bold ${s['1m'] > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                        {s['1m'] > 0 ? '+' : ''}{s['1m']}%
-                                    </span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* 2 Month */}
-                    <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
-                        <div className="bg-slate-900/50 p-3 border-b border-slate-700 font-bold text-center text-slate-300">
-                            Top 2 Months
-                        </div>
-                        <div className="p-2 space-y-1">
-                            {sorted2m.map((s, i) => (
-                                <div key={s.ticker} className="flex justify-between items-center p-2 rounded hover:bg-slate-700/50">
-                                    <span className="text-sm font-medium text-slate-200">
-                                        <span className="text-slate-500 mr-2">#{i + 1}</span> {s.name}
-                                    </span>
-                                    <span className={`text-sm font-bold ${s['2m'] > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                        {s['2m'] > 0 ? '+' : ''}{s['2m']}%
-                                    </span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* 3 Month */}
-                    <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
-                        <div className="bg-slate-900/50 p-3 border-b border-slate-700 font-bold text-center text-slate-300">
-                            Top 3 Months (Deep Dive)
-                        </div>
-                        <div className="p-2 space-y-2">
-                            {sorted3m.map((s, i) => (
-                                <div key={s.ticker} className="bg-slate-700/30 rounded p-2 border border-slate-700/50">
-                                    <div className="flex justify-between items-center mb-2">
+                {/* Section 3: Sector Rotation (Full Width Bottom) */}
+                <div className="lg:col-span-12">
+                    <h3 className="text-slate-400 text-sm font-bold uppercase tracking-wide mb-4">Sector Leaders</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        {/* 1 Month */}
+                        <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
+                            <div className="bg-slate-900/50 p-3 border-b border-slate-700 font-bold text-center text-slate-300">
+                                Top 1 Month
+                            </div>
+                            <div className="p-2 space-y-1">
+                                {sorted1m.map((s, i) => (
+                                    <div
+                                        key={s.ticker}
+                                        onClick={() => onTickerClick(SECTOR_ETFS[s.name] || s.ticker)}
+                                        className="flex justify-between items-center p-2 rounded hover:bg-slate-700/50 cursor-pointer transition-all"
+                                    >
                                         <span className="text-sm font-medium text-slate-200">
                                             <span className="text-slate-500 mr-2">#{i + 1}</span> {s.name}
                                         </span>
-                                        <span className={`text-sm font-bold ${s['3m'] > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                            {s['3m'] > 0 ? '+' : ''}{s['3m']}%
+                                        <span className={`text-sm font-bold ${s['1m'] > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                            {s['1m'] > 0 ? '+' : ''}{s['1m']}%
                                         </span>
                                     </div>
+                                ))}
+                            </div>
+                        </div>
 
-                                    {/* Deep Dive Info */}
-                                    {s.deep_dive && (
-                                        <div className="grid grid-cols-2 gap-2 text-[10px] bg-slate-800/50 p-1.5 rounded">
-                                            <div onClick={(e) => { e.stopPropagation(); onTickerClick(s.deep_dive.leader.ticker); }} className="hover:text-green-400 cursor-pointer transition">
-                                                <div className="text-green-400 font-bold mb-0.5">🏆 Leader</div>
-                                                <div className="font-mono">{s.deep_dive.leader.ticker} <span className="text-green-300">+{s.deep_dive.leader.perf.toFixed(1)}%</span></div>
-                                            </div>
-                                            <div onClick={(e) => { e.stopPropagation(); onTickerClick(s.deep_dive.laggard.ticker); }} className="text-right hover:text-orange-400 cursor-pointer transition">
-                                                <div className="text-orange-400 font-bold mb-0.5">🐢 Laggard</div>
-                                                <div className="font-mono">{s.deep_dive.laggard.ticker} <span className="text-orange-300">{s.deep_dive.laggard.perf > 0 ? '+' : ''}{s.deep_dive.laggard.perf.toFixed(1)}%</span></div>
-                                            </div>
+                        {/* 2 Month */}
+                        <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
+                            <div className="bg-slate-900/50 p-3 border-b border-slate-700 font-bold text-center text-slate-300">
+                                Top 2 Months
+                            </div>
+                            <div className="p-2 space-y-1">
+                                {sorted2m.map((s, i) => (
+                                    <div key={s.ticker} className="flex justify-between items-center p-2 rounded hover:bg-slate-700/50">
+                                        <span className="text-sm font-medium text-slate-200">
+                                            <span className="text-slate-500 mr-2">#{i + 1}</span> {s.name}
+                                        </span>
+                                        <span className={`text-sm font-bold ${s['2m'] > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                            {s['2m'] > 0 ? '+' : ''}{s['2m']}%
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* 3 Month */}
+                        <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
+                            <div className="bg-slate-900/50 p-3 border-b border-slate-700 font-bold text-center text-slate-300">
+                                Top 3 Months (Deep Dive)
+                            </div>
+                            <div className="p-2 space-y-2">
+                                {sorted3m.map((s, i) => (
+                                    <div key={s.ticker} className="bg-slate-700/30 rounded p-2 border border-slate-700/50">
+                                        <div className="flex justify-between items-center mb-2">
+                                            <span className="text-sm font-medium text-slate-200">
+                                                <span className="text-slate-500 mr-2">#{i + 1}</span> {s.name}
+                                            </span>
+                                            <span className={`text-sm font-bold ${s['3m'] > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                                {s['3m'] > 0 ? '+' : ''}{s['3m']}%
+                                            </span>
                                         </div>
-                                    )}
-                                </div>
-                            ))}
+
+                                        {/* Deep Dive Info */}
+                                        {s.deep_dive && (
+                                            <div className="grid grid-cols-2 gap-2 text-[10px] bg-slate-800/50 p-1.5 rounded">
+                                                <div onClick={(e) => { e.stopPropagation(); onTickerClick(s.deep_dive.leader.ticker); }} className="hover:text-green-400 cursor-pointer transition">
+                                                    <div className="text-green-400 font-bold mb-0.5">🏆 Leader</div>
+                                                    <div className="font-mono">{s.deep_dive.leader.ticker} <span className="text-green-300">+{s.deep_dive.leader.perf.toFixed(1)}%</span></div>
+                                                </div>
+                                                <div onClick={(e) => { e.stopPropagation(); onTickerClick(s.deep_dive.laggard.ticker); }} className="text-right hover:text-orange-400 cursor-pointer transition">
+                                                    <div className="text-orange-400 font-bold mb-0.5">🐢 Laggard</div>
+                                                    <div className="font-mono">{s.deep_dive.laggard.ticker} <span className="text-orange-300">{s.deep_dive.laggard.perf > 0 ? '+' : ''}{s.deep_dive.laggard.perf.toFixed(1)}%</span></div>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div >
-        </div >
+            </div>
+        </div>
     );
 }
 
@@ -4691,12 +4896,28 @@ function Settings() {
     const handleThemeChange = (newTheme) => {
         setTheme(newTheme);
         localStorage.setItem('theme', newTheme);
-        // Future: Apply CSS variables for themes
+        // Apply theme immediately
+        document.body.classList.remove('theme-dark', 'theme-light', 'theme-cyber');
+        document.body.classList.add(`theme-${newTheme}`);
+        if (newTheme === 'light') {
+            document.body.style.backgroundColor = '#f5f5f5';
+            document.body.style.color = '#1a1a1a';
+        } else if (newTheme === 'cyber') {
+            document.body.style.backgroundColor = '#0d0221';
+            document.body.style.color = '#00ff88';
+        } else {
+            document.body.style.backgroundColor = '#0a0a0a';
+            document.body.style.color = '#ffffff';
+        }
     };
 
     const handleDensityChange = (e) => {
-        setDensity(e.target.value);
-        localStorage.setItem('density', e.target.value);
+        const newDensity = e.target.value;
+        setDensity(newDensity);
+        localStorage.setItem('density', newDensity);
+        // Apply density immediately - just save for now as requires CSS
+        document.body.classList.remove('density-comfortable', 'density-compact');
+        document.body.classList.add(`density-${newDensity}`);
     };
 
     const handleAlertToggle = (field) => {
@@ -4924,9 +5145,8 @@ function ArgentinaPanel() {
     const handleAnalyzePortfolio = async () => {
         setAiAnalyzing(true);
         try {
-            const res = await fetch(`${API_BASE}/argentina/ai/portfolio-insight`);
-            const data = await res.json();
-            setAiInsight(data.insight);
+            const res = await axios.get(`${API_BASE}/argentina/ai/portfolio-insight`);
+            setAiInsight(res.data?.insight || res.data);
         } catch (err) {
             console.error('AI Analysis failed:', err);
             setAiInsight('Error analyzing portfolio. Please try again.');
@@ -4991,17 +5211,16 @@ function ArgentinaPanel() {
         setLoading(true);
         try {
             const [tradesRes, metricsRes, ratesRes] = await Promise.all([
-                fetch(`${API_BASE}/argentina/trades/list`),
-                fetch(`${API_BASE}/argentina/trades/metrics`),
-                fetch(`${API_BASE}/argentina/rates`)
+                axios.get(`${API_BASE}/argentina/trades/list`),
+                axios.get(`${API_BASE}/argentina/trades/metrics`),
+                axios.get(`${API_BASE}/argentina/rates`)
             ]);
 
-            if (tradesRes.ok) {
-                const data = await tradesRes.json();
-                setTrades(data.trades || []);
+            if (tradesRes.data) {
+                setTrades(tradesRes.data.trades || tradesRes.data || []);
             }
-            if (metricsRes.ok) setMetrics(await metricsRes.json());
-            if (ratesRes.ok) setRates(await ratesRes.json());
+            if (metricsRes.data) setMetrics(metricsRes.data);
+            if (ratesRes.data) setRates(ratesRes.data);
         } catch (err) {
             console.error('Error fetching Argentina essential data:', err);
         } finally {
@@ -5013,28 +5232,28 @@ function ArgentinaPanel() {
     const fetchHeavyData = async () => {
         try {
             const [equityRes, calendarRes, analyticsRes, perfRes, snapRes] = await Promise.all([
-                fetch(`${API_BASE}/argentina/trades/equity-curve`),
-                fetch(`${API_BASE}/argentina/trades/calendar`),
-                fetch(`${API_BASE}/argentina/trades/analytics/open`),
-                fetch(`${API_BASE}/argentina/trades/analytics/performance`),
-                fetch(`${API_BASE}/argentina/trades/snapshots`)
+                axios.get(`${API_BASE}/argentina/trades/equity-curve`).catch(() => ({ data: [] })),
+                axios.get(`${API_BASE}/argentina/trades/calendar`).catch(() => ({ data: {} })),
+                axios.get(`${API_BASE}/argentina/trades/analytics/open`).catch(() => ({ data: {} })),
+                axios.get(`${API_BASE}/argentina/trades/analytics/performance`).catch(() => ({ data: {} })),
+                axios.get(`${API_BASE}/argentina/trades/snapshots`).catch(() => ({ data: [] }))
             ]);
 
-            if (equityRes.ok) {
-                const rawEquity = await equityRes.json();
+            if (equityRes.data && Array.isArray(equityRes.data)) {
+                const rawEquity = equityRes.data;
                 const transformedEquity = {
                     dates: rawEquity.map(item => item.date),
                     equity: rawEquity.map(item => item.value)
                 };
                 setEquityData(transformedEquity);
             }
-            if (calendarRes.ok) {
-                const calData = await calendarRes.json();
+            if (calendarRes.data) {
+                const calData = calendarRes.data;
                 setCalendarData(Array.isArray(calData) ? calData : []);
             }
-            if (analyticsRes.ok) setOpenAnalytics(await analyticsRes.json());
-            if (perfRes.ok) setPerformanceData(await perfRes.json());
-            if (snapRes.ok) setSnapshotData(await snapRes.json());
+            if (analyticsRes.data) setOpenAnalytics(analyticsRes.data);
+            if (perfRes.data) setPerformanceData(perfRes.data);
+            if (snapRes.data) setSnapshotData(snapRes.data);
         } catch (err) {
             console.error('Error fetching Argentina heavy data:', err);
         }
@@ -5050,10 +5269,9 @@ function ArgentinaPanel() {
     const fetchLivePrices = async () => {
         setRefreshing(true);
         try {
-            const res = await fetch(`${API_BASE}/argentina/prices`);
-            if (res.ok) {
-                const prices = await res.json();
-                setLiveData(prices);
+            const res = await axios.get(`${API_BASE}/argentina/prices`);
+            if (res.data) {
+                setLiveData(res.data);
                 setLastUpdated(new Date());
             }
         } catch (e) {
@@ -5251,7 +5469,7 @@ function ArgentinaPanel() {
     // Handlers
     const handleUpdateGroup = async (tradesToUpdate, field, value) => {
         try {
-            await Promise.all(tradesToUpdate.map(t => fetch(`${API_BASE}/argentina/trades/${t.id}?field=${field}&value=${value}`, { method: 'PUT' })));
+            await Promise.all(tradesToUpdate.map(t => axios.put(`${API_BASE}/argentina/trades/${t.id}?field=${field}&value=${value}`)));
             fetchData();
         } catch (e) {
             console.error(e);
@@ -5262,7 +5480,7 @@ function ArgentinaPanel() {
     const handleDelete = async (id) => {
         if (!confirm('¿Eliminar esta posición?')) return;
         try {
-            await fetch(`${API_BASE}/argentina/positions/${id}`, { method: 'DELETE' });
+            await axios.delete(`${API_BASE}/argentina/positions/${id}`);
             fetchData();
         } catch (err) {
             console.error('Error deleting:', err);
@@ -5272,18 +5490,29 @@ function ArgentinaPanel() {
     const handleAddPosition = async (e) => {
         e.preventDefault();
         try {
-            const res = await fetch(`${API_BASE}/argentina/positions`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(formData)
-            });
-            if (res.ok) {
+            // Convert form data to proper types
+            const payload = {
+                ticker: formData.ticker.toUpperCase(),
+                asset_type: formData.asset_type,
+                entry_date: formData.entry_date,
+                entry_price: parseFloat(formData.entry_price) || 0,
+                shares: parseFloat(formData.shares) || 0,
+                stop_loss: formData.stop_loss ? parseFloat(formData.stop_loss) : null,
+                target: formData.target ? parseFloat(formData.target) : null,
+                target2: formData.target2 ? parseFloat(formData.target2) : null,
+                target3: formData.target3 ? parseFloat(formData.target3) : null,
+                strategy: formData.strategy || null,
+                notes: formData.notes || null
+            };
+            const res = await axios.post(`${API_BASE}/argentina/positions`, payload);
+            if (res.data) {
                 setShowAddForm(false);
                 setFormData({ ticker: '', asset_type: 'stock', entry_date: new Date().toISOString().split('T')[0], entry_price: '', shares: '', stop_loss: '', target: '', target2: '', target3: '', strategy: '', notes: '' });
                 fetchData();
             }
         } catch (err) {
             console.error('Error adding position:', err);
+            alert('Error adding position: ' + (err.response?.data?.detail || err.message));
         }
     };
 
@@ -5301,8 +5530,8 @@ function ArgentinaPanel() {
                 market_price: optionForm.market_price,
                 option_type: optionForm.option_type
             });
-            const res = await fetch(`${API_BASE}/argentina/options/analyze?${params}`);
-            if (res.ok) setOptionResult(await res.json());
+            const res = await axios.get(`${API_BASE}/argentina/options/analyze?${params}`);
+            if (res.data) setOptionResult(res.data);
         } catch (err) {
             console.error('Error analyzing option:', err);
         }
@@ -5849,7 +6078,7 @@ function ConnectBinanceModal({ onClose }) {
     const handleSubmit = async (e) => {
         e.preventDefault();
         try {
-            const res = await fetch('/api/crypto/binance/connect', {
+            const res = await authFetch('/api/crypto/binance/connect', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(keys)
@@ -5890,6 +6119,14 @@ function CryptoJournal() {
     const [showAddModal, setShowAddModal] = useState(false);
     const [showBinanceModal, setShowBinanceModal] = useState(false);
 
+    // Sub-tab navigation
+    const [activeSubTab, setActiveSubTab] = useState('log'); // 'log' or 'analytics'
+
+    // Analytics Data (same structure as USA/Argentina)
+    const [openAnalytics, setOpenAnalytics] = useState(null);
+    const [performanceData, setPerformanceData] = useState(null);
+    const [snapshotData, setSnapshotData] = useState([]);
+
     // AI Portfolio Analysis
     const [aiInsight, setAiInsight] = useState(null);
     const [aiAnalyzing, setAiAnalyzing] = useState(false);
@@ -5897,7 +6134,7 @@ function CryptoJournal() {
     const handleAnalyzePortfolio = async () => {
         setAiAnalyzing(true);
         try {
-            const res = await fetch('/api/crypto/ai/portfolio-insight');
+            const res = await authFetch('/api/crypto/ai/portfolio-insight');
             const data = await res.json();
             setAiInsight(data.insight);
         } catch (err) {
@@ -5909,7 +6146,7 @@ function CryptoJournal() {
 
     const fetchData = async () => {
         try {
-            const res = await fetch('/api/crypto/positions');
+            const res = await authFetch('/api/crypto/positions');
             if (res.ok) {
                 const data = await res.json();
                 setPositions(data.positions || []);
@@ -5920,11 +6157,34 @@ function CryptoJournal() {
         }
     };
 
+    // Fetch analytics data when switching to analytics tab
+    const fetchHeavyData = async () => {
+        try {
+            const [anaRes, perfRes, snapRes] = await Promise.all([
+                axios.get('/api/crypto/trades/analytics/open').catch(e => ({ data: null })),
+                axios.get('/api/crypto/trades/analytics/performance').catch(e => ({ data: null })),
+                axios.get('/api/crypto/trades/snapshots').catch(e => ({ data: [] }))
+            ]);
+            setOpenAnalytics(anaRes.data);
+            setPerformanceData(perfRes.data);
+            setSnapshotData(snapRes.data || []);
+        } catch (err) {
+            console.error('Error fetching crypto analytics:', err);
+        }
+    };
+
     useEffect(() => {
         fetchData();
         const interval = setInterval(fetchData, 60000);
         return () => clearInterval(interval);
     }, []);
+
+    // Fetch analytics when tab switches to 'analytics'
+    useEffect(() => {
+        if (activeSubTab === 'analytics') {
+            fetchHeavyData();
+        }
+    }, [activeSubTab]);
 
     const handleDelete = async (id) => {
         if (!confirm('Delete this position?')) return;
@@ -6018,122 +6278,151 @@ function CryptoJournal() {
                 </div>
             </div>
 
-            {/* Metrics Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                <div className="bg-[#0f0f0f] rounded-xl p-4 border border-[#2a2a2a]">
-                    <p className="text-slate-500 text-xs uppercase mb-1">Total Value</p>
-                    <p className="text-2xl font-bold text-white">${metrics.total_value?.toLocaleString()}</p>
-                </div>
-                <div className="bg-[#0f0f0f] rounded-xl p-4 border border-[#2a2a2a]">
-                    <p className="text-slate-500 text-xs uppercase mb-1">Invested</p>
-                    <p className="text-2xl font-bold text-slate-400">${metrics.total_invested?.toLocaleString()}</p>
-                </div>
-                <div className="bg-[#0f0f0f] rounded-xl p-4 border border-[#2a2a2a]">
-                    <p className="text-slate-500 text-xs uppercase mb-1">P&L ($)</p>
-                    <p className={`text-2xl font-bold ${metrics.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {metrics.total_pnl >= 0 ? '+' : ''}${metrics.total_pnl?.toLocaleString()}
-                    </p>
-                </div>
-                <div className="bg-[#0f0f0f] rounded-xl p-4 border border-[#2a2a2a]">
-                    <p className="text-slate-500 text-xs uppercase mb-1">Positions</p>
-                    <p className="text-2xl font-bold text-white">{positions.length}</p>
-                </div>
+            {/* Sub-Tab Navigation */}
+            <div className="flex gap-2 mb-6 bg-[#0a0a0a] p-1.5 rounded-xl border border-[#1a1a1a] w-fit">
+                <button
+                    onClick={() => setActiveSubTab('log')}
+                    className={`px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${activeSubTab === 'log' ? 'bg-gradient-to-r from-orange-600 to-orange-500 text-white shadow-lg shadow-orange-600/30' : 'text-slate-400 hover:text-white'}`}
+                >
+                    📋 Positions
+                </button>
+                <button
+                    onClick={() => setActiveSubTab('analytics')}
+                    className={`px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${activeSubTab === 'analytics' ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg shadow-blue-600/30' : 'text-slate-400 hover:text-white'}`}
+                >
+                    📊 Analytics
+                </button>
             </div>
 
-            {/* AI Insight Display */}
-            {aiInsight && (
-                <div className="mb-6 bg-gradient-to-r from-purple-900/30 to-blue-900/30 border border-purple-500/30 rounded-xl p-4">
-                    <div className="flex justify-between items-start mb-3">
-                        <h3 className="text-purple-400 font-bold flex items-center gap-2">
-                            🤖 AI Crypto Portfolio Analysis
-                        </h3>
-                        <button onClick={() => setAiInsight(null)} className="text-slate-500 hover:text-white text-sm">✕ Close</button>
-                    </div>
-                    {(() => {
-                        const text = aiInsight;
-                        const sentimentMatch = text.match(/\*\*Sentiment:\*\*\s*(\d+)\/100\s*\(([^)]+)\)/);
-                        const analysisMatch = text.match(/\*\*Analysis:\*\*\s*([\s\S]*?)(?=\*\*Actionable|$)/);
-                        const actionMatch = text.match(/\*\*Actionable Insight:\*\*\s*([\s\S]*?)$/);
-
-                        if (sentimentMatch) {
-                            const score = parseInt(sentimentMatch[1]);
-                            const mood = sentimentMatch[2];
-                            const analysis = analysisMatch ? analysisMatch[1].trim() : '';
-                            const action = actionMatch ? actionMatch[1].trim() : '';
-
-                            const moodColor = score >= 60 ? 'text-green-400' : score >= 40 ? 'text-yellow-400' : 'text-red-400';
-                            const barColor = score >= 60 ? 'bg-green-500' : score >= 40 ? 'bg-yellow-500' : 'bg-red-500';
-
-                            return (
-                                <div className="space-y-3">
-                                    <div className="flex items-center gap-4">
-                                        <div className="flex-1">
-                                            <div className="w-full bg-slate-700 rounded-full h-2 overflow-hidden">
-                                                <div className={`${barColor} h-full rounded-full transition-all duration-500`} style={{ width: `${score}%` }}></div>
-                                            </div>
-                                        </div>
-                                        <span className={`text-lg font-bold ${moodColor}`}>{score}/100 {mood}</span>
-                                    </div>
-                                    {analysis && <p className="text-slate-300 text-sm">{analysis}</p>}
-                                    {action && (
-                                        <div className="bg-blue-900/40 rounded-lg p-3 border border-blue-500/30">
-                                            <span className="text-blue-400 font-bold text-xs">🎯 ACTION:</span>
-                                            <p className="text-white text-sm mt-1">{action}</p>
-                                        </div>
-                                    )}
-                                </div>
-                            );
-                        }
-                        return <p className="text-slate-300 text-sm whitespace-pre-wrap">{text.replace(/\*\*/g, '')}</p>;
-                    })()}
-                </div>
+            {/* Analytics Tab */}
+            {activeSubTab === 'analytics' && (
+                <PerformanceDashboard
+                    data={openAnalytics}
+                    performanceData={performanceData}
+                    snapshotData={snapshotData}
+                />
             )}
 
-            {/* Positions Table */}
-            <div className="bg-[#0f0f0f] rounded-xl border border-[#2a2a2a] overflow-hidden">
-                <table className="w-full text-sm text-left">
-                    <thead className="bg-[#151515] text-slate-400 uppercase text-xs">
-                        <tr>
-                            <th className="px-6 py-4">Ticker</th>
-                            <th className="px-6 py-4 text-right">Amount</th>
-                            <th className="px-6 py-4 text-right">Entry</th>
-                            <th className="px-6 py-4 text-right">Current</th>
-                            <th className="px-6 py-4 text-right">Value</th>
-                            <th className="px-6 py-4 text-right">P&L</th>
-                            <th className="px-6 py-4 text-center">Source</th>
-                            <th className="px-6 py-4 text-right">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#1a1a1a]">
-                        {positions.length === 0 ? (
-                            <tr>
-                                <td colSpan="8" className="px-6 py-12 text-center text-slate-500">
-                                    No hay posiciones. Agrega una manualmente.
-                                </td>
-                            </tr>
-                        ) : positions.map(pos => (
-                            <tr key={pos.id} className="hover:bg-[#151515]">
-                                <td className="px-6 py-4 font-bold text-white">{pos.ticker}</td>
-                                <td className="px-6 py-4 text-right">{pos.amount}</td>
-                                <td className="px-6 py-4 text-right text-slate-400">${pos.entry_price?.toLocaleString()}</td>
-                                <td className="px-6 py-4 text-right text-slate-300">${pos.current_price?.toLocaleString()}</td>
-                                <td className="px-6 py-4 text-right font-medium text-white">${pos.value?.toLocaleString()}</td>
-                                <td className={`px-6 py-4 text-right font-medium ${pos.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                    ${pos.pnl?.toLocaleString()} ({pos.pnl_pct}%)
-                                </td>
-                                <td className="px-6 py-4 text-center">
-                                    <span className={`text-[10px] px-2 py-0.5 rounded-full ${pos.source === 'BINANCE' ? 'bg-yellow-900/30 text-yellow-500' : 'bg-slate-800 text-slate-400'}`}>
-                                        {pos.source}
-                                    </span>
-                                </td>
-                                <td className="px-6 py-4 text-right">
-                                    <button onClick={() => handleDelete(pos.id)} className="text-red-500 hover:text-red-400">✕</button>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
+            {/* Log/Positions Tab */}
+            {activeSubTab === 'log' && (
+                <div className="space-y-6">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                        <div className="bg-[#0f0f0f] rounded-xl p-4 border border-[#2a2a2a]">
+                            <p className="text-slate-500 text-xs uppercase mb-1">Total Value</p>
+                            <p className="text-2xl font-bold text-white">${metrics.total_value?.toLocaleString()}</p>
+                        </div>
+                        <div className="bg-[#0f0f0f] rounded-xl p-4 border border-[#2a2a2a]">
+                            <p className="text-slate-500 text-xs uppercase mb-1">Invested</p>
+                            <p className="text-2xl font-bold text-slate-400">${metrics.total_invested?.toLocaleString()}</p>
+                        </div>
+                        <div className="bg-[#0f0f0f] rounded-xl p-4 border border-[#2a2a2a]">
+                            <p className="text-slate-500 text-xs uppercase mb-1">P&L ($)</p>
+                            <p className={`text-2xl font-bold ${metrics.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                {metrics.total_pnl >= 0 ? '+' : ''}${metrics.total_pnl?.toLocaleString()}
+                            </p>
+                        </div>
+                        <div className="bg-[#0f0f0f] rounded-xl p-4 border border-[#2a2a2a]">
+                            <p className="text-slate-500 text-xs uppercase mb-1">Positions</p>
+                            <p className="text-2xl font-bold text-white">{positions.length}</p>
+                        </div>
+                    </div>
+
+                    {/* AI Insight Display */}
+                    {aiInsight && (
+                        <div className="mb-6 bg-gradient-to-r from-purple-900/30 to-blue-900/30 border border-purple-500/30 rounded-xl p-4">
+                            <div className="flex justify-between items-start mb-3">
+                                <h3 className="text-purple-400 font-bold flex items-center gap-2">
+                                    🤖 AI Crypto Portfolio Analysis
+                                </h3>
+                                <button onClick={() => setAiInsight(null)} className="text-slate-500 hover:text-white text-sm">✕ Close</button>
+                            </div>
+                            {(() => {
+                                const text = aiInsight;
+                                const sentimentMatch = text.match(/\*\*Sentiment:\*\*\s*(\d+)\/100\s*\(([^)]+)\)/);
+                                const analysisMatch = text.match(/\*\*Analysis:\*\*\s*([\s\S]*?)(?=\*\*Actionable|$)/);
+                                const actionMatch = text.match(/\*\*Actionable Insight:\*\*\s*([\s\S]*?)$/);
+
+                                if (sentimentMatch) {
+                                    const score = parseInt(sentimentMatch[1]);
+                                    const mood = sentimentMatch[2];
+                                    const analysis = analysisMatch ? analysisMatch[1].trim() : '';
+                                    const action = actionMatch ? actionMatch[1].trim() : '';
+
+                                    const moodColor = score >= 60 ? 'text-green-400' : score >= 40 ? 'text-yellow-400' : 'text-red-400';
+                                    const barColor = score >= 60 ? 'bg-green-500' : score >= 40 ? 'bg-yellow-500' : 'bg-red-500';
+
+                                    return (
+                                        <div className="space-y-3">
+                                            <div className="flex items-center gap-4">
+                                                <div className="flex-1">
+                                                    <div className="w-full bg-slate-700 rounded-full h-2 overflow-hidden">
+                                                        <div className={`${barColor} h-full rounded-full transition-all duration-500`} style={{ width: `${score}%` }}></div>
+                                                    </div>
+                                                </div>
+                                                <span className={`text-lg font-bold ${moodColor}`}>{score}/100 {mood}</span>
+                                            </div>
+                                            {analysis && <p className="text-slate-300 text-sm">{analysis}</p>}
+                                            {action && (
+                                                <div className="bg-blue-900/40 rounded-lg p-3 border border-blue-500/30">
+                                                    <span className="text-blue-400 font-bold text-xs">🎯 ACTION:</span>
+                                                    <p className="text-white text-sm mt-1">{action}</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                }
+                                return <p className="text-slate-300 text-sm whitespace-pre-wrap">{text.replace(/\*\*/g, '')}</p>;
+                            })()}
+                        </div>
+                    )}
+
+                    {/* Positions Table */}
+                    <div className="bg-[#0f0f0f] rounded-xl border border-[#2a2a2a] overflow-hidden">
+                        <table className="w-full text-sm text-left">
+                            <thead className="bg-[#151515] text-slate-400 uppercase text-xs">
+                                <tr>
+                                    <th className="px-6 py-4">Ticker</th>
+                                    <th className="px-6 py-4 text-right">Amount</th>
+                                    <th className="px-6 py-4 text-right">Entry</th>
+                                    <th className="px-6 py-4 text-right">Current</th>
+                                    <th className="px-6 py-4 text-right">Value</th>
+                                    <th className="px-6 py-4 text-right">P&L</th>
+                                    <th className="px-6 py-4 text-center">Source</th>
+                                    <th className="px-6 py-4 text-right">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-[#1a1a1a]">
+                                {positions.length === 0 ? (
+                                    <tr>
+                                        <td colSpan="8" className="px-6 py-12 text-center text-slate-500">
+                                            No hay posiciones. Agrega una manualmente.
+                                        </td>
+                                    </tr>
+                                ) : positions.map(pos => (
+                                    <tr key={pos.id} className="hover:bg-[#151515]">
+                                        <td className="px-6 py-4 font-bold text-white">{pos.ticker}</td>
+                                        <td className="px-6 py-4 text-right">{pos.amount}</td>
+                                        <td className="px-6 py-4 text-right text-slate-400">${pos.entry_price?.toLocaleString()}</td>
+                                        <td className="px-6 py-4 text-right text-slate-300">${pos.current_price?.toLocaleString()}</td>
+                                        <td className="px-6 py-4 text-right font-medium text-white">${pos.value?.toLocaleString()}</td>
+                                        <td className={`px-6 py-4 text-right font-medium ${pos.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                            ${pos.pnl?.toLocaleString()} ({pos.pnl_pct}%)
+                                        </td>
+                                        <td className="px-6 py-4 text-center">
+                                            <span className={`text-[10px] px-2 py-0.5 rounded-full ${pos.source === 'BINANCE' ? 'bg-yellow-900/30 text-yellow-500' : 'bg-slate-800 text-slate-400'}`}>
+                                                {pos.source}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4 text-right">
+                                            <button onClick={() => handleDelete(pos.id)} className="text-red-500 hover:text-red-400">✕</button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
@@ -6165,7 +6454,7 @@ function SharpePortfolioView() {
                     setPortfolio(null);
                     setScanResults(null);
 
-                    // Backend now returns { portfolio: {...}, scan_results: {...} }
+                    // Backend now returns {portfolio: {...}, scan_results: {...} }
                     if (data.portfolio) {
                         setPortfolio(data.portfolio);
                     } else {
@@ -6472,8 +6761,11 @@ function PortfolioDashboardView() {
     const [history, setHistory] = useState([]);
     const [distribution, setDistribution] = useState({});
     const [chartMode, setChartMode] = useState('line'); // 'line' or 'bar'
+    const [chartMetric, setChartMetric] = useState('value'); // 'value' or 'pnl'
+    const [chartTimeframe, setChartTimeframe] = useState('1M'); // '1D', '1W', '1M', 'YTD', '1Y', 'Max'
+    const [benchmarkData, setBenchmarkData] = useState(null);
 
-    const { ResponsiveContainer, AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } = Recharts;
+    const { ResponsiveContainer, AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine, Cell, PieChart, Pie, Legend } = Recharts;
 
     useEffect(() => {
         fetchAllData();
@@ -6484,7 +6776,7 @@ function PortfolioDashboardView() {
 
         // 1. Fetch History (Fast, from DB)
         try {
-            const historyRes = await fetch(`${API_BASE}/portfolio/snapshots?days=365`);
+            const historyRes = await authFetch(`${API_BASE}/portfolio/snapshots?days=365`);
             if (historyRes.ok) {
                 const histData = await historyRes.json();
                 setHistory(histData || []);
@@ -6495,7 +6787,7 @@ function PortfolioDashboardView() {
 
         // 2. Fetch Distribution (Fast, from DB)
         try {
-            const distRes = await fetch(`${API_BASE}/portfolio/distribution`);
+            const distRes = await authFetch(`${API_BASE}/portfolio/distribution`);
             if (distRes.ok) {
                 const distData = await distRes.json();
                 setDistribution(distData || {});
@@ -6504,9 +6796,20 @@ function PortfolioDashboardView() {
             console.error('Error fetching distribution:', err);
         }
 
-        // 3. Fetch Real-time Metrics (Slow, External API)
+        // 3. Fetch Benchmark Data (Portfolio vs SPY)
         try {
-            const metricsRes = await fetch(`${API_BASE}/trades/unified/metrics`);
+            const benchmarkRes = await authFetch(`${API_BASE}/portfolio/benchmark`);
+            if (benchmarkRes.ok) {
+                const benchData = await benchmarkRes.json();
+                setBenchmarkData(benchData);
+            }
+        } catch (err) {
+            console.error('Error fetching benchmark:', err);
+        }
+
+        // 4. Fetch Real-time Metrics (Slow, External API)
+        try {
+            const metricsRes = await authFetch(`${API_BASE}/trades/unified/metrics`);
             if (metricsRes.ok) {
                 const data = await metricsRes.json();
                 setMetrics(data);
@@ -6532,25 +6835,184 @@ function PortfolioDashboardView() {
     };
 
     const totals = metrics?.total?.[displayCurrency] || { invested: 0, current: 0, pnl: 0 };
-    const currencySymbol = displayCurrency.startsWith('ars') ? 'ARS ' : 'US$';
+    const currencySymbol = displayCurrency === 'ars' ? 'ARS ' : 'US$';
     const rates = metrics?.rates || {};
     const roiPct = totals.invested > 0 ? ((totals.pnl / totals.invested) * 100).toFixed(2) : 0;
 
-    // Prepare chart data
-    const chartData = history.map(snap => ({
+    // Prepare chart data - convert to ARS if needed
+    const cclRate = rates?.ccl || 1;
+    const chartMultiplier = displayCurrency === 'ars' ? cclRate : 1;
+
+    // Filter data based on selected timeframe
+    const filterDataByTimeframe = (data) => {
+        if (!data || data.length === 0) return data;
+
+        const now = new Date();
+        let cutoffDate;
+
+        switch (chartTimeframe) {
+            case '1D':
+                cutoffDate = new Date(now);
+                cutoffDate.setDate(cutoffDate.getDate() - 1);
+                break;
+            case '1W':
+                cutoffDate = new Date(now);
+                cutoffDate.setDate(cutoffDate.getDate() - 7);
+                break;
+            case '1M':
+                cutoffDate = new Date(now);
+                cutoffDate.setMonth(cutoffDate.getMonth() - 1);
+                break;
+            case 'YTD':
+                cutoffDate = new Date(now.getFullYear(), 0, 1); // Jan 1st of current year
+                break;
+            case '1Y':
+                cutoffDate = new Date(now);
+                cutoffDate.setFullYear(cutoffDate.getFullYear() - 1);
+                break;
+            case 'Max':
+            default:
+                return data; // Return all data
+        }
+
+        return data.filter(snap => {
+            const snapDate = new Date(snap.date);
+            return snapDate >= cutoffDate;
+        });
+    };
+
+    const filteredHistory = filterDataByTimeframe(history);
+    const chartData = filteredHistory.map(snap => ({
         date: snap.date,
-        value: snap.total_value_usd,
-        pnl: snap.total_pnl_usd
+        value: (snap.total_value_usd || 0) * chartMultiplier,
+        pnl: (snap.total_pnl_usd || 0) * chartMultiplier
     }));
+
+    // Calculate Y-axis domain based on selected metric
+    const getYAxisDomain = () => {
+        if (chartData.length === 0) return [0, 100];
+        const dataKey = chartMetric; // 'value' or 'pnl'
+        const values = chartData.map(d => d[dataKey]).filter(v => v !== null && v !== undefined && !isNaN(v));
+        if (values.length === 0) return [0, 100];
+
+        const min = Math.min(...values);
+        const max = Math.max(...values);
+
+        // Add 10% padding
+        const padding = (max - min) * 0.1 || Math.abs(max) * 0.1 || 100;
+
+        if (dataKey === 'pnl') {
+            // For P&L, include 0 in the range
+            return [Math.min(min - padding, 0), Math.max(max + padding, 0)];
+        } else {
+            // For value, start from slightly below min
+            return [Math.max(0, min - padding), max + padding];
+        }
+    };
+    const yAxisDomain = getYAxisDomain();
 
     // Geographic regions with colors
     const regionColors = {
-        usa: { bg: 'bg-blue-500', text: 'text-blue-400', hex: '#3b82f6' },
-        brasil: { bg: 'bg-green-500', text: 'text-green-400', hex: '#22c55e' },
-        argentina: { bg: 'bg-cyan-500', text: 'text-cyan-400', hex: '#06b6d4' },
-        china: { bg: 'bg-red-500', text: 'text-red-400', hex: '#ef4444' },
-        europa: { bg: 'bg-purple-500', text: 'text-purple-400', hex: '#a855f7' }
+        usa: { bg: 'bg-blue-500', text: 'text-blue-400', hex: '#3b82f6', name: '🇺🇸 USA' },
+        brasil: { bg: 'bg-green-500', text: 'text-green-400', hex: '#22c55e', name: '🇧🇷 Brasil' },
+        argentina: { bg: 'bg-cyan-500', text: 'text-cyan-400', hex: '#06b6d4', name: '🇦🇷 Argentina' },
+        china: { bg: 'bg-red-500', text: 'text-red-400', hex: '#ef4444', name: '🇨🇳 China' },
+        europa: { bg: 'bg-purple-500', text: 'text-purple-400', hex: '#a855f7', name: '🇪🇺 Europa' }
     };
+
+    // Sector classification mapping
+    const SECTOR_MAP = {
+        // Technology
+        'AAPL': 'Technology', 'MSFT': 'Technology', 'GOOGL': 'Technology', 'GOOG': 'Technology',
+        'META': 'Technology', 'NVDA': 'Technology', 'AMD': 'Technology', 'INTC': 'Technology',
+        'NFLX': 'Technology', 'AMZN': 'Technology', 'SHOP': 'Technology', 'DOCU': 'Technology',
+        'ZM': 'Technology', 'SNAP': 'Technology', 'SPOT': 'Technology', 'RDDT': 'Technology',
+        'IT': 'Technology', 'DXYZ': 'Technology', 'VSTS': 'Technology',
+        // Automotive & EV
+        'TSLA': 'EV & Auto', 'STLA': 'EV & Auto', 'NIO': 'EV & Auto', 'XPEV': 'EV & Auto', 'LI': 'EV & Auto',
+        // Finance
+        'JPM': 'Finance', 'GS': 'Finance', 'V': 'Finance', 'MA': 'Finance', 'PYPL': 'Finance',
+        'SQ': 'Finance', 'COIN': 'Finance', 'KKR': 'Finance',
+        // Healthcare & Biotech
+        'PFE': 'Healthcare', 'JNJ': 'Healthcare', 'MRNA': 'Healthcare', 'ARCT': 'Healthcare',
+        'VKTX': 'Healthcare', 'AGEN': 'Healthcare', 'INDP': 'Healthcare',
+        // Energy
+        'CVX': 'Energy', 'XOM': 'Energy', 'FCEL': 'Energy', 'CLSK': 'Energy', 'MARA': 'Energy',
+        // Crypto-related
+        'GBTC': 'Crypto ETF', 'ETHU': 'Crypto ETF', 'MSTU': 'Crypto ETF',
+        // Consumer
+        'KO': 'Consumer', 'PEP': 'Consumer', 'MCD': 'Consumer', 'NKE': 'Consumer', 'SBUX': 'Consumer',
+        'DIS': 'Consumer', 'WMT': 'Consumer', 'HD': 'Consumer', 'CAKE': 'Consumer',
+        // Telecom
+        'T': 'Telecom', 'VZ': 'Telecom', 'VERI': 'Telecom',
+        // Space & Defense
+        'SPCE': 'Space', 'BA': 'Aerospace',
+        // ETFs
+        'SPY': 'ETF', 'QQQ': 'ETF', 'ARKK': 'ETF',
+        // Other
+        'UBER': 'Transport', 'ABNB': 'Travel', 'LAR': 'REIT', 'DOW': 'Materials',
+        'SMC': 'Industrial', 'VOYG': 'Other', 'MIRA': 'Other', 'SNDK': 'Other',
+        'QCLS': 'Other', 'BBBY': 'Other'
+    };
+
+    const sectorColors = {
+        'Technology': '#3b82f6',
+        'EV & Auto': '#ef4444',
+        'Finance': '#22c55e',
+        'Healthcare': '#06b6d4',
+        'Energy': '#f59e0b',
+        'Crypto ETF': '#f97316',
+        'Consumer': '#8b5cf6',
+        'Telecom': '#ec4899',
+        'Space': '#14b8a6',
+        'Aerospace': '#6366f1',
+        'ETF': '#64748b',
+        'Transport': '#84cc16',
+        'Travel': '#0ea5e9',
+        'REIT': '#a855f7',
+        'Materials': '#78716c',
+        'Industrial': '#737373',
+        'Other': '#94a3b8'
+    };
+
+    // Prepare country pie data from distribution
+    const countryPieData = Object.entries(distribution).map(([key, data]) => ({
+        name: regionColors[key]?.name || key.toUpperCase(),
+        value: data.value || 0,
+        pct: data.pct || 0,
+        fill: regionColors[key]?.hex || '#64748b'
+    })).filter(d => d.value > 0);
+
+    // Prepare sector pie data from metrics (if we have position details)
+    const sectorPieData = (() => {
+        const sectorTotals = {};
+        // Use USA trades data if available in metrics
+        if (metrics?.usa?.positions) {
+            metrics.usa.positions.forEach(pos => {
+                const sector = SECTOR_MAP[pos.ticker?.toUpperCase()] || 'Other';
+                const value = (pos.entry_price || 0) * (pos.shares || 0);
+                sectorTotals[sector] = (sectorTotals[sector] || 0) + value;
+            });
+        }
+        // If no position data, calculate from distribution (rough estimate)
+        if (Object.keys(sectorTotals).length === 0 && distribution.usa) {
+            // Show a placeholder - we'd need the actual trades to classify
+            sectorTotals['USA Trades'] = distribution.usa.value || 0;
+        }
+        return Object.entries(sectorTotals).map(([name, value]) => ({
+            name,
+            value: Math.round(value),
+            fill: sectorColors[name] || '#64748b'
+        })).filter(d => d.value > 0).sort((a, b) => b.value - a.value);
+    })();
+
+    // Calculate zero offset for gradient (for line chart that crosses zero)
+    const pnlValues = chartData.map(d => d.pnl).filter(v => v !== undefined && v !== null);
+    const pnlMin = Math.min(...pnlValues, 0);
+    const pnlMax = Math.max(...pnlValues, 0);
+    const pnlRange = pnlMax - pnlMin || 1;
+    // Zero position as percentage from top (0 = top, 1 = bottom)
+    const zeroOffset = pnlMax / pnlRange;
 
     return (
         <div className="p-4 container mx-auto max-w-[1600px]">
@@ -6573,7 +7035,7 @@ function PortfolioDashboardView() {
                 <span className="text-xs text-slate-500 uppercase">Ver en:</span>
                 <div className="flex bg-[#1a1a1a] rounded-lg p-0.5 border border-[#2a2a2a]">
                     <button onClick={() => setDisplayCurrency('usd_ccl')} className={`px-4 py-2 rounded text-sm font-bold transition ${displayCurrency === 'usd_ccl' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}>💵 USD CCL</button>
-                    <button onClick={() => setDisplayCurrency('ars_ccl')} className={`px-4 py-2 rounded text-sm font-bold transition ${displayCurrency === 'ars_ccl' ? 'bg-sky-600 text-white' : 'text-slate-400 hover:text-white'}`}>🇦🇷 ARS</button>
+                    <button onClick={() => setDisplayCurrency('ars')} className={`px-4 py-2 rounded text-sm font-bold transition ${displayCurrency === 'ars' ? 'bg-sky-600 text-white' : 'text-slate-400 hover:text-white'}`}>🇦🇷 ARS</button>
                 </div>
                 <div className="ml-auto text-xs text-slate-500 font-mono">
                     Dólar CCL: ARS ${rates.ccl?.toLocaleString()}
@@ -6612,20 +7074,54 @@ function PortfolioDashboardView() {
                     <h3 className="text-lg font-bold text-white flex items-center gap-2">
                         📈 Portfolio Evolution
                     </h3>
-                    <div className="flex bg-[#1a1a1a] rounded-lg p-0.5 border border-[#2a2a2a]">
-                        <button
-                            onClick={() => setChartMode('line')}
-                            className={`px-4 py-1.5 rounded text-sm font-medium transition ${chartMode === 'line' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}
-                        >
-                            LINE
-                        </button>
-                        <button
-                            onClick={() => setChartMode('bar')}
-                            className={`px-4 py-1.5 rounded text-sm font-medium transition ${chartMode === 'bar' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}
-                        >
-                            BAR
-                        </button>
+                    <div className="flex gap-2">
+                        {/* Metric Toggle */}
+                        <div className="flex bg-[#1a1a1a] rounded-lg p-0.5 border border-[#2a2a2a]">
+                            <button
+                                onClick={() => setChartMetric('value')}
+                                className={`px-3 py-1.5 rounded text-xs font-medium transition ${chartMetric === 'value' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                            >
+                                💰 VALUE
+                            </button>
+                            <button
+                                onClick={() => setChartMetric('pnl')}
+                                className={`px-3 py-1.5 rounded text-xs font-medium transition ${chartMetric === 'pnl' ? 'bg-green-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                            >
+                                📊 P&L
+                            </button>
+                        </div>
+                        {/* Chart Type Toggle */}
+                        <div className="flex bg-[#1a1a1a] rounded-lg p-0.5 border border-[#2a2a2a]">
+                            <button
+                                onClick={() => setChartMode('line')}
+                                className={`px-4 py-1.5 rounded text-sm font-medium transition ${chartMode === 'line' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                            >
+                                LINE
+                            </button>
+                            <button
+                                onClick={() => setChartMode('bar')}
+                                className={`px-4 py-1.5 rounded text-sm font-medium transition ${chartMode === 'bar' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                            >
+                                BAR
+                            </button>
+                        </div>
                     </div>
+                </div>
+
+                {/* Timeframe Toggle Row */}
+                <div className="flex justify-center gap-1 mb-4">
+                    {['1D', '1W', '1M', 'YTD', '1Y', 'Max'].map(tf => (
+                        <button
+                            key={tf}
+                            onClick={() => setChartTimeframe(tf)}
+                            className={`px-3 py-1 rounded text-xs font-medium transition ${chartTimeframe === tf
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-[#1a1a1a] text-slate-400 hover:text-white border border-[#2a2a2a]'
+                                }`}
+                        >
+                            {tf}
+                        </button>
+                    ))}
                 </div>
 
                 {chartData.length > 0 ? (
@@ -6638,28 +7134,117 @@ function PortfolioDashboardView() {
                                             <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
                                             <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
                                         </linearGradient>
+                                        {/* Split gradient: green above zero, red below zero */}
+                                        <linearGradient id="colorPnlSplit" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="0%" stopColor="#22c55e" stopOpacity={0.4} />
+                                            <stop offset={`${(zeroOffset * 100).toFixed(1)}%`} stopColor="#22c55e" stopOpacity={0.1} />
+                                            <stop offset={`${(zeroOffset * 100).toFixed(1)}%`} stopColor="#ef4444" stopOpacity={0.1} />
+                                            <stop offset="100%" stopColor="#ef4444" stopOpacity={0.4} />
+                                        </linearGradient>
                                     </defs>
                                     <CartesianGrid strokeDasharray="3 3" stroke="#1a1a1a" />
                                     <XAxis dataKey="date" tick={{ fill: '#64748b', fontSize: 10 }} tickFormatter={(d) => d.substring(5)} />
-                                    <YAxis tick={{ fill: '#64748b', fontSize: 10 }} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
+                                    <YAxis
+                                        tick={{ fill: '#64748b', fontSize: 10 }}
+                                        domain={yAxisDomain}
+                                        allowDataOverflow={false}
+                                        tickFormatter={(v) => {
+                                            const sign = chartMetric === 'pnl' && v >= 0 ? '+' : '';
+                                            const prefix = displayCurrency === 'ars' ? 'ARS ' : '$';
+                                            // Dynamic formatting based on value magnitude
+                                            if (displayCurrency === 'ars') {
+                                                if (Math.abs(v) >= 1000000) {
+                                                    return `${sign}${prefix}${(v / 1000000).toFixed(1)}M`;
+                                                } else if (Math.abs(v) >= 1000) {
+                                                    return `${sign}${prefix}${(v / 1000).toFixed(0)}k`;
+                                                }
+                                                return `${sign}${prefix}${v.toFixed(0)}`;
+                                            } else {
+                                                if (Math.abs(v) >= 1000000) {
+                                                    return `${sign}${prefix}${(v / 1000000).toFixed(1)}M`;
+                                                } else if (Math.abs(v) >= 1000) {
+                                                    return `${sign}${prefix}${(v / 1000).toFixed(1)}k`;
+                                                }
+                                                return `${sign}${prefix}${v.toFixed(0)}`;
+                                            }
+                                        }}
+                                    />
                                     <Tooltip
                                         contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '8px' }}
                                         labelStyle={{ color: '#94a3b8' }}
-                                        formatter={(value) => [`$${value.toLocaleString()}`, 'Value']}
+                                        formatter={(value) => {
+                                            const sign = value >= 0 ? '+' : '';
+                                            const prefix = displayCurrency === 'ars' ? 'ARS ' : '$';
+                                            return [`${chartMetric === 'pnl' ? sign : ''}${prefix}${Math.round(value).toLocaleString()}`, chartMetric === 'pnl' ? 'P&L' : 'Value'];
+                                        }}
                                     />
-                                    <Area type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={2} fill="url(#colorValue)" />
+                                    {/* Reference line at zero for P&L mode */}
+                                    {chartMetric === 'pnl' && <ReferenceLine y={0} stroke="#64748b" strokeDasharray="3 3" strokeWidth={1} />}
+                                    {chartMetric === 'value' ? (
+                                        <Area type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={2} fill="url(#colorValue)" />
+                                    ) : (
+                                        <Area
+                                            type="monotone"
+                                            dataKey="pnl"
+                                            stroke="#64748b"
+                                            strokeWidth={2}
+                                            fill="url(#colorPnlSplit)"
+                                        />
+                                    )}
                                 </AreaChart>
                             ) : (
                                 <BarChart data={chartData}>
                                     <CartesianGrid strokeDasharray="3 3" stroke="#1a1a1a" />
                                     <XAxis dataKey="date" tick={{ fill: '#64748b', fontSize: 10 }} tickFormatter={(d) => d.substring(5)} />
-                                    <YAxis tick={{ fill: '#64748b', fontSize: 10 }} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
+                                    <YAxis
+                                        tick={{ fill: '#64748b', fontSize: 10 }}
+                                        domain={yAxisDomain}
+                                        allowDataOverflow={false}
+                                        tickFormatter={(v) => {
+                                            const sign = chartMetric === 'pnl' && v >= 0 ? '+' : '';
+                                            const prefix = displayCurrency === 'ars' ? 'ARS ' : '$';
+                                            // Dynamic formatting based on value magnitude
+                                            if (displayCurrency === 'ars') {
+                                                if (Math.abs(v) >= 1000000) {
+                                                    return `${sign}${prefix}${(v / 1000000).toFixed(1)}M`;
+                                                } else if (Math.abs(v) >= 1000) {
+                                                    return `${sign}${prefix}${(v / 1000).toFixed(0)}k`;
+                                                }
+                                                return `${sign}${prefix}${v.toFixed(0)}`;
+                                            } else {
+                                                if (Math.abs(v) >= 1000000) {
+                                                    return `${sign}${prefix}${(v / 1000000).toFixed(1)}M`;
+                                                } else if (Math.abs(v) >= 1000) {
+                                                    return `${sign}${prefix}${(v / 1000).toFixed(1)}k`;
+                                                }
+                                                return `${sign}${prefix}${v.toFixed(0)}`;
+                                            }
+                                        }}
+                                    />
                                     <Tooltip
                                         contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '8px' }}
-                                        labelStyle={{ color: '#94a3b8' }}
-                                        formatter={(value) => [`$${value.toLocaleString()}`, 'Value']}
+                                        labelStyle={{ color: '#fff' }}
+                                        itemStyle={{ color: '#fff' }}
+                                        formatter={(value) => {
+                                            const sign = value >= 0 ? '+' : '';
+                                            const prefix = displayCurrency === 'ars' ? 'ARS ' : '$';
+                                            return [`${chartMetric === 'pnl' ? sign : ''}${prefix}${Math.round(value).toLocaleString()}`, chartMetric === 'pnl' ? 'P&L' : 'Value'];
+                                        }}
                                     />
-                                    <Bar dataKey="value" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                                    {/* Reference line at zero for P&L mode */}
+                                    {chartMetric === 'pnl' && <ReferenceLine y={0} stroke="#64748b" strokeDasharray="3 3" />}
+                                    <Bar dataKey={chartMetric} radius={[4, 4, 0, 0]}>
+                                        {/* Color each bar based on positive/negative value */}
+                                        {chartData.map((entry, index) => (
+                                            <Cell
+                                                key={`cell-${index}`}
+                                                fill={chartMetric === 'pnl'
+                                                    ? (entry.pnl >= 0 ? '#22c55e' : '#ef4444')
+                                                    : '#3b82f6'
+                                                }
+                                            />
+                                        ))}
+                                    </Bar>
                                 </BarChart>
                             )}
                         </ResponsiveContainer>
@@ -6678,9 +7263,9 @@ function PortfolioDashboardView() {
                 )}
             </div>
 
-            {/* Market Breakdown + Geographic Map Side by Side */}
+            {/* Market Breakdown + Pie Charts Side by Side */}
             <div className="grid lg:grid-cols-2 gap-6 mb-8">
-                {/* Market Breakdown */}
+                {/* Left Column: Market Breakdown */}
                 <div>
                     <h3 className="text-lg font-bold text-white mb-4">📊 Breakdown por Mercado</h3>
                     <div className="grid gap-4">
@@ -6696,7 +7281,7 @@ function PortfolioDashboardView() {
                                     <span className="text-blue-400">
                                         {displayCurrency === 'usd_ccl'
                                             ? `$${metrics?.usa?.invested_usd?.toLocaleString() || 0}`
-                                            : `ARS ${metrics?.usa?.invested_ars_ccl?.toLocaleString() || 0}`
+                                            : `ARS ${Math.round((metrics?.usa?.invested_usd || 0) * (rates?.ccl || 0)).toLocaleString()}`
                                         }
                                     </span>
                                 </div>
@@ -6705,7 +7290,7 @@ function PortfolioDashboardView() {
                                     <span className={(metrics?.usa?.pnl_usd || 0) >= 0 ? 'text-green-400' : 'text-red-400'}>
                                         {displayCurrency === 'usd_ccl'
                                             ? `$${metrics?.usa?.pnl_usd?.toLocaleString() || 0}`
-                                            : `ARS ${((metrics?.usa?.pnl_usd || 0) * (rates?.ccl || 0)).toLocaleString()}`
+                                            : `ARS ${Math.round((metrics?.usa?.pnl_usd || 0) * (rates?.ccl || 0)).toLocaleString()}`
                                         }
                                     </span>
                                 </div>
@@ -6772,64 +7357,152 @@ function PortfolioDashboardView() {
                     </div>
                 </div>
 
-                {/* Geographic Distribution Map */}
-                <div>
-                    <h3 className="text-lg font-bold text-white mb-4">🌍 Distribución Geográfica</h3>
-                    <div className="bg-[#0f0f0f] rounded-xl p-6 border border-[#1a1a1a] h-full">
-                        {/* Simple visual representation */}
-                        <div className="grid grid-cols-2 gap-4 mb-6">
-                            {Object.entries(distribution).filter(([k]) => k !== 'crypto').map(([region, data]) => (
-                                <div key={region} className="flex items-center gap-3 p-3 bg-[#151515] rounded-lg border border-[#2a2a2a]">
-                                    <div className={`w-3 h-3 rounded-full ${regionColors[region]?.bg || 'bg-gray-500'}`}></div>
-                                    <div className="flex-1">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-sm font-medium text-white capitalize">{region}</span>
-                                            <span className="text-xs text-slate-500">
-                                                {region === 'usa' && '🇺🇸'}
-                                                {region === 'brasil' && '🇧🇷'}
-                                                {region === 'argentina' && '🇦🇷'}
-                                                {region === 'china' && '🇨🇳'}
-                                                {region === 'europa' && '🇪🇺'}
-                                            </span>
-                                        </div>
-                                        <div className="flex justify-between items-baseline">
-                                            <span className={`text-lg font-bold ${regionColors[region]?.text || 'text-gray-400'}`}>{data?.pct || 0}%</span>
-                                            <span className="text-xs text-slate-500">
-                                                {displayCurrency === 'usd_ccl'
-                                                    ? `$${(data?.value || 0).toLocaleString()}`
-                                                    : `ARS ${((data?.value || 0) * (rates?.ccl || 0)).toLocaleString()}`
-                                                }
-                                            </span>
-                                        </div>
+                {/* Right Column: Stacked Pie Charts */}
+                <div className="space-y-6">
+                    {/* Country Distribution */}
+                    <div>
+                        <h3 className="text-lg font-bold text-white mb-2">🌍 Por País</h3>
+                        <div className="bg-[#0f0f0f] rounded-xl p-3 border border-[#1a1a1a]">
+                            {countryPieData.length > 0 ? (
+                                <ResponsiveContainer width="100%" height={160}>
+                                    <PieChart>
+                                        <Pie
+                                            data={countryPieData}
+                                            cx="50%"
+                                            cy="50%"
+                                            innerRadius={40}
+                                            outerRadius={65}
+                                            dataKey="value"
+                                            labelLine={false}
+                                            label={({ name, pct }) => `${name} ${pct.toFixed(0)}%`}
+                                        >
+                                            {countryPieData.map((entry, index) => (
+                                                <Cell key={`country-${index}`} fill={entry.fill} />
+                                            ))}
+                                        </Pie>
+                                        <Tooltip
+                                            formatter={(value) => {
+                                                const prefix = displayCurrency === 'ars' ? 'ARS ' : '$';
+                                                const displayValue = displayCurrency === 'ars' ? Math.round(value * cclRate) : value;
+                                                return [`${prefix}${displayValue.toLocaleString()}`, 'Valor'];
+                                            }}
+                                            contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '8px' }}
+                                        />
+                                    </PieChart>
+                                </ResponsiveContainer>
+                            ) : (
+                                <div className="h-[160px] flex items-center justify-center text-slate-500 text-sm">Sin datos</div>
+                            )}
+                            <div className="flex flex-wrap gap-2 justify-center text-xs">
+                                {countryPieData.map((entry, index) => (
+                                    <div key={`legend-country-${index}`} className="flex items-center gap-1">
+                                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.fill }}></div>
+                                        <span className="text-slate-400">{entry.name} ({entry.pct.toFixed(0)}%)</span>
                                     </div>
-                                </div>
-                            ))}
+                                ))}
+                            </div>
                         </div>
+                    </div>
 
-                        {/* Distribution Bar */}
-                        <div className="h-4 rounded-full overflow-hidden flex" style={{ backgroundColor: '#1a1a1a' }}>
-                            {Object.entries(distribution).filter(([k, d]) => k !== 'crypto' && d?.pct > 0).map(([region, data]) => (
-                                <div
-                                    key={region}
-                                    style={{ width: `${data.pct}%`, backgroundColor: regionColors[region]?.hex }}
-                                    className="h-full transition-all duration-500"
-                                    title={`${region}: ${data.pct}%`}
-                                ></div>
-                            ))}
-                        </div>
-
-                        {/* Legend */}
-                        <div className="flex flex-wrap gap-4 mt-4 justify-center">
-                            {Object.entries(regionColors).map(([region, colors]) => (
-                                <div key={region} className="flex items-center gap-2 text-xs">
-                                    <div className={`w-2 h-2 rounded-full ${colors.bg}`}></div>
-                                    <span className="text-slate-400 capitalize">{region}</span>
-                                </div>
-                            ))}
+                    {/* Sector Distribution */}
+                    <div>
+                        <h3 className="text-lg font-bold text-white mb-2">💼 Por Sector</h3>
+                        <div className="bg-[#0f0f0f] rounded-xl p-3 border border-[#1a1a1a]">
+                            {sectorPieData.length > 0 ? (
+                                <ResponsiveContainer width="100%" height={160}>
+                                    <PieChart>
+                                        <Pie
+                                            data={sectorPieData}
+                                            cx="50%"
+                                            cy="50%"
+                                            innerRadius={40}
+                                            outerRadius={65}
+                                            dataKey="value"
+                                            labelLine={false}
+                                            label={({ name }) => name}
+                                        >
+                                            {sectorPieData.map((entry, index) => (
+                                                <Cell key={`sector-${index}`} fill={entry.fill} />
+                                            ))}
+                                        </Pie>
+                                        <Tooltip
+                                            formatter={(value) => {
+                                                const prefix = displayCurrency === 'ars' ? 'ARS ' : '$';
+                                                const displayValue = displayCurrency === 'ars' ? Math.round(value * cclRate) : value;
+                                                return [`${prefix}${displayValue.toLocaleString()}`, 'Valor'];
+                                            }}
+                                            contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '8px' }}
+                                        />
+                                    </PieChart>
+                                </ResponsiveContainer>
+                            ) : (
+                                <div className="h-[160px] flex items-center justify-center text-slate-500 text-sm">Cargando...</div>
+                            )}
+                            <div className="flex flex-wrap gap-2 justify-center text-xs">
+                                {sectorPieData.slice(0, 6).map((entry, index) => (
+                                    <div key={`legend-sector-${index}`} className="flex items-center gap-1">
+                                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.fill }}></div>
+                                        <span className="text-slate-400">{entry.name}</span>
+                                    </div>
+                                ))}
+                                {sectorPieData.length > 6 && <span className="text-slate-500 text-xs">+{sectorPieData.length - 6}</span>}
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
+
+            {/* Performance vs Benchmark (P&L% vs SPY) */}
+            {benchmarkData && benchmarkData.dates && benchmarkData.dates.length > 0 && (
+                <div className="mb-8">
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-bold text-white">📈 Performance vs S&P 500 (90 días)</h3>
+                        <div className="flex items-center gap-4 text-sm">
+                            <span className="flex items-center gap-1.5">
+                                <span className="w-3 h-0.5 bg-blue-500 rounded"></span>
+                                <span className="text-slate-400">Portfolio</span>
+                                <span className={benchmarkData.latest_portfolio_pct >= 0 ? 'text-green-400' : 'text-red-400'}>
+                                    {benchmarkData.latest_portfolio_pct >= 0 ? '+' : ''}{benchmarkData.latest_portfolio_pct?.toFixed(2)}%
+                                </span>
+                            </span>
+                            <span className="flex items-center gap-1.5">
+                                <span className="w-3 h-0.5 bg-pink-500 rounded"></span>
+                                <span className="text-slate-400">S&P 500</span>
+                                <span className={benchmarkData.latest_spy_pct >= 0 ? 'text-green-400' : 'text-red-400'}>
+                                    {benchmarkData.latest_spy_pct >= 0 ? '+' : ''}{benchmarkData.latest_spy_pct?.toFixed(2)}%
+                                </span>
+                            </span>
+                        </div>
+                    </div>
+                    <div className="bg-[#0f0f0f] rounded-xl p-4 border border-[#1a1a1a]">
+                        <ResponsiveContainer width="100%" height={200}>
+                            <AreaChart data={benchmarkData.dates.map((date, i) => ({
+                                date,
+                                portfolio: benchmarkData.portfolio_pct[i] || 0,
+                                spy: benchmarkData.spy_pct[i] || 0
+                            }))}>
+                                <defs>
+                                    <linearGradient id="colorPortfolio" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                                    </linearGradient>
+                                </defs>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#1a1a1a" />
+                                <XAxis dataKey="date" tick={{ fill: '#64748b', fontSize: 10 }} tickFormatter={(d) => d.substring(5)} />
+                                <YAxis tick={{ fill: '#64748b', fontSize: 10 }} tickFormatter={(v) => `${v >= 0 ? '+' : ''}${v.toFixed(0)}%`} />
+                                <Tooltip
+                                    contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '8px' }}
+                                    formatter={(value, name) => [`${value >= 0 ? '+' : ''}${value.toFixed(2)}%`, name === 'portfolio' ? 'Portfolio' : 'S&P 500']}
+                                    labelFormatter={(label) => `Fecha: ${label}`}
+                                />
+                                <ReferenceLine y={0} stroke="#64748b" strokeDasharray="3 3" />
+                                <Area type="monotone" dataKey="portfolio" stroke="#3b82f6" strokeWidth={2} fill="url(#colorPortfolio)" />
+                                <Area type="monotone" dataKey="spy" stroke="#ec4899" strokeWidth={2} fill="none" strokeDasharray="5 5" />
+                            </AreaChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+            )}
 
             {/* Quick Comparison Table */}
             <h3 className="text-lg font-bold text-white mb-4">💱 Total Portfolio (USD CCL vs ARS)</h3>
@@ -6846,17 +7519,17 @@ function PortfolioDashboardView() {
                         <tr className="border-t border-[#1a1a1a]">
                             <td className="p-3 text-slate-300 font-medium">Total Invertido</td>
                             <td className="p-3 text-right text-green-400 font-bold text-lg">${metrics?.total?.usd_ccl?.invested?.toLocaleString() || 0}</td>
-                            <td className="p-3 text-right text-sky-400 font-bold text-lg">${metrics?.total?.ars_ccl?.invested?.toLocaleString() || 0}</td>
+                            <td className="p-3 text-right text-sky-400 font-bold text-lg">${metrics?.total?.ars?.invested?.toLocaleString() || 0}</td>
                         </tr>
                         <tr className="border-t border-[#1a1a1a] bg-[#0a0a0a]/50">
                             <td className="p-3 text-slate-300 font-medium">Valor Actual</td>
                             <td className="p-3 text-right text-green-400">${metrics?.total?.usd_ccl?.current?.toLocaleString() || 0}</td>
-                            <td className="p-3 text-right text-sky-400">${metrics?.total?.ars_ccl?.current?.toLocaleString() || 0}</td>
+                            <td className="p-3 text-right text-sky-400">${metrics?.total?.ars?.current?.toLocaleString() || 0}</td>
                         </tr>
                         <tr className="border-t border-[#1a1a1a]">
                             <td className="p-3 text-slate-300 font-medium">Total P&L (Open + Closed)</td>
                             <td className={`p-3 text-right font-bold ${(metrics?.total?.usd_ccl?.pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>${metrics?.total?.usd_ccl?.pnl?.toLocaleString() || 0}</td>
-                            <td className={`p-3 text-right font-bold ${(metrics?.total?.ars_ccl?.pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>${metrics?.total?.ars_ccl?.pnl?.toLocaleString() || 0}</td>
+                            <td className={`p-3 text-right font-bold ${(metrics?.total?.ars?.pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>${metrics?.total?.ars?.pnl?.toLocaleString() || 0}</td>
                         </tr>
                     </tbody>
                 </table>
@@ -6886,7 +7559,7 @@ function WatchlistPanel() {
 
     const loadWatchlist = async () => {
         try {
-            const response = await fetch('/api/watchlist');
+            const response = await authFetch('/api/watchlist');
             const data = await response.json();
             setWatchlist(Array.isArray(data) ? data : []);
         } catch (error) {
@@ -7541,10 +8214,19 @@ function App() {
     const [showRegister, setShowRegister] = useState(false);
 
     const [view, setView] = useState('dashboard');
+    // Track visited views for lazy mounting (component only mounts on first visit, then stays mounted)
+    const [visitedViews, setVisitedViews] = useState(new Set(['dashboard']));
     const [selectedTicker, setSelectedTicker] = useState(null);
     const [overrideMetrics, setOverrideMetrics] = useState(null);
     const [showConnectModal, setShowConnectModal] = useState(false);
     const [deferredPrompt, setDeferredPrompt] = useState(null);
+
+    // Update visitedViews when view changes
+    React.useEffect(() => {
+        if (!visitedViews.has(view)) {
+            setVisitedViews(prev => new Set([...prev, view]));
+        }
+    }, [view]);
 
     // Initial Load & Auth Setup
     useEffect(() => {
@@ -7560,15 +8242,39 @@ function App() {
         };
         window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
 
-        // Check URL params
+        // Check URL params for direct chart opening (from new tab)
         const params = new URLSearchParams(window.location.search);
         const tickerParam = params.get('ticker');
+        const viewParam = params.get('view');
         if (tickerParam) {
-            handleTickerClick(tickerParam);
+            setSelectedTicker(tickerParam);
+            if (viewParam) {
+                setView(viewParam);
+            }
+            // Clear URL params after parsing to keep URL clean
+            window.history.replaceState({}, '', window.location.pathname);
         }
 
         return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     }, [token]);
+
+    // Apply saved theme ONCE on initial page load
+    useEffect(() => {
+        const savedTheme = localStorage.getItem('theme') || 'dark';
+        console.log('[Theme] Applying saved theme:', savedTheme);
+        document.body.classList.remove('theme-dark', 'theme-light', 'theme-cyber');
+        document.body.classList.add(`theme-${savedTheme}`);
+        if (savedTheme === 'light') {
+            document.body.style.backgroundColor = '#f5f5f5';
+            document.body.style.color = '#1a1a1a';
+        } else if (savedTheme === 'cyber') {
+            document.body.style.backgroundColor = '#0d0221';
+            document.body.style.color = '#00ff88';
+        } else {
+            document.body.style.backgroundColor = '#0a0a0a';
+            document.body.style.color = '#ffffff';
+        }
+    }, []);
 
     const handleLoginSuccess = (newToken) => {
         localStorage.setItem('token', newToken);
@@ -7590,8 +8296,9 @@ function App() {
     };
 
     const handleTickerClick = (ticker, metrics = null) => {
-        setOverrideMetrics(metrics);
-        setSelectedTicker(ticker);
+        // Open chart in new browser tab
+        const url = `${window.location.origin}?ticker=${encodeURIComponent(ticker)}&view=charts`;
+        window.open(url, '_blank');
     };
 
     const handleCloseDetail = () => {
@@ -7607,9 +8314,9 @@ function App() {
     }
 
     return (
-        <div className="flex h-screen overflow-hidden text-slate-300 selection:bg-blue-500/30 selection:text-white">
+        <div className="flex h-screen overflow-hidden selection:bg-blue-500/30 selection:text-white">
             {/* Sidebar Navigation */}
-            <div className={`w-[70px] sm:w-[240px] flex-shrink-0 border-r border-[#1a1a1a] bg-[#0a0a0a] flex flex-col transition-all duration-300 z-50 ${selectedTicker ? 'hidden md:flex' : 'flex'}`}>
+            <div className={`w-[70px] sm:w-[240px] flex-shrink-0 border-r border-[#1a1a1a] flex flex-col transition-all duration-300 z-50 ${selectedTicker ? 'hidden md:flex' : 'flex'}`}>
                 {/* Logo Area */}
                 <div className="h-16 flex items-center justify-center sm:justify-start sm:px-6 border-b border-[#1a1a1a]">
                     <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-900/20 shrink-0">
@@ -7621,87 +8328,87 @@ function App() {
                 </div>
 
                 {/* Navigation Items */}
-                <nav className="flex-1 overflow-y-auto p-3 space-y-1 custom-scrollbar">
-                    <div className="text-[10px] uppercase font-bold text-slate-600 px-3 mb-2 mt-2 hidden sm:block">Platform</div>
-                    <button onClick={() => setView('dashboard')} className={`group relative w-full flex items-center p-3 rounded-xl transition-all duration-200 ${view === 'dashboard' ? 'bg-blue-600/10 text-white' : 'hover:bg-[#151515] text-slate-400 hover:text-white'}`}>
-                        <span className={`text-xl ${view === 'dashboard' ? 'text-blue-500' : 'text-slate-500 group-hover:text-blue-400'}`}>⚡</span>
+                <nav className="flex-1 overflow-y-auto p-2 space-y-0.5 custom-scrollbar">
+                    <div className="text-[10px] uppercase font-bold text-slate-600 px-3 mb-1 mt-1 hidden sm:block">Platform</div>
+                    <button onClick={() => setView('dashboard')} className={`group relative w-full flex items-center p-2 rounded-xl transition-all duration-200 ${view === 'dashboard' ? 'bg-blue-600/10 text-white' : 'hover:bg-[#151515] text-slate-400 hover:text-white'}`}>
+                        <span className={`text-lg ${view === 'dashboard' ? 'text-blue-500' : 'text-slate-500 group-hover:text-blue-400'}`}>⚡</span>
                         <span className="ml-3 text-sm font-medium hidden sm:block">Dashboard</span>
                     </button>
-                    <button onClick={() => setView('portfolio')} className={`group relative w-full flex items-center p-3 rounded-xl transition-all duration-200 ${view === 'portfolio' ? 'bg-purple-600/10 text-white' : 'hover:bg-[#151515] text-slate-400 hover:text-white'}`}>
-                        <span className={`text-xl ${view === 'portfolio' ? 'text-purple-500' : 'text-slate-500 group-hover:text-purple-400'}`}>🌍</span>
+                    <button onClick={() => setView('portfolio')} className={`group relative w-full flex items-center p-2 rounded-xl transition-all duration-200 ${view === 'portfolio' ? 'bg-purple-600/10 text-white' : 'hover:bg-[#151515] text-slate-400 hover:text-white'}`}>
+                        <span className={`text-lg ${view === 'portfolio' ? 'text-purple-500' : 'text-slate-500 group-hover:text-purple-400'}`}>🌍</span>
                         <span className="ml-3 text-sm font-medium hidden sm:block">Global Portfolio</span>
                     </button>
 
-                    <div className="my-2 border-t border-[#1a1a1a]"></div>
-                    <div className="text-[10px] uppercase font-bold text-slate-600 px-3 mb-2 hidden sm:block">Scanners</div>
+                    <div className="my-1 border-t border-[#1a1a1a]"></div>
+                    <div className="text-[10px] uppercase font-bold text-slate-600 px-3 mb-1 hidden sm:block">Scanners</div>
 
-                    <button onClick={() => setView('scanner')} className={`group relative w-full flex items-center p-3 rounded-xl transition-all duration-200 ${view === 'scanner' ? 'bg-green-600/10 text-white' : 'hover:bg-[#151515] text-slate-400 hover:text-white'}`}>
-                        <span className={`text-xl ${view === 'scanner' ? 'text-green-500' : 'text-slate-500 group-hover:text-green-400'}`}>📡</span>
+                    <button onClick={() => setView('scanner')} className={`group relative w-full flex items-center p-2 rounded-xl transition-all duration-200 ${view === 'scanner' ? 'bg-green-600/10 text-white' : 'hover:bg-[#151515] text-slate-400 hover:text-white'}`}>
+                        <span className={`text-lg ${view === 'scanner' ? 'text-green-500' : 'text-slate-500 group-hover:text-green-400'}`}>📡</span>
                         <span className="ml-3 text-sm font-medium hidden sm:block">Scanner</span>
                     </button>
-                    <button onClick={() => setView('options')} className={`group relative w-full flex items-center p-3 rounded-xl transition-all duration-200 ${view === 'options' ? 'bg-yellow-600/10 text-white' : 'hover:bg-[#151515] text-slate-400 hover:text-white'}`}>
-                        <span className={`text-xl ${view === 'options' ? 'text-yellow-500' : 'text-slate-500 group-hover:text-yellow-400'}`}>🌊</span>
+                    <button onClick={() => setView('options')} className={`group relative w-full flex items-center p-2 rounded-xl transition-all duration-200 ${view === 'options' ? 'bg-yellow-600/10 text-white' : 'hover:bg-[#151515] text-slate-400 hover:text-white'}`}>
+                        <span className={`text-lg ${view === 'options' ? 'text-yellow-500' : 'text-slate-500 group-hover:text-yellow-400'}`}>🌊</span>
                         <span className="ml-3 text-sm font-medium hidden sm:block">Options Flow</span>
                     </button>
-                    <button onClick={() => setView('sharpe')} className={`group relative w-full flex items-center p-3 rounded-xl transition-all duration-200 ${view === 'sharpe' ? 'bg-violet-600/10 text-white' : 'hover:bg-[#151515] text-slate-400 hover:text-white'}`}>
-                        <span className={`text-xl ${view === 'sharpe' ? 'text-violet-500' : 'text-slate-500 group-hover:text-violet-400'}`}>🧠</span>
+                    <button onClick={() => setView('sharpe')} className={`group relative w-full flex items-center p-2 rounded-xl transition-all duration-200 ${view === 'sharpe' ? 'bg-violet-600/10 text-white' : 'hover:bg-[#151515] text-slate-400 hover:text-white'}`}>
+                        <span className={`text-lg ${view === 'sharpe' ? 'text-violet-500' : 'text-slate-500 group-hover:text-violet-400'}`}>🧠</span>
                         <span className="ml-3 text-sm font-medium hidden sm:block">Fundamentals</span>
                     </button>
 
-                    <div className="my-2 border-t border-[#1a1a1a]"></div>
-                    <div className="text-[10px] uppercase font-bold text-slate-600 px-3 mb-2 hidden sm:block">Portfolios</div>
+                    <div className="my-1 border-t border-[#1a1a1a]"></div>
+                    <div className="text-[10px] uppercase font-bold text-slate-600 px-3 mb-1 hidden sm:block">Portfolios</div>
 
-                    <button onClick={() => setView('journal')} className={`group relative w-full flex items-center p-3 rounded-xl transition-all duration-200 ${view === 'journal' ? 'bg-teal-600/10 text-white' : 'hover:bg-[#151515] text-slate-400 hover:text-white'}`}>
-                        <span className={`text-xl ${view === 'journal' ? 'text-teal-500' : 'text-slate-500 group-hover:text-teal-400'}`}>🇺🇸</span>
+                    <button onClick={() => setView('journal')} className={`group relative w-full flex items-center p-2 rounded-xl transition-all duration-200 ${view === 'journal' ? 'bg-teal-600/10 text-white' : 'hover:bg-[#151515] text-slate-400 hover:text-white'}`}>
+                        <span className={`text-lg ${view === 'journal' ? 'text-teal-500' : 'text-slate-500 group-hover:text-teal-400'}`}>🇺🇸</span>
                         <span className="ml-3 text-sm font-medium hidden sm:block">Wall St.</span>
                     </button>
-                    <button onClick={() => setView('argentina')} className={`group relative w-full flex items-center p-3 rounded-xl transition-all duration-200 ${view === 'argentina' ? 'bg-sky-600/10 text-white' : 'hover:bg-[#151515] text-slate-400 hover:text-white'}`}>
-                        <span className={`text-xl ${view === 'argentina' ? 'text-sky-500' : 'text-slate-500 group-hover:text-sky-400'}`}>🇦🇷</span>
+                    <button onClick={() => setView('argentina')} className={`group relative w-full flex items-center p-2 rounded-xl transition-all duration-200 ${view === 'argentina' ? 'bg-sky-600/10 text-white' : 'hover:bg-[#151515] text-slate-400 hover:text-white'}`}>
+                        <span className={`text-lg ${view === 'argentina' ? 'text-sky-500' : 'text-slate-500 group-hover:text-sky-400'}`}>🇦🇷</span>
                         <span className="ml-3 text-sm font-medium hidden sm:block">Merval</span>
                     </button>
-                    <button onClick={() => setView('crypto')} className={`group relative w-full flex items-center p-3 rounded-xl transition-all duration-200 ${view === 'crypto' ? 'bg-orange-600/10 text-white' : 'hover:bg-[#151515] text-slate-400 hover:text-white'}`}>
-                        <span className={`text-xl ${view === 'crypto' ? 'text-orange-500' : 'text-slate-500 group-hover:text-orange-400'}`}>₿</span>
+                    <button onClick={() => setView('crypto')} className={`group relative w-full flex items-center p-2 rounded-xl transition-all duration-200 ${view === 'crypto' ? 'bg-orange-600/10 text-white' : 'hover:bg-[#151515] text-slate-400 hover:text-white'}`}>
+                        <span className={`text-lg ${view === 'crypto' ? 'text-orange-500' : 'text-slate-500 group-hover:text-orange-400'}`}>₿</span>
                         <span className="ml-3 text-sm font-medium hidden sm:block">Crypto</span>
                     </button>
 
-                    <div className="my-2 border-t border-[#1a1a1a]"></div>
+                    <div className="my-1 border-t border-[#1a1a1a]"></div>
 
-                    <button onClick={() => setView('watchlist')} className={`group relative w-full flex items-center p-3 rounded-xl transition-all duration-200 ${view === 'watchlist' ? 'bg-amber-600/10 text-white' : 'hover:bg-[#151515] text-slate-500 hover:text-white'}`}>
-                        <span className={`text-xl ${view === 'watchlist' ? 'text-amber-500' : 'text-slate-500 group-hover:text-amber-400'}`}>⭐</span>
+                    <button onClick={() => setView('watchlist')} className={`group relative w-full flex items-center p-2 rounded-xl transition-all duration-200 ${view === 'watchlist' ? 'bg-amber-600/10 text-white' : 'hover:bg-[#151515] text-slate-500 hover:text-white'}`}>
+                        <span className={`text-lg ${view === 'watchlist' ? 'text-amber-500' : 'text-slate-500 group-hover:text-amber-400'}`}>⭐</span>
                         <span className="ml-3 text-sm font-medium hidden sm:block">Watchlist</span>
                     </button>
-                    <button onClick={() => setView('charts')} className={`group relative w-full flex items-center p-3 rounded-xl transition-all duration-200 ${view === 'charts' ? 'bg-cyan-600/10 text-white' : 'hover:bg-[#151515] text-slate-500 hover:text-white'}`}>
-                        <span className={`text-xl ${view === 'charts' ? 'text-cyan-500' : 'text-slate-500 group-hover:text-cyan-400'}`}>🕯️</span>
+                    <button onClick={() => setView('charts')} className={`group relative w-full flex items-center p-2 rounded-xl transition-all duration-200 ${view === 'charts' ? 'bg-cyan-600/10 text-white' : 'hover:bg-[#151515] text-slate-500 hover:text-white'}`}>
+                        <span className={`text-lg ${view === 'charts' ? 'text-cyan-500' : 'text-slate-500 group-hover:text-cyan-400'}`}>🕯️</span>
                         <span className="ml-3 text-sm font-medium hidden sm:block">Advanced Charts</span>
                     </button>
                 </nav>
 
                 {/* Settings at bottom */}
-                <div className="p-4 border-t border-[#1a1a1a]">
+                <div className="p-2 border-t border-[#1a1a1a]">
                     <button
                         onClick={() => setView('settings')}
-                        className={`group relative w-full flex items-center p-3 rounded-xl transition-all duration-200 ${view === 'settings' ? 'bg-blue-600/10 text-white' : 'hover:bg-[#151515] text-slate-500 hover:text-white'}`}
+                        className={`group relative w-full flex items-center p-2 rounded-xl transition-all duration-200 ${view === 'settings' ? 'bg-blue-600/10 text-white' : 'hover:bg-[#151515] text-slate-500 hover:text-white'}`}
                     >
-                        <span className={`text-xl ${view === 'settings' ? 'text-blue-500' : 'text-slate-500 group-hover:text-blue-400'}`}>⚙️</span>
+                        <span className={`text-lg ${view === 'settings' ? 'text-blue-500' : 'text-slate-500 group-hover:text-blue-400'}`}>⚙️</span>
                         <span className="ml-3 text-sm font-medium hidden sm:block">Settings</span>
                     </button>
 
                     <button
                         onClick={handleLogout}
-                        className="group relative w-full flex items-center p-3 rounded-xl transition-all duration-200 hover:bg-red-900/20 text-slate-500 hover:text-red-400 mt-2"
+                        className="group relative w-full flex items-center p-2 rounded-xl transition-all duration-200 hover:bg-red-900/20 text-slate-500 hover:text-red-400 mt-1"
                     >
-                        <span className="text-xl">🚪</span>
+                        <span className="text-lg">🚪</span>
                         <span className="ml-3 text-sm font-medium hidden sm:block">Sign Out</span>
                     </button>
 
-                    <div className="text-[9px] text-slate-700 font-mono text-center mt-2 hidden sm:block">v3.1 Auth</div>
+                    <div className="text-[9px] text-slate-700 font-mono text-center mt-1 hidden sm:block">v3.1 Auth</div>
                 </div>
             </div>
 
             {/* Main Content Area */}
-            <div className="flex-1 flex flex-col h-full bg-[#0f0f0f] relative overflow-hidden">
+            <div className="flex-1 flex flex-col h-full relative overflow-hidden">
                 {!selectedTicker && (
-                    <header className="sticky top-0 z-30 bg-[#0a0a0a]/90 backdrop-blur-md border-b border-[#1a1a1a] px-6 py-4 flex justify-between items-center shrink-0">
+                    <header className="sticky top-0 z-30 backdrop-blur-md border-b border-[#1a1a1a] px-6 py-4 flex justify-between items-center shrink-0">
                         <h1 className="text-xl font-bold text-white uppercase tracking-wider flex items-center gap-2">
                             {view === 'dashboard' && '⚡ Market Dashboard'}
                             {view === 'scanner' && '📡 Weekly RSI Scanner'}
@@ -7743,18 +8450,42 @@ function App() {
                 <main className="flex-1 overflow-y-auto relative custom-scrollbar">
                     {!selectedTicker ? (
                         <div className="min-h-full">
-                            {view === 'dashboard' && <MarketDashboard onTickerClick={handleTickerClick} />}
-                            {view === 'scanner' && <Scanner onTickerClick={handleTickerClick} />}
-                            {view === 'options' && <OptionsScanner />}
-                            {view === 'journal' && <TradeJournal />}
-                            {view === 'watchlist' && <WatchlistPanel />}
-                            {view === 'charts' && <ChartsPanel />}
-                            {view === 'argentina' && <ArgentinaPanel />}
-                            {view === 'crypto' && <CryptoJournal />}
-                            {view === 'portfolio' && <PortfolioDashboardView />}
-                            {view === 'sharpe' && <SharpePortfolioView />}
-                            {view === 'settings' && <Settings />}
+                            {/* Lazy mount + stay mounted: components load on first visit, then cache in memory */}
+                            <div style={{ display: view === 'dashboard' ? 'block' : 'none' }}>
+                                {visitedViews.has('dashboard') && <MarketDashboard onTickerClick={handleTickerClick} />}
+                            </div>
+                            <div style={{ display: view === 'scanner' ? 'block' : 'none' }}>
+                                {visitedViews.has('scanner') && <Scanner onTickerClick={handleTickerClick} />}
+                            </div>
+                            <div style={{ display: view === 'options' ? 'block' : 'none' }}>
+                                {visitedViews.has('options') && <OptionsScanner />}
+                            </div>
+                            <div style={{ display: view === 'journal' ? 'block' : 'none' }}>
+                                {visitedViews.has('journal') && <TradeJournal />}
+                            </div>
+                            <div style={{ display: view === 'watchlist' ? 'block' : 'none' }}>
+                                {visitedViews.has('watchlist') && <WatchlistPanel />}
+                            </div>
+                            <div style={{ display: view === 'charts' ? 'block' : 'none' }}>
+                                {visitedViews.has('charts') && <ChartsPanel />}
+                            </div>
+                            <div style={{ display: view === 'argentina' ? 'block' : 'none' }}>
+                                {visitedViews.has('argentina') && <ArgentinaPanel />}
+                            </div>
+                            <div style={{ display: view === 'crypto' ? 'block' : 'none' }}>
+                                {visitedViews.has('crypto') && <CryptoJournal />}
+                            </div>
+                            <div style={{ display: view === 'portfolio' ? 'block' : 'none' }}>
+                                {visitedViews.has('portfolio') && <PortfolioDashboardView />}
+                            </div>
+                            <div style={{ display: view === 'sharpe' ? 'block' : 'none' }}>
+                                {visitedViews.has('sharpe') && <SharpePortfolioView />}
+                            </div>
+                            <div style={{ display: view === 'settings' ? 'block' : 'none' }}>
+                                {visitedViews.has('settings') && <Settings />}
+                            </div>
                         </div>
+
                     ) : (
                         <DetailView
                             ticker={selectedTicker}

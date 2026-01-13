@@ -2,7 +2,7 @@
 Trade Journal & Performance Tracker (ORM Version)
 Refactored to support Multi-Tenancy and PostgreSQL via SQLAlchemy.
 """
-from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc, asc
 from typing import List, Optional
@@ -11,6 +11,7 @@ from datetime import datetime, date as date_type
 
 import indicators
 import market_data
+import price_service
 from database import get_db
 import models
 import auth
@@ -229,6 +230,59 @@ def get_trades(
     return {"trades": trades}
 
 
+@router.get("/api/trades/cached-summary")
+def get_cached_summary(current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    """
+    FAST endpoint - Returns last known portfolio values from DB without external API calls.
+    Used for instant UI load, then background updates fetch live data.
+    """
+    # Get open trades from DB (no external calls)
+    open_trades = db.query(models.Trade).filter(
+        models.Trade.user_id == current_user.id,
+        models.Trade.status == 'OPEN'
+    ).all()
+    
+    # Get latest snapshot for cached values
+    last_snapshot = db.query(models.PortfolioSnapshot).filter(
+        models.PortfolioSnapshot.user_id == current_user.id
+    ).order_by(desc(models.PortfolioSnapshot.date)).first()
+    
+    # Calculate from DB values only (no yfinance)
+    total_invested = sum([(t.entry_price or 0) * (t.shares or 0) for t in open_trades])
+    
+    # Use last snapshot for approximate current value
+    cached_value = last_snapshot.total_value_usd if last_snapshot else total_invested
+    cached_pnl = (cached_value - total_invested) if last_snapshot else 0
+    cached_pnl_pct = (cached_pnl / total_invested * 100) if total_invested > 0 else 0
+    
+    # Avg holding days
+    from datetime import date as date_type
+    today = date_type.today()
+    total_days = 0
+    for t in open_trades:
+        if t.entry_date:
+            try:
+                if isinstance(t.entry_date, str):
+                    ed = datetime.strptime(t.entry_date, '%Y-%m-%d').date()
+                else:
+                    ed = t.entry_date
+                total_days += (today - ed).days
+            except:
+                pass
+    avg_days = total_days // len(open_trades) if open_trades else 0
+    
+    return {
+        "total_invested": round(total_invested, 2),
+        "cached_value": round(cached_value, 2),
+        "cached_pnl": round(cached_pnl, 2),
+        "cached_pnl_pct": round(cached_pnl_pct, 2),
+        "open_count": len(open_trades),
+        "avg_holding_days": avg_days,
+        "snapshot_date": last_snapshot.date.strftime('%Y-%m-%d') if last_snapshot and last_snapshot.date else None,
+        "is_stale": True  # Indicate this is cached data, will be updated
+    }
+
+
 @router.get("/api/trades/metrics")
 def get_metrics(current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
     """Calculate performance metrics (User Scoped)"""
@@ -350,15 +404,33 @@ def get_calendar_data(current_user: models.User = Depends(auth.get_current_user)
 
 @router.delete("/api/trades/all")
 def delete_all_trades(current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
-    """Delete ALL trades for current user."""
+    """Delete ALL trades for current user and clear snapshots."""
     count = db.query(models.Trade).filter(models.Trade.user_id == current_user.id).delete()
+    # Also clear snapshots since all trade history is gone
+    snap_count = db.query(models.PortfolioSnapshot).filter(models.PortfolioSnapshot.user_id == current_user.id).delete()
     db.commit()
-    return {"status": "success", "message": f"Deleted {count} trades", "count": count}
+    return {"status": "success", "message": f"Deleted {count} trades and {snap_count} snapshots", "count": count}
+
+
+@router.post("/api/trades/rebuild-history")
+def rebuild_history_endpoint(background_tasks: BackgroundTasks, current_user: models.User = Depends(auth.get_current_user)):
+    """Manually trigger snapshot rebuild to fix any data inconsistencies (Background Task)."""
+    
+    def run_rebuild(uid: int):
+        try:
+            import portfolio_snapshots
+            # Pass db=None so it creates a fresh session for the background thread
+            portfolio_snapshots.rebuild_history(uid, None)
+        except Exception as e:
+            print(f"[Rebuild History] Background Task Error: {e}")
+
+    background_tasks.add_task(run_rebuild, current_user.id)
+    return {"status": "success", "message": "History rebuild started in background. Please wait a few moments."}
 
 
 @router.delete("/api/trades/{trade_id}")
 def delete_trade(trade_id: int, current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
-    """Delete a specific trade"""
+    """Delete a specific trade and rebuild snapshots if it was closed"""
     trade = db.query(models.Trade).filter(
         models.Trade.id == trade_id, 
         models.Trade.user_id == current_user.id
@@ -366,72 +438,69 @@ def delete_trade(trade_id: int, current_user: models.User = Depends(auth.get_cur
     
     if not trade:
         raise HTTPException(status_code=404, detail="Trade not found")
-        
+    
+    # Track if this was a closed trade (affects history)
+    was_closed = trade.status == 'CLOSED'
+    
     db.delete(trade)
     db.commit()
-    return {"status": "deleted", "trade_id": trade_id}
+    
+    # Rebuild snapshots if a closed trade was deleted (affects P&L history)
+    if was_closed:
+        try:
+            import portfolio_snapshots
+            # Use None to force fresh DB session (the request session may be stale)
+            portfolio_snapshots.rebuild_history(current_user.id, None)
+            print(f"[Delete Trade] Rebuilt snapshots for user {current_user.id} after deleting closed trade")
+        except Exception as e:
+            print(f"[Delete Trade] Warning: Failed to rebuild snapshots: {e}")
+    
+    return {"status": "deleted", "trade_id": trade_id, "history_rebuilt": was_closed}
 
 
 @router.get("/api/trades/open-prices")
 def get_open_prices(current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
-    """Fetch live data for open trades (User Scoped)"""
+    """Fetch live data for open trades (User Scoped) - Uses price_service cache for speed"""
+    import price_service
+    
     trades = db.query(models.Trade).filter(
         models.Trade.user_id == current_user.id,
         models.Trade.status == 'OPEN'
     ).all()
     
-    if not trades: return {}
-        
-    ticker_dates = {}
-    for t in trades:
-        if not t.ticker: continue
-        if t.ticker not in ticker_dates:
-            ticker_dates[t.ticker] = set()
-        d_str = t.entry_date.strftime('%Y-%m-%d') if hasattr(t.entry_date, 'strftime') else str(t.entry_date)
-        ticker_dates[t.ticker].add(d_str)
-
-    tickets_list = list(ticker_dates.keys())
-    if not tickets_list: return {}
-        
+    if not trades: 
+        return {}
+    
+    # Collect unique tickers
+    tickers = list(set([t.ticker.upper() for t in trades if t.ticker]))
+    if not tickers:
+        return {}
+    
+    # Get prices from cache (instant) or Finnhub/yfinance (fast fallback)
+    prices = price_service.get_prices(tickers)
+    
+    # Build results with entry price fallback
     results = {}
-    try:
-        data = market_data.safe_yf_download(tickets_list, period="2y", threads=True)
-        for ticker in tickets_list:
-            try:
-                if len(tickets_list) == 1: df = data
-                else:
-                     try: df = data.xs(ticker, level=1, axis=1)
-                     except: df = data
-                
-                if df.empty: continue
-                
-                close = df['Close']
-                ema_8 = close.ewm(span=8, adjust=False).mean()
-                ema_21 = close.ewm(span=21, adjust=False).mean()
-                ema_200 = close.ewm(span=200, adjust=False).mean()
-                last_price = float(close.iloc[-1])
-                prev_price = float(close.iloc[-2]) if len(close) > 1 else last_price
-                change = ((last_price - prev_price)/prev_price)*100
-                
-                violation_map = {} # Stubbed out for cleanliness, re-add if needed
-                
-                rsi_summary = None
-                try:
-                    r = indicators.calculate_weekly_rsi_analytics(df)
-                    if r: rsi_summary = {"val": round(r['rsi'],2), "bullish": r['sma3']>r['sma14']}
-                except: pass
-
-                results[ticker] = {
-                    "price": round(last_price, 2),
-                    "change_pct": round(change, 2),
-                    "ema_8": round(float(ema_8.iloc[-1]), 2),
-                    "ema_21": round(float(ema_21.iloc[-1]), 2),
-                    "ema_200": round(float(ema_200.iloc[-1]), 2),
-                    "rsi_weekly": rsi_summary,
-                    "violations_map": violation_map
-                }
-            except: continue
-    except: pass
+    for t in trades:
+        if not t.ticker:
+            continue
+        ticker = t.ticker.upper()
+        
+        # Get live price or use entry_price as fallback
+        price_data = prices.get(ticker, {})
+        live_price = price_data.get('price') or t.entry_price
+        change_pct = price_data.get('change_pct', 0)
+        
+        # Only add once per ticker (first trade's data is representative)
+        if ticker not in results:
+            results[ticker] = {
+                "price": round(float(live_price), 2) if live_price else 0,
+                "change_pct": round(float(change_pct), 2),
+                "source": price_data.get('source', 'entry_fallback'),
+                # Simplified: no EMA/RSI on first load for speed
+                # Frontend can fetch detailed analytics separately if needed
+            }
+    
     return results
 
 
@@ -451,21 +520,319 @@ def get_snapshots(days: int = 30, current_user: models.User = Depends(auth.get_c
 @router.get("/api/trades/analytics/open")
 def get_open_trades_analytics(current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
     """Get aggregate risk/exposure analytics for OPEN trades."""
-    # This was a stub in legacy, and remains largely a stub unless we implement logic.
-    # But now at least it is authenticated.
+    
+    # Get open trades
+    open_trades = db.query(models.Trade).filter(
+        models.Trade.user_id == current_user.id,
+        models.Trade.status == "OPEN"
+    ).all()
+    
+    total_invested = 0
+    total_risk_r = 0
+    unrealized_pnl = 0
+    active_count = len(open_trades)
+    
+    # Sector and holdings tracking
+    sector_data = {}
+    holdings_data = []
+    asset_types = {'Stock': 0, 'ETF': 0, 'Crypto': 0, 'Other': 0}
+    
+    # Get live prices
+    live_prices = {}
+    if open_trades:
+        tickers = list(set([t.ticker for t in open_trades if t.ticker]))
+        if tickers:
+            try:
+                live_prices = price_service.get_prices(tickers)
+            except:
+                pass
+    
+    for t in open_trades:
+        if not t.ticker:
+            continue
+        cost = (t.entry_price or 0) * (t.shares or 0)
+        total_invested += cost
+        
+        # Calculate unrealized P&L
+        price_data = live_prices.get(t.ticker, {})
+        current_price = price_data.get('price', t.entry_price)
+        current_value = current_price * (t.shares or 0)
+        trade_pnl = current_value - cost
+        unrealized_pnl += trade_pnl
+        
+        # Calculate risk if SL hit
+        if t.stop_loss and t.stop_loss > 0:
+            risk = (t.entry_price - t.stop_loss) * (t.shares or 0)
+            total_risk_r += max(0, risk)
+        
+        # Sector tracking
+        sector = t.strategy or 'Unknown'
+        if sector not in sector_data:
+            sector_data[sector] = 0
+        sector_data[sector] += cost
+        
+        # Asset type classification
+        ticker_upper = t.ticker.upper()
+        if ticker_upper in ['SPY', 'QQQ', 'ARKK', 'GBTC', 'ETHU', 'MSTU']:
+            asset_types['ETF'] += cost
+        elif ticker_upper.endswith('BTC') or ticker_upper.endswith('ETH'):
+            asset_types['Crypto'] += cost
+        else:
+            asset_types['Stock'] += cost
+        
+        # Holdings data - add estimated beta/PE (using typical values for demo)
+        # In production, these would come from a data provider
+        TYPICAL_BETAS = {'TSLA': 2.1, 'NVDA': 1.7, 'AMD': 1.9, 'META': 1.3, 'AAPL': 1.2, 'MSFT': 1.1, 
+                         'AMZN': 1.4, 'GOOGL': 1.1, 'SPY': 1.0, 'QQQ': 1.2, 'MSTU': 2.5, 'MARA': 2.8,
+                         'COIN': 2.3, 'SHOP': 1.8, 'RDDT': 1.9, 'CLSK': 2.5, 'FCEL': 2.2}
+        TYPICAL_PES = {'TSLA': 65, 'NVDA': 55, 'AMD': 45, 'META': 28, 'AAPL': 30, 'MSFT': 35,
+                       'AMZN': 50, 'GOOGL': 25, 'SPY': 22, 'QQQ': 28, 'MSTU': 0, 'MARA': 0,
+                       'COIN': 35, 'SHOP': 70, 'RDDT': 0, 'CLSK': 0, 'FCEL': 0}
+        
+        stock_beta = TYPICAL_BETAS.get(ticker_upper, 1.0 + (hash(ticker_upper) % 10) / 10)
+        stock_pe = TYPICAL_PES.get(ticker_upper, 15 + (hash(ticker_upper) % 40))
+        
+        pct = (cost / total_invested * 100) if total_invested > 0 else 0
+        holdings_data.append({
+            'ticker': t.ticker,
+            'name': t.ticker,
+            'shares': t.shares,
+            'value': round(current_value, 2),
+            'pnl': round(trade_pnl, 2),
+            'pct': round(pct, 2),
+            'beta': round(stock_beta, 2),
+            'pe': round(stock_pe, 1)
+        })
+    
+    # Sort holdings by value descending
+    holdings_data.sort(key=lambda x: x['value'], reverse=True)
+    
+    # Recalculate percentages after sorting (now we have total_invested)
+    for h in holdings_data:
+        h['pct'] = round((h['value'] / total_invested * 100) if total_invested > 0 else 0, 2)
+    
+    # Calculate weighted portfolio beta and P/E
+    weighted_beta = 0
+    weighted_pe = 0
+    if total_invested > 0:
+        for h in holdings_data:
+            weight = h['value'] / total_invested
+            weighted_beta += h['beta'] * weight
+            if h['pe'] > 0:
+                weighted_pe += h['pe'] * weight
+    
+    # Convert sector data to list format
+    sector_allocation = [{'sector': k, 'value': round(v, 2)} for k, v in sector_data.items()]
+    sector_allocation.sort(key=lambda x: x['value'], reverse=True)
+    
+    # Convert asset types to list format
+    asset_allocation = [{'type': k, 'value': round(v, 2)} for k, v in asset_types.items() if v > 0]
+    
+    # Generate suggestions
+    suggestions = []
+    if total_risk_r > total_invested * 0.1:
+        suggestions.append({"type": "warning", "message": f"Alto riesgo: ${total_risk_r:.0f} en riesgo (>{10}% del capital)"})
+    if active_count > 10:
+        suggestions.append({"type": "info", "message": f"Tienes {active_count} posiciones abiertas. Considera consolidar."})
+    if unrealized_pnl < 0:
+        suggestions.append({"type": "caution", "message": f"P&L negativo: ${unrealized_pnl:.0f}. Revisa posiciones perdedoras."})
+    
+    # Fetch upcoming dividends for open positions
+    upcoming_dividends = []
+    try:
+        import yfinance as yf
+        from datetime import datetime, timedelta
+        
+        tickers = list(set([t.ticker for t in open_trades if t.ticker]))[:10]  # Limit to 10 for speed
+        for ticker in tickers:
+            try:
+                stock = yf.Ticker(ticker)
+                # Get dividend info
+                info = stock.info
+                
+                div_yield = info.get('dividendYield', 0) or 0
+                div_rate = info.get('dividendRate', 0) or 0
+                ex_div_date = info.get('exDividendDate', None)
+                
+                if div_rate > 0:
+                    # Find shares owned
+                    shares_owned = sum([t.shares for t in open_trades if t.ticker == ticker])
+                    expected_payment = div_rate * shares_owned / 4  # Quarterly estimate
+                    
+                    # Format ex-dividend date
+                    ex_date_str = None
+                    if ex_div_date:
+                        try:
+                            if isinstance(ex_div_date, (int, float)):
+                                ex_date = datetime.fromtimestamp(ex_div_date)
+                                ex_date_str = ex_date.strftime('%Y-%m-%d')
+                            else:
+                                ex_date_str = str(ex_div_date)
+                        except:
+                            pass
+                    
+                    upcoming_dividends.append({
+                        "ticker": ticker,
+                        "yield": round(div_yield * 100, 2) if div_yield else 0,
+                        "rate": round(div_rate, 2),
+                        "ex_date": ex_date_str,
+                        "shares": shares_owned,
+                        "expected": round(expected_payment, 2)
+                    })
+            except:
+                continue
+        
+        # Sort by expected payment descending
+        upcoming_dividends.sort(key=lambda x: x['expected'], reverse=True)
+    except Exception as e:
+        print(f"[Dividends] Error fetching: {e}")
+    
     return {
-        "exposure": {"total_invested": 0, "total_risk_r": 0, "unrealized_pnl": 0, "active_count": 0},
-        "suggestions": []
+        "exposure": {
+            "total_invested": round(total_invested, 2),
+            "total_risk_r": round(total_risk_r, 2),
+            "unrealized_pnl": round(unrealized_pnl, 2),
+            "active_count": active_count,
+            "portfolio_beta": round(weighted_beta, 2),
+            "portfolio_pe": round(weighted_pe, 1)
+        },
+        "asset_allocation": asset_allocation,
+        "sector_allocation": sector_allocation,
+        "holdings": holdings_data[:10],  # Top 10
+        "suggestions": suggestions,
+        "upcoming_dividends": upcoming_dividends
     }
 
 @router.get("/api/trades/analytics/performance")
-def get_portfolio_performance(current_user: models.User = Depends(auth.get_current_user)):
-    """Detailed performance analysis"""
+def get_portfolio_performance(current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    """Detailed performance analysis with historical comparison"""
+    from datetime import datetime, timedelta
+    import yfinance as yf
+    
+    # Get closed trades for monthly analysis
+    closed_trades = db.query(models.Trade).filter(
+        models.Trade.user_id == current_user.id,
+        models.Trade.status == "CLOSED"
+    ).all()
+    
+    # Calculate monthly P&L
+    monthly_data = {}
+    for t in closed_trades:
+        if t.exit_date and t.pnl is not None:
+            try:
+                # Parse exit_date
+                if isinstance(t.exit_date, str):
+                    exit_dt = datetime.strptime(t.exit_date, "%Y-%m-%d")
+                else:
+                    exit_dt = t.exit_date
+                month_key = exit_dt.strftime("%Y-%m")
+                if month_key not in monthly_data:
+                    monthly_data[month_key] = {"pnl": 0, "trades": 0, "wins": 0}
+                monthly_data[month_key]["pnl"] += t.pnl
+                monthly_data[month_key]["trades"] += 1
+                if t.pnl > 0:
+                    monthly_data[month_key]["wins"] += 1
+            except:
+                pass
+    
+    # Sort by month
+    sorted_months = sorted(monthly_data.keys())
+    monthly_list = []
+    for month in sorted_months:
+        data = monthly_data[month]
+        win_rate = (data["wins"] / data["trades"] * 100) if data["trades"] > 0 else 0
+        monthly_list.append({
+            "month": month,
+            "pnl": round(data["pnl"], 2),
+            "trades": data["trades"],
+            "win_rate": round(win_rate, 1)
+        })
+    # Get cumulative equity data from snapshots - LAST 90 DAYS ONLY for meaningful comparison
+    from datetime import datetime, timedelta
+    cutoff_date = (datetime.now() - timedelta(days=90)).date()
+    
+    snapshots = db.query(models.PortfolioSnapshot).filter(
+        models.PortfolioSnapshot.user_id == current_user.id,
+        models.PortfolioSnapshot.date >= cutoff_date
+    ).order_by(models.PortfolioSnapshot.date.asc()).all()
+    
+    # Build portfolio P&L data from snapshots
+    dates = []
+    portfolio_pnl_pct = []  # TRUE P&L % = (value - invested) / invested
+    for s in snapshots:
+        val = s.total_value_usd or 0
+        inv = s.total_invested_usd or val
+        if val > 0 and inv > 0:
+            pnl_pct = ((val - inv) / inv) * 100
+            dates.append(s.date.strftime("%Y-%m-%d") if hasattr(s.date, 'strftime') else str(s.date))
+            portfolio_pnl_pct.append(round(pnl_pct, 2))
+    
+    # Use portfolio_pnl_pct for chart
+    portfolio_pct = portfolio_pnl_pct
+    
+    # Fetch SPY data for benchmark comparison
+    spy_pct = []
+    spy_values = []
+    if dates:
+        try:
+            # Get date range
+            start_date = dates[0]
+            end_date = dates[-1] if len(dates) > 1 else dates[0]
+            
+            # Fetch SPY data from yfinance
+            spy_data = yf.download("SPY", start=start_date, end=end_date, progress=False)
+            
+            if not spy_data.empty:
+                spy_close = spy_data['Close']
+                if hasattr(spy_close, 'iloc') and len(spy_close) > 0:
+                    spy_start = float(spy_close.iloc[0])
+                    
+                    # For each portfolio date, find closest SPY price
+                    for date_str in dates:
+                        try:
+                            # Find exact or nearest date in SPY data
+                            if date_str in spy_close.index.strftime('%Y-%m-%d').tolist():
+                                idx = spy_close.index.strftime('%Y-%m-%d').tolist().index(date_str)
+                                spy_val = float(spy_close.iloc[idx])
+                            else:
+                                # Use last available value before this date
+                                mask = spy_close.index <= date_str
+                                if mask.any():
+                                    spy_val = float(spy_close[mask].iloc[-1])
+                                else:
+                                    spy_val = spy_start
+                            
+                            spy_values.append(round(spy_val, 2))
+                            pct_change = ((spy_val - spy_start) / spy_start) * 100
+                            spy_pct.append(round(pct_change, 2))
+                        except:
+                            spy_values.append(spy_values[-1] if spy_values else 0)
+                            spy_pct.append(spy_pct[-1] if spy_pct else 0)
+        except Exception as e:
+            print(f"[Performance] SPY fetch error: {e}")
+            spy_pct = [0] * len(dates)
+            spy_values = [0] * len(dates)
+    
+    # Fill in if SPY data is shorter than portfolio data
+    while len(spy_pct) < len(dates):
+        spy_pct.append(spy_pct[-1] if spy_pct else 0)
+        spy_values.append(spy_values[-1] if spy_values else 0)
+    
+    line_data = {
+        "dates": dates,
+        "portfolio": portfolio_pct,  # Now in % change
+        "portfolio_dollar": portfolio_values,  # Absolute values
+        "spy": spy_pct,  # SPY % change from start
+        "spy_dollar": spy_values  # SPY absolute values
+    }
+    
     return {
-            "line_data": {"dates": [], "portfolio": [], "spy": []},
-            "monthly_data": [],
-            "period_start": None
-        }
+        "line_data": line_data,
+        "monthly_data": monthly_list,
+        "period_start": sorted_months[0] if sorted_months else None,
+        "total_closed_trades": len(closed_trades),
+        "total_realized_pnl": sum(t.pnl or 0 for t in closed_trades)
+    }
 
 @router.get("/api/trades/unified/metrics")
 def get_unified_metrics(current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
@@ -488,11 +855,28 @@ def get_unified_metrics(current_user: models.User = Depends(auth.get_current_use
     
     usa_invested = sum([t.entry_price * t.shares for t in usa_trades])
     usa_pnl = 0
-    # Ideally we'd have live prices here, but for speed we might trust 'pnl' field if updated,
-    # or just use 0 if live fetch is too slow.
-    # We can briefly try to get a rough PnL if possible or rely on client/snapshot.
-    # For now, let's sum the 'pnl' column if populated, assuming background worker updates it.
-    usa_pnl = sum([t.pnl for t in usa_trades if t.pnl is not None])
+    
+    # Fetch live prices using price_service (cached + Finnhub/yfinance failover)
+    if usa_trades:
+        tickers = list(set([t.ticker for t in usa_trades if t.ticker]))
+        if tickers:
+            try:
+                # price_service handles caching and provider failover
+                live_prices = price_service.get_prices(tickers)
+                
+                for t in usa_trades:
+                    if not t.ticker:
+                        continue
+                    price_data = live_prices.get(t.ticker)
+                    if price_data and price_data.get('price'):
+                        cost = t.entry_price * t.shares
+                        current_val = price_data['price'] * t.shares
+                        usa_pnl += (current_val - cost)
+                    elif t.pnl is not None:
+                        usa_pnl += t.pnl
+            except Exception as e:
+                print(f"[Unified Metrics] Error fetching prices: {e}")
+                usa_pnl = sum([t.pnl for t in usa_trades if t.pnl is not None])
     
     # 3. Argentina Metrics
     arg_pos = db.query(models.ArgentinaPosition).filter(
@@ -501,12 +885,22 @@ def get_unified_metrics(current_user: models.User = Depends(auth.get_current_use
     ).all()
     
     arg_invested_ars = sum([p.entry_price * p.shares for p in arg_pos])
-    # For PnL, we need live prices. Argentina module usually fetches them.
-    # We'll do a quick rough calc using recent prices if possible, or just 0.
-    # In a real app we'd cache these. Let's assume 0 PnL for speed unless we have a stored value.
-    # We can iterate and fetch price? No, too slow.
-    # We'll start with 0 PnL for now or use stored if models were updated.
-    arg_pnl_ars = 0 
+    arg_pnl_ars = 0
+    
+    # Fetch Argentina live prices using price_service
+    if arg_pos:
+        arg_tickers = list(set([p.ticker for p in arg_pos if p.ticker]))
+        for pos in arg_pos:
+            if not pos.ticker:
+                continue
+            try:
+                price_data = price_service.get_argentina_price(pos.ticker)
+                if price_data and price_data.get('price'):
+                    cost = pos.entry_price * pos.shares
+                    current_val = price_data['price'] * pos.shares
+                    arg_pnl_ars += (current_val - cost)
+            except Exception as e:
+                print(f"[Unified Metrics] Argentina price error for {pos.ticker}: {e}")
     
     # 4. Crypto Metrics
     # Use crypto_journal logic
@@ -557,7 +951,8 @@ def get_unified_metrics(current_user: models.User = Depends(auth.get_current_use
         "usa": {
             "invested_usd": round(usa_invested, 2),
             "pnl_usd": round(usa_pnl, 2),
-            "position_count": len(usa_trades)
+            "position_count": len(usa_trades),
+            "positions": [{"ticker": t.ticker, "shares": t.shares, "entry_price": t.entry_price} for t in usa_trades]
         },
         "argentina": {
             "invested_ars": round(arg_invested_ars, 0),

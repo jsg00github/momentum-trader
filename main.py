@@ -201,6 +201,7 @@ def get_scan_progress():
 async def scheduled_reports_loop():
     """Checks time every minute to send scheduled reports AND run automated scans"""
     import scan_engine
+    import market_analysis_cache
     
     last_sent = {
         "PRE_MARKET": None,
@@ -208,7 +209,10 @@ async def scheduled_reports_loop():
         "MID_DAY": None,
         "CLOSE": None,
         "POST_MARKET": None,
-        "SCAN": None
+        "SCAN": None,
+        "AI_PRE_MARKET": None,
+        "AI_MID_MARKET": None,
+        "AI_AFTER_MARKET": None
     }
     
     while True:
@@ -259,6 +263,66 @@ async def scheduled_reports_loop():
                                 msg += f"   Entry: ~${p.get('entry', 0):.2f}\n"
                             alerts.send_telegram(alerts.get_alert_settings()["telegram_chat_id"], msg)
                     last_sent["SCAN"] = current_date
+            
+            # =====================================================
+            # GEMINI AI MARKET ANALYSIS (3x daily cache updates)
+            # =====================================================
+            # 08:00 AM EST - PRE_MARKET Analysis
+            if h == 8 and m == 0:
+                if last_sent["AI_PRE_MARKET"] != current_date:
+                    print(f"[{now}] Generating PRE_MARKET Gemini analysis...")
+                    try:
+                        status = market_data.get_market_status()
+                        context = {
+                            "indices": {k: f"{v.get('price')} ({v.get('ext_change_pct')}%)" for k, v in status.get('indices', {}).items() if isinstance(v, dict)},
+                            "movers": status.get('movers', 'N/A'),
+                            "news": "Pre-market headlines",
+                            "breadth": status.get('breadth', 'Neutral'),
+                            "session": "PRE_MARKET"
+                        }
+                        insight = market_brain.get_market_insight(context)
+                        market_analysis_cache.set_cached_analysis("PRE_MARKET", insight, context)
+                    except Exception as ai_err:
+                        print(f"[AI] PRE_MARKET analysis error: {ai_err}")
+                    last_sent["AI_PRE_MARKET"] = current_date
+            
+            # 12:30 PM EST - MID_MARKET Analysis
+            if h == 12 and m == 30:
+                if last_sent["AI_MID_MARKET"] != current_date:
+                    print(f"[{now}] Generating MID_MARKET Gemini analysis...")
+                    try:
+                        status = market_data.get_market_status()
+                        context = {
+                            "indices": {k: f"{v.get('price')} ({v.get('ext_change_pct')}%)" for k, v in status.get('indices', {}).items() if isinstance(v, dict)},
+                            "movers": status.get('movers', 'N/A'),
+                            "news": "Mid-day developments",
+                            "breadth": status.get('breadth', 'Neutral'),
+                            "session": "MID_MARKET"
+                        }
+                        insight = market_brain.get_market_insight(context)
+                        market_analysis_cache.set_cached_analysis("MID_MARKET", insight, context)
+                    except Exception as ai_err:
+                        print(f"[AI] MID_MARKET analysis error: {ai_err}")
+                    last_sent["AI_MID_MARKET"] = current_date
+            
+            # 16:30 PM EST - AFTER_MARKET Analysis
+            if h == 16 and m == 30:
+                if last_sent["AI_AFTER_MARKET"] != current_date:
+                    print(f"[{now}] Generating AFTER_MARKET Gemini analysis...")
+                    try:
+                        status = market_data.get_market_status()
+                        context = {
+                            "indices": {k: f"{v.get('price')} ({v.get('ext_change_pct')}%)" for k, v in status.get('indices', {}).items() if isinstance(v, dict)},
+                            "movers": status.get('movers', 'N/A'),
+                            "news": "End of day summary",
+                            "breadth": status.get('breadth', 'Neutral'),
+                            "session": "AFTER_MARKET"
+                        }
+                        insight = market_brain.get_market_insight(context)
+                        market_analysis_cache.set_cached_analysis("AFTER_MARKET", insight, context)
+                    except Exception as ai_err:
+                        print(f"[AI] AFTER_MARKET analysis error: {ai_err}")
+                    last_sent["AI_AFTER_MARKET"] = current_date
                     
         except Exception as e:
             print(f"Error in scheduler: {e}")
@@ -613,23 +677,46 @@ def build_sharpe_portfolio(max_positions: int = 10, min_sharpe: float = 1.5, str
 # AI ANALYST (MARKET BRAIN)
 # -----------------------------------------------------
 import market_brain
+import market_analysis_cache
 
 @app.get("/api/ai/insight")
-def get_ai_insight():
-    """Generate AI market insight using Gemini"""
-    # Gather context from existing market data
-    status = market_data.get_market_status()
+def get_ai_insight(force_refresh: bool = False):
+    """
+    Get AI market insight from cache (generated 3x daily).
+    Use force_refresh=true to generate a new one (costs tokens).
+    """
+    # Try to return cached analysis first
+    if not force_refresh:
+        cached = market_analysis_cache.get_cached_analysis()
+        if cached and not market_analysis_cache.is_cache_stale(max_age_hours=10):
+            return {
+                "insight": cached["content"],
+                "session": cached["session_name"],
+                "generated_at": cached["generated_at_est"],
+                "cached": True,
+                "next_update": market_analysis_cache.get_next_scheduled_session()
+            }
     
-    # Format context for the AI
+    # No cache or force refresh - generate new (uses API tokens)
+    status = market_data.get_market_status()
     context = {
         "indices": {k: f"{v.get('price')} ({v.get('ext_change_pct')}%)" for k, v in status.get('indices', {}).items() if isinstance(v, dict)},
-        "movers": "See market status for details", # Simplified for now
+        "movers": "See market status for details",
         "news": "Latest market headlines available in system",
         "breadth": status.get('breadth', 'Neutral')
     }
     
     insight = market_brain.get_market_insight(context)
-    return {"insight": insight}
+    
+    # Cache this manual refresh
+    market_analysis_cache.set_cached_analysis("MANUAL", insight, context)
+    
+    return {
+        "insight": insight, 
+        "session": "Manual Refresh",
+        "generated_at": "Just now",
+        "cached": False
+    }
 
 @app.get("/api/ai/portfolio-insight")
 def get_portfolio_insight():
@@ -870,6 +957,10 @@ def get_premarket_price(ticker: str):
 # Background task for alert monitoring
 async def alert_monitor_loop():
     """Background task that checks for alerts every 5 minutes"""
+    
+    # DELAY: Wait 15 seconds so user requests load first
+    await asyncio.sleep(15)
+    
     while True:
         try:
             settings = alerts.get_alert_settings()
@@ -885,11 +976,15 @@ async def alert_monitor_loop():
         except Exception as e:
             print(f"Error in alert monitor: {e}")
         
-        await asyncio.sleep(300)  # 5 minutes
+        await asyncio.sleep(3600)  # 1 hour (was 5 minutes)
 
 async def options_scanner_loop():
     """Background task that refreshes the Swing Options Flow every 30 minutes"""
     import options_scanner
+    
+    # DELAY: Wait 30 seconds before first scan so user requests aren't blocked
+    await asyncio.sleep(30)
+    
     while True:
         try:
             print(f"[{datetime.now()}] Running automatic Options Flow scan...")
@@ -905,15 +1000,16 @@ async def start_alert_monitor():
     """Start background alert monitoring on server startup"""
     asyncio.create_task(alert_monitor_loop())
     asyncio.create_task(scheduled_reports_loop())
-    asyncio.create_task(options_scanner_loop()) # Auto-scan options
+    # DISABLED: Options scanner now runs on-demand only (via /api/scan-options)
+    # asyncio.create_task(options_scanner_loop())
     
     # Start scheduled RSI scanner (runs daily at 6pm Argentina / 4pm EST)
     import scheduled_scan
     scheduled_scan.start_scheduler()
     
-    print("✅ Alert monitoring started")
+    print("✅ Alert monitoring started (runs hourly)")
     print("✅ Scheduled briefings started")
-    print("✅ Automatic Options Scanning started")
+    print("ℹ️ Options Scanner: ON-DEMAND only (use /api/scan-options)")
     print("✅ Scheduled RSI Scanner started (6pm Argentina daily)")
 
 class BacktestRequest(BaseModel):
@@ -967,10 +1063,13 @@ def start_snapshot_scheduler():
         return  # Already running
     
     try:
+        import price_service
+        from apscheduler.triggers.interval import IntervalTrigger
+        
         tz_arg = pytz.timezone("America/Argentina/Buenos_Aires")
         _snapshot_scheduler = BackgroundScheduler(timezone=tz_arg)
         
-        # Schedule daily at 19:00 ARG time
+        # Schedule daily snapshot at 19:00 ARG time
         trigger = CronTrigger(hour=19, minute=0, timezone=tz_arg)
         _snapshot_scheduler.add_job(
             portfolio_snapshots.take_snapshot,
@@ -980,8 +1079,18 @@ def start_snapshot_scheduler():
             replace_existing=True
         )
         
+        # Schedule background price update every 5 minutes
+        _snapshot_scheduler.add_job(
+            price_service.background_price_update,
+            IntervalTrigger(minutes=5),
+            id="background_price_update",
+            name="Background Price Cache Update (5 min)",
+            replace_existing=True
+        )
+        
         _snapshot_scheduler.start()
         print("[Scheduler] Portfolio snapshot scheduler started - runs daily at 19:00 ARG")
+        print("[Scheduler] ✅ Background price update started - runs every 5 minutes")
     except Exception as e:
         print(f"[Scheduler] Error starting snapshot scheduler: {e}")
 
@@ -1013,6 +1122,86 @@ def get_portfolio_distribution(current_user: models.User = Depends(auth.get_curr
 def take_manual_snapshot(current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
     """Manually trigger a portfolio snapshot for the current user."""
     return portfolio_snapshots.take_snapshot(user_id=current_user.id, db=db)
+
+
+@app.get("/api/portfolio/benchmark")
+def get_portfolio_benchmark(current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    """Get Global Portfolio P&L% vs SPY benchmark for last 90 days."""
+    from datetime import datetime, timedelta
+    import yfinance as yf
+    
+    # Get last 90 days of snapshots
+    cutoff_date = (datetime.now() - timedelta(days=90)).date()
+    
+    snapshots = db.query(models.PortfolioSnapshot).filter(
+        models.PortfolioSnapshot.user_id == current_user.id,
+        models.PortfolioSnapshot.date >= cutoff_date
+    ).order_by(models.PortfolioSnapshot.date.asc()).all()
+    
+    if not snapshots:
+        return {"dates": [], "portfolio_pct": [], "spy_pct": [], "message": "No snapshots available"}
+    
+    # Build portfolio P&L % data
+    dates = []
+    portfolio_pct = []
+    
+    for s in snapshots:
+        val = s.total_value_usd or 0
+        inv = s.total_invested_usd or val
+        if val > 0 and inv > 0:
+            pnl_pct = ((val - inv) / inv) * 100
+            dates.append(s.date.strftime("%Y-%m-%d") if hasattr(s.date, 'strftime') else str(s.date))
+            portfolio_pct.append(round(pnl_pct, 2))
+    
+    if not dates:
+        return {"dates": [], "portfolio_pct": [], "spy_pct": [], "message": "No valid data"}
+    
+    # Get SPY data for same period
+    spy_pct = []
+    try:
+        start_date = dates[0]
+        end_date = dates[-1]
+        
+        spy_data = yf.download("SPY", start=start_date, end=end_date, progress=False)
+        
+        if not spy_data.empty:
+            spy_close = spy_data['Close']
+            if len(spy_close) > 0:
+                spy_start = float(spy_close.iloc[0])
+                
+                for date_str in dates:
+                    try:
+                        spy_dates = spy_close.index.strftime('%Y-%m-%d').tolist()
+                        if date_str in spy_dates:
+                            idx = spy_dates.index(date_str)
+                            spy_val = float(spy_close.iloc[idx])
+                        else:
+                            # Use last available value
+                            mask = spy_close.index <= date_str
+                            if mask.any():
+                                spy_val = float(spy_close[mask].iloc[-1])
+                            else:
+                                spy_val = spy_start
+                        
+                        pct = ((spy_val - spy_start) / spy_start) * 100
+                        spy_pct.append(round(pct, 2))
+                    except:
+                        spy_pct.append(spy_pct[-1] if spy_pct else 0)
+    except Exception as e:
+        print(f"[Portfolio Benchmark] SPY fetch error: {e}")
+        spy_pct = [0] * len(dates)
+    
+    # Fill missing SPY values
+    while len(spy_pct) < len(dates):
+        spy_pct.append(spy_pct[-1] if spy_pct else 0)
+    
+    return {
+        "dates": dates,
+        "portfolio_pct": portfolio_pct,
+        "spy_pct": spy_pct,
+        "latest_portfolio_pct": portfolio_pct[-1] if portfolio_pct else 0,
+        "latest_spy_pct": spy_pct[-1] if spy_pct else 0
+    }
 
 
 # -----------------------------------------------------
