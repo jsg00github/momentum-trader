@@ -25,7 +25,9 @@ def get_yfinance():
 # Configuration
 # ============================================
 
-FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY", "cvmo1npr01ql90pv62e0cvmo1npr01ql90pv62eg")
+FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
+if not FINNHUB_API_KEY:
+    print("[⚠️ PRICE_SERVICE] FINNHUB_API_KEY not set - using yfinance only mode")
 CACHE_TTL_SECONDS = int(os.getenv("PRICE_CACHE_TTL", "300"))  # 5 minutes for better performance
 
 # ============================================
@@ -92,6 +94,8 @@ _finnhub_client = None
 
 def get_finnhub_client():
     global _finnhub_client
+    if not FINNHUB_API_KEY:
+        return None  # No API key, fall back to yfinance
     if _finnhub_client is None:
         _finnhub_client = finnhub.Client(api_key=FINNHUB_API_KEY)
     return _finnhub_client
@@ -310,6 +314,8 @@ def get_argentina_price(ticker: str, use_cache: bool = True) -> dict:
 def _fetch_finnhub(ticker: str) -> dict:
     """Fetch single ticker from Finnhub."""
     client = get_finnhub_client()
+    if not client:
+        return None  # No API key configured
     quote = client.quote(ticker)
     
     if not quote or quote.get('c') is None or quote.get('c') == 0:

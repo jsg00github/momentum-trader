@@ -41,13 +41,16 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 app = FastAPI(title="Momentum Screener API")
 
-# CORS
+# CORS - Configurable via env var for production
+CORS_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+if CORS_ORIGINS == ["*"]:
+    print("[⚠️ CORS] Using wildcard origins - Set ALLOWED_ORIGINS env var for production!")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept"],
 )
 
 # Anti-cache middleware for development (no more hard refresh needed)
@@ -169,8 +172,18 @@ def serve_root():
     return FileResponse(os.path.join(static_dir, "index.html"))
 
 @app.get("/api/health")
+@app.get("/health")  # Also at root for container health probes
 def health_check():
-    return {"status": "ok"}
+    """Health check for container orchestration (Railway, K8s, etc)."""
+    from database import SessionLocal
+    from sqlalchemy import text
+    try:
+        db = SessionLocal()
+        db.execute(text("SELECT 1"))
+        db.close()
+        return {"status": "healthy", "database": "connected"}
+    except Exception as e:
+        return {"status": "unhealthy", "database": str(e)}
 
 @app.get("/api/universe")
 def get_universe():
