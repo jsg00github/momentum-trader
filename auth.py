@@ -11,10 +11,7 @@ from database import get_db
 import models
 
 # --- Config ---
-SECRET_KEY = os.getenv("SECRET_KEY")
-if not SECRET_KEY:
-    SECRET_KEY = "dev-only-secret-key-change-in-production"
-    print("[⚠️ AUTH WARNING] Using default SECRET_KEY - Set SECRET_KEY env var for production!")
+SECRET_KEY = os.getenv("SECRET_KEY", "supersecretkey123")  # Use env var in production!
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 # 1 week
 
