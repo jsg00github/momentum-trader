@@ -485,8 +485,9 @@ def delete_trade(trade_id: int, current_user: models.User = Depends(auth.get_cur
 
 @router.get("/api/trades/open-prices")
 def get_open_prices(current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
-    """Fetch live data for open trades (User Scoped) - Uses price_service cache for speed"""
+    """Fetch live data for open trades (User Scoped) - Includes premarket data"""
     import price_service
+    import yfinance as yf
     
     trades = db.query(models.Trade).filter(
         models.Trade.user_id == current_user.id,
@@ -504,6 +505,35 @@ def get_open_prices(current_user: models.User = Depends(auth.get_current_user), 
     # Get prices from cache (instant) or Finnhub/yfinance (fast fallback)
     prices = price_service.get_prices(tickers)
     
+    # Get premarket data in batch (one call per ticker but in parallel-ish)
+    premarket_data = {}
+    for ticker in tickers:
+        try:
+            stock = yf.Ticker(ticker)
+            info = {}
+            try:
+                info_data = stock.info
+                if isinstance(info_data, dict):
+                    info = info_data
+            except:
+                pass
+            
+            regular_price = info.get('regularMarketPrice', info.get('currentPrice', 0))
+            premarket_price = info.get('preMarketPrice')
+            postmarket_price = info.get('postMarketPrice')
+            extended_price = premarket_price or postmarket_price
+            
+            if extended_price and regular_price and regular_price > 0:
+                extended_change_pct = ((extended_price - regular_price) / regular_price) * 100
+                premarket_data[ticker] = {
+                    "extended_price": round(extended_price, 2),
+                    "extended_change_pct": round(extended_change_pct, 2),
+                    "is_premarket": premarket_price is not None,
+                    "is_postmarket": postmarket_price is not None
+                }
+        except Exception as e:
+            print(f"[open-prices] Premarket error for {ticker}: {e}")
+    
     # Build results with entry price fallback
     results = {}
     for t in trades:
@@ -516,14 +546,20 @@ def get_open_prices(current_user: models.User = Depends(auth.get_current_user), 
         live_price = price_data.get('price') or t.entry_price
         change_pct = price_data.get('change_pct', 0)
         
+        # Get premarket data for this ticker
+        pm_data = premarket_data.get(ticker, {})
+        
         # Only add once per ticker (first trade's data is representative)
         if ticker not in results:
             results[ticker] = {
                 "price": round(float(live_price), 2) if live_price else 0,
                 "change_pct": round(float(change_pct), 2),
                 "source": price_data.get('source', 'entry_fallback'),
-                # Simplified: no EMA/RSI on first load for speed
-                # Frontend can fetch detailed analytics separately if needed
+                # Premarket data
+                "extended_price": pm_data.get('extended_price'),
+                "extended_change_pct": pm_data.get('extended_change_pct'),
+                "is_premarket": pm_data.get('is_premarket', False),
+                "is_postmarket": pm_data.get('is_postmarket', False)
             }
     
     return results

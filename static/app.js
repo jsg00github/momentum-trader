@@ -1358,7 +1358,9 @@ function TradeJournal() {
                     ema_200: live.ema_200
                 },
                 currentPrice,
-                preMktChange: (!isHistory && premarket[ticker]) ? (premarket[ticker].extended_change_pct || 0) : 0
+                preMktChange: (!isHistory && live.extended_change_pct) ? live.extended_change_pct : 0,
+                isPremarket: live.is_premarket || false,
+                isPostmarket: live.is_postmarket || false
             };
         });
     }, [currentGroups, liveData, activeTab, premarket]);
