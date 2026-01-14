@@ -485,8 +485,9 @@ def delete_trade(trade_id: int, current_user: models.User = Depends(auth.get_cur
 
 @router.get("/api/trades/open-prices")
 def get_open_prices(current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
-    """Fetch live data for open trades (User Scoped) - Includes premarket data"""
-    import price_service
+    """Fetch live data for open trades (User Scoped) - Includes EMAs, RSI, and premarket"""
+    import market_data
+    import indicators
     import yfinance as yf
     
     trades = db.query(models.Trade).filter(
@@ -502,65 +503,96 @@ def get_open_prices(current_user: models.User = Depends(auth.get_current_user), 
     if not tickers:
         return {}
     
-    # Get prices from cache (instant) or Finnhub/yfinance (fast fallback)
-    prices = price_service.get_prices(tickers)
-    
-    # Get premarket data in batch (one call per ticker but in parallel-ish)
-    premarket_data = {}
-    for ticker in tickers:
-        try:
-            stock = yf.Ticker(ticker)
-            info = {}
-            try:
-                info_data = stock.info
-                if isinstance(info_data, dict):
-                    info = info_data
-            except:
-                pass
-            
-            regular_price = info.get('regularMarketPrice', info.get('currentPrice', 0))
-            premarket_price = info.get('preMarketPrice')
-            postmarket_price = info.get('postMarketPrice')
-            extended_price = premarket_price or postmarket_price
-            
-            if extended_price and regular_price and regular_price > 0:
-                extended_change_pct = ((extended_price - regular_price) / regular_price) * 100
-                premarket_data[ticker] = {
-                    "extended_price": round(extended_price, 2),
-                    "extended_change_pct": round(extended_change_pct, 2),
-                    "is_premarket": premarket_price is not None,
-                    "is_postmarket": postmarket_price is not None
-                }
-        except Exception as e:
-            print(f"[open-prices] Premarket error for {ticker}: {e}")
-    
-    # Build results with entry price fallback
     results = {}
-    for t in trades:
-        if not t.ticker:
-            continue
-        ticker = t.ticker.upper()
+    
+    try:
+        # Batch download historical data for EMAs
+        data = market_data.safe_yf_download(tickers, period="2y", threads=True)
         
-        # Get live price or use entry_price as fallback
-        price_data = prices.get(ticker, {})
-        live_price = price_data.get('price') or t.entry_price
-        change_pct = price_data.get('change_pct', 0)
-        
-        # Get premarket data for this ticker
-        pm_data = premarket_data.get(ticker, {})
-        
-        # Only add once per ticker (first trade's data is representative)
-        if ticker not in results:
-            results[ticker] = {
-                "price": round(float(live_price), 2) if live_price else 0,
-                "change_pct": round(float(change_pct), 2),
-                "source": price_data.get('source', 'entry_fallback'),
+        for ticker in tickers:
+            try:
+                # Extract data for this ticker
+                if len(tickers) == 1:
+                    df = data
+                else:
+                    try:
+                        df = data.xs(ticker, level=1, axis=1)
+                    except:
+                        df = data
+                
+                if df.empty:
+                    continue
+                
+                close = df['Close']
+                if len(close) < 2:
+                    continue
+                    
+                # Calculate EMAs
+                ema_8 = close.ewm(span=8, adjust=False).mean()
+                ema_21 = close.ewm(span=21, adjust=False).mean()
+                ema_35 = close.ewm(span=35, adjust=False).mean()
+                ema_200 = close.ewm(span=200, adjust=False).mean()
+                
+                last_price = float(close.iloc[-1])
+                prev_price = float(close.iloc[-2]) if len(close) > 1 else last_price
+                change_pct = ((last_price - prev_price) / prev_price) * 100 if prev_price > 0 else 0
+                
+                # Weekly RSI
+                rsi_summary = None
+                try:
+                    r = indicators.calculate_weekly_rsi_analytics(df)
+                    if r:
+                        rsi_summary = {"val": round(r['rsi'], 2), "bullish": r['sma3'] > r['sma14']}
+                except:
+                    pass
+                
                 # Premarket data
-                "extended_price": pm_data.get('extended_price'),
-                "extended_change_pct": pm_data.get('extended_change_pct'),
-                "is_premarket": pm_data.get('is_premarket', False),
-                "is_postmarket": pm_data.get('is_postmarket', False)
-            }
+                extended_price = None
+                extended_change_pct = None
+                is_premarket = False
+                is_postmarket = False
+                
+                try:
+                    stock = yf.Ticker(ticker)
+                    info = {}
+                    try:
+                        info_data = stock.info
+                        if isinstance(info_data, dict):
+                            info = info_data
+                    except:
+                        pass
+                    
+                    regular_price = info.get('regularMarketPrice', info.get('currentPrice', 0))
+                    premarket_price = info.get('preMarketPrice')
+                    postmarket_price = info.get('postMarketPrice')
+                    ext_price = premarket_price or postmarket_price
+                    
+                    if ext_price and regular_price and regular_price > 0:
+                        extended_price = round(ext_price, 2)
+                        extended_change_pct = round(((ext_price - regular_price) / regular_price) * 100, 2)
+                        is_premarket = premarket_price is not None
+                        is_postmarket = postmarket_price is not None
+                except Exception as e:
+                    print(f"[open-prices] Premarket error for {ticker}: {e}")
+                
+                results[ticker] = {
+                    "price": round(last_price, 2),
+                    "change_pct": round(change_pct, 2),
+                    "ema_8": round(float(ema_8.iloc[-1]), 2),
+                    "ema_21": round(float(ema_21.iloc[-1]), 2),
+                    "ema_35": round(float(ema_35.iloc[-1]), 2) if len(ema_35) > 0 else None,
+                    "ema_200": round(float(ema_200.iloc[-1]), 2) if len(ema_200) >= 200 else None,
+                    "rsi_weekly": rsi_summary,
+                    "extended_price": extended_price,
+                    "extended_change_pct": extended_change_pct,
+                    "is_premarket": is_premarket,
+                    "is_postmarket": is_postmarket
+                }
+            except Exception as e:
+                print(f"[open-prices] Error for {ticker}: {e}")
+                continue
+    except Exception as e:
+        print(f"[open-prices] Batch download error: {e}")
     
     return results
 
