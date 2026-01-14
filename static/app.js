@@ -2294,7 +2294,7 @@ ${res.data.errors.join("\n")}`);
                                                         // Days Held Logic
                                                         const start = new Date(trade.entry_date);
                                                         const end = isClosed && trade.exit_date ? new Date(trade.exit_date) : new Date();
-                                                        const daysHeld = Math.ceil(Math.abs(end - start) / (1000 * 60 * 60 * 24));
+                                                        const daysHeld = getTradingDaysBetween(trade.entry_date, end);
 
                                                         return (
                                                             <tr key={trade.id} className="bg-slate-900/40 hover:bg-slate-800/60 transition border-b border-slate-800/30">

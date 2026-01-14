@@ -489,6 +489,7 @@ def get_open_prices(current_user: models.User = Depends(auth.get_current_user), 
     import market_data
     import indicators
     import yfinance as yf
+    import elliott
     
     trades = db.query(models.Trade).filter(
         models.Trade.user_id == current_user.id,
@@ -546,6 +547,16 @@ def get_open_prices(current_user: models.User = Depends(auth.get_current_user), 
                 except:
                     pass
                 
+                # Momentum Path (ABC Target)
+                momentum_path = None
+                try:
+                    abc = elliott.find_abc_breakout(df)
+                    if abc and "projections" in abc:
+                        mp = abc["projections"].get("1.0")
+                        if mp: momentum_path = round(mp, 2)
+                except:
+                    pass
+
                 # Premarket data
                 extended_price = None
                 extended_change_pct = None
@@ -583,6 +594,7 @@ def get_open_prices(current_user: models.User = Depends(auth.get_current_user), 
                     "ema_35": round(float(ema_35.iloc[-1]), 2) if len(ema_35) > 0 else None,
                     "ema_200": round(float(ema_200.iloc[-1]), 2) if len(ema_200) >= 200 else None,
                     "rsi_weekly": rsi_summary,
+                    "momentum_path": momentum_path,
                     "extended_price": extended_price,
                     "extended_change_pct": extended_change_pct,
                     "is_premarket": is_premarket,
