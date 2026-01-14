@@ -1051,6 +1051,39 @@ async def upload_trades_csv(file: UploadFile = File(...), current_user: models.U
                 strategy = row.get("strategy") or row.get("Strategy") or row.get("setup") or row.get("pattern")
                 if strategy:
                     strategy = str(strategy).strip()
+                
+                # Direction (LONG/SHORT)
+                direction = row.get("direction", "LONG").upper()
+                if direction not in ["LONG", "SHORT"]:
+                    direction = "LONG"
+                
+                # Additional targets
+                target2 = None
+                target3 = None
+                if row.get("target2"):
+                    try:
+                        target2 = float(str(row.get("target2")).replace(",", ".").replace("$", ""))
+                    except: pass
+                if row.get("target3"):
+                    try:
+                        target3 = float(str(row.get("target3")).replace(",", ".").replace("$", ""))
+                    except: pass
+                
+                # Elliott pattern and risk level
+                elliott_pattern = row.get("elliott_pattern") or row.get("elliott")
+                if elliott_pattern:
+                    elliott_pattern = str(elliott_pattern).strip()
+                    
+                risk_level = row.get("risk_level") or row.get("risk")
+                if risk_level:
+                    risk_level = str(risk_level).strip()
+                
+                # PnL percent from CSV (for closed trades)
+                pnl_percent = None
+                if row.get("pnl_percent"):
+                    try:
+                        pnl_percent = float(str(row.get("pnl_percent")).replace(",", ".").replace("%", ""))
+                    except: pass
                         
                 trade = models.Trade(
                     user_id=current_user.id,
@@ -1058,13 +1091,19 @@ async def upload_trades_csv(file: UploadFile = File(...), current_user: models.U
                     entry_date=entry_date,
                     entry_price=entry_price,
                     shares=shares,
+                    direction=direction,
                     status=status,
                     exit_date=exit_date,
                     exit_price=exit_price,
                     pnl=pnl,
+                    pnl_percent=pnl_percent,
                     stop_loss=stop_loss,
                     target=target,
+                    target2=target2,
+                    target3=target3,
                     strategy=strategy,
+                    elliott_pattern=elliott_pattern,
+                    risk_level=risk_level,
                     notes=row.get("notes", "Imported via CSV")
                 )
                 db.add(trade)
