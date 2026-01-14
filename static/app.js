@@ -2188,11 +2188,12 @@ ${res.data.errors.join("\n")}`);
                                                     </td>
                                                     {/* Pre-Market % */}
                                                     <td className="p-2 text-center border-r border-slate-800">
+
                                                         {(() => {
                                                             if (isHistory) return <span className="text-slate-600">-</span>;
-                                                            const pm = premarket[ticker];
-                                                            const pmChange = pm?.extended_change_pct;
-                                                            if (pmChange === null || pmChange === undefined) return <span className="text-slate-600 text-[10px]">-</span>;
+                                                            // Use properly mapped preMktChange from row stats
+                                                            const pmChange = row.preMktChange;
+                                                            if (!pmChange || pmChange === 0) return <span className="text-slate-600 text-[10px]">-</span>;
                                                             const pmColor = pmChange > 0 ? 'text-green-400' : pmChange < 0 ? 'text-red-400' : 'text-slate-400';
                                                             return <span className={`font-bold ${pmColor}`}>{pmChange > 0 ? '+' : ''}{pmChange}%</span>;
                                                         })()}
@@ -2271,92 +2272,97 @@ ${res.data.errors.join("\n")}`);
                                                 </tr>
 
                                                 {/* DETAIL ROWS */}
-                                                {isExpanded && groupTrades.map(trade => {
-                                                    // Keeping detail row logic same as before, essentially nested
-                                                    // Not sorting detail rows for now as requested user focus was main columns
-                                                    const live = row.live; // reusing live data from row stats
-                                                    const isClosed = trade.status === 'CLOSED';
+                                                {
+                                                    isExpanded && groupTrades.map(trade => {
+                                                        // Keeping detail row logic same as before, essentially nested
+                                                        // Not sorting detail rows for now as requested user focus was main columns
+                                                        const live = row.live; // reusing live data from row stats
+                                                        const isClosed = trade.status === 'CLOSED';
 
-                                                    // Price Logic
-                                                    const currentPrice = isClosed ? trade.exit_price : (live.price || trade.entry_price);
-                                                    const displayPrice = isClosed ? trade.exit_price : (live.price || null);
+                                                        // Price Logic
+                                                        const currentPrice = isClosed ? trade.exit_price : (live.price || trade.entry_price);
+                                                        const displayPrice = isClosed ? trade.exit_price : (live.price || null);
 
-                                                    // Day/Date Logic
-                                                    const dayChange = live.change_pct || 0;
-                                                    const displayDate = isClosed ? trade.exit_date : (dayChange ? `${dayChange > 0 ? '+' : ''}${dayChange.toFixed(2)}%` : '-');
+                                                        // Day/Date Logic
+                                                        const dayChange = live.change_pct || 0;
+                                                        const displayDate = isClosed ? trade.exit_date : (dayChange ? `${dayChange > 0 ? '+' : ''}${dayChange.toFixed(2)}%` : '-');
 
-                                                    // PnL Logic
-                                                    const pnl = (currentPrice - trade.entry_price) * trade.shares * (trade.direction === 'LONG' ? 1 : -1);
-                                                    const pnlPct = ((currentPrice - trade.entry_price) / trade.entry_price) * 100 * (trade.direction === 'LONG' ? 1 : -1);
+                                                        // PnL Logic
+                                                        const pnl = (currentPrice - trade.entry_price) * trade.shares * (trade.direction === 'LONG' ? 1 : -1);
+                                                        const pnlPct = ((currentPrice - trade.entry_price) / trade.entry_price) * 100 * (trade.direction === 'LONG' ? 1 : -1);
 
-                                                    // Days Held Logic
-                                                    const start = new Date(trade.entry_date);
-                                                    const end = isClosed && trade.exit_date ? new Date(trade.exit_date) : new Date();
-                                                    const daysHeld = Math.ceil(Math.abs(end - start) / (1000 * 60 * 60 * 24));
+                                                        // Days Held Logic
+                                                        const start = new Date(trade.entry_date);
+                                                        const end = isClosed && trade.exit_date ? new Date(trade.exit_date) : new Date();
+                                                        const daysHeld = Math.ceil(Math.abs(end - start) / (1000 * 60 * 60 * 24));
 
-                                                    return (
-                                                        <tr key={trade.id} className="bg-slate-900/40 hover:bg-slate-800/60 transition border-b border-slate-800/30">
-                                                            <td className="p-2 border-r border-slate-800 border-l-4 border-l-slate-700 sticky left-0 bg-[#162032] z-10 pl-8 text-slate-500 text-[10px]">
-                                                                ↳ {trade.id}
-                                                            </td>
-                                                            <td className="p-2 border-r border-slate-800 text-slate-500 text-[10px]">{trade.entry_date}</td>
-                                                            <td className="p-2 text-right border-r border-slate-800">
-                                                                <EditableCell
-                                                                    value={trade.entry_price}
-                                                                    onSave={(val) => {
-                                                                        axios.put(`${API_BASE}/trades/${trade.id}`, { entry_price: parseFloat(val) })
-                                                                            .then(() => fetchData())
-                                                                            .catch(e => console.error(e));
-                                                                    }}
-                                                                    prefix="$"
-                                                                    type="number"
-                                                                    width="w-20"
-                                                                    className="text-slate-400 font-mono text-[10px]"
-                                                                />
-                                                            </td>
-                                                            <td className="p-2 text-right border-r border-slate-800">
-                                                                <EditableCell
-                                                                    value={trade.shares}
-                                                                    onSave={(val) => {
-                                                                        axios.put(`${API_BASE}/trades/${trade.id}`, { shares: parseInt(val) })
-                                                                            .then(() => fetchData())
-                                                                            .catch(e => console.error(e));
-                                                                    }}
-                                                                    type="number"
-                                                                    width="w-16"
-                                                                    className="text-slate-500 text-[10px]"
-                                                                />
-                                                            </td>
-                                                            <td className="p-2 text-right border-r border-slate-800 text-slate-600 text-[10px]">${(trade.entry_price * trade.shares).toFixed(0)}</td>
-                                                            <td className={`p-2 text-right border-r border-slate-800 border-l border-l-slate-700 font-mono text-[10px] ${pnl >= 0 ? 'text-green-500/70' : 'text-red-500/70'}`}>
-                                                                ${pnl.toFixed(0)}
-                                                            </td>
+                                                        return (
+                                                            <tr key={trade.id} className="bg-slate-900/40 hover:bg-slate-800/60 transition border-b border-slate-800/30">
+                                                                <td className="p-2 border-r border-slate-800 border-l-4 border-l-slate-700 sticky left-0 bg-[#162032] z-10 pl-8 text-slate-500 text-[10px]">
+                                                                    ↳ {trade.id}
+                                                                </td>
+                                                                <td className="p-2 border-r border-slate-800 text-slate-500 text-[10px]">{trade.entry_date}</td>
+                                                                <td className="p-2 text-right border-r border-slate-800">
+                                                                    <EditableCell
+                                                                        value={trade.entry_price}
+                                                                        onSave={(val) => {
+                                                                            axios.put(`${API_BASE}/trades/${trade.id}`, { entry_price: parseFloat(val) })
+                                                                                .then(() => fetchData())
+                                                                                .catch(e => console.error(e));
+                                                                        }}
+                                                                        prefix="$"
+                                                                        type="number"
+                                                                        width="w-20"
+                                                                        className="text-slate-400 font-mono text-[10px]"
+                                                                    />
+                                                                </td>
+                                                                <td className="p-2 text-right border-r border-slate-800">
+                                                                    <EditableCell
+                                                                        value={trade.shares}
+                                                                        onSave={(val) => {
+                                                                            axios.put(`${API_BASE}/trades/${trade.id}`, { shares: parseInt(val) })
+                                                                                .then(() => fetchData())
+                                                                                .catch(e => console.error(e));
+                                                                        }}
+                                                                        type="number"
+                                                                        width="w-16"
+                                                                        className="text-slate-500 text-[10px]"
+                                                                    />
+                                                                </td>
+                                                                <td className="p-2 text-right border-r border-slate-800 text-slate-600 text-[10px]">${(trade.entry_price * trade.shares).toFixed(0)}</td>
+                                                                <td className={`p-2 text-right border-r border-slate-800 border-l border-l-slate-700 font-mono text-[10px] ${pnl >= 0 ? 'text-green-500/70' : 'text-red-500/70'}`}>
+                                                                    ${pnl.toFixed(0)}
+                                                                </td>
 
-                                                            {/* Price Column (Exit or Live) */}
-                                                            <td className="p-2 text-right border-r border-slate-800 text-slate-400 font-mono text-[10px]">
-                                                                {displayPrice ? `$${displayPrice.toFixed(2)}` : '...'}
-                                                            </td>
+                                                                {/* Price Column (Exit or Live) */}
+                                                                <td className="p-2 text-right border-r border-slate-800 text-slate-400 font-mono text-[10px]">
+                                                                    {displayPrice ? `$${displayPrice.toFixed(2)}` : '...'}
+                                                                </td>
 
-                                                            {/* Date/Change Column */}
-                                                            <td className={`p-2 text-center border-r border-slate-800 text-[10px] ${!isClosed && dayChange >= 0 ? 'text-green-500/70' : (!isClosed ? 'text-red-500/70' : 'text-slate-500')}`}>
-                                                                {displayDate}
-                                                            </td>
+                                                                {/* Premarket Alignment Column (Empty for child rows) */}
+                                                                <td className="p-2 text-center border-r border-slate-800 text-slate-700 text-[10px]">-</td>
 
-                                                            <td className={`p-2 text-right border-r border-slate-800 text-[10px] ${pnlPct >= 0 ? 'text-green-500/70' : 'text-red-500/70'}`}>
-                                                                {pnlPct.toFixed(2)}%
-                                                            </td>
-                                                            <td className="p-2 text-center border-r border-slate-800 text-slate-600 font-mono text-[10px]">{trade.stop_loss || '-'}</td>
-                                                            <td className="p-2 text-center border-r border-slate-800 text-slate-600 font-mono text-[10px]">{trade.target || '-'}</td>
-                                                            <td className="p-2 text-center border-r border-slate-800 text-slate-600 font-mono text-[10px]">{trade.target2 || '-'}</td>
-                                                            <td className="p-2 text-center border-r border-slate-800 text-slate-600 font-mono text-[10px]">{trade.target3 || '-'}</td>
-                                                            <td className="p-2 text-center border-r border-slate-800 text-slate-600 text-[10px]">{daysHeld}</td>
-                                                            <td className="p-2 border-r border-slate-800 text-slate-600 text-[10px]">{trade.strategy || '-'}</td>
-                                                            <td colSpan="5" className="p-2 text-center text-slate-600 text-[10px]">
-                                                                <button onClick={() => handleDelete(trade.id)} className="hover:text-red-400">Delete</button>
-                                                            </td>
-                                                        </tr>
-                                                    );
-                                                })}
+                                                                {/* Date/Change Column */}
+                                                                <td className={`p-2 text-center border-r border-slate-800 text-[10px] ${!isClosed && dayChange >= 0 ? 'text-green-500/70' : (!isClosed ? 'text-red-500/70' : 'text-slate-500')}`}>
+                                                                    {displayDate}
+                                                                </td>
+
+                                                                <td className={`p-2 text-right border-r border-slate-800 text-[10px] ${pnlPct >= 0 ? 'text-green-500/70' : 'text-red-500/70'}`}>
+                                                                    {pnlPct.toFixed(2)}%
+                                                                </td>
+                                                                <td className="p-2 text-center border-r border-slate-800 text-slate-600 font-mono text-[10px]">{trade.stop_loss || '-'}</td>
+                                                                <td className="p-2 text-center border-r border-slate-800 text-slate-600 font-mono text-[10px]">{trade.target || '-'}</td>
+                                                                <td className="p-2 text-center border-r border-slate-800 text-slate-600 font-mono text-[10px]">{trade.target2 || '-'}</td>
+                                                                <td className="p-2 text-center border-r border-slate-800 text-slate-600 font-mono text-[10px]">{trade.target3 || '-'}</td>
+                                                                <td className="p-2 text-center border-r border-slate-800 text-slate-600 text-[10px]">{daysHeld}</td>
+                                                                <td className="p-2 border-r border-slate-800 text-slate-600 text-[10px]">{trade.strategy || '-'}</td>
+                                                                <td colSpan="5" className="p-2 text-center text-slate-600 text-[10px]">
+                                                                    <button onClick={() => handleDelete(trade.id)} className="hover:text-red-400">Delete</button>
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })
+                                                }
                                             </Fragment>
                                         );
                                     })}
