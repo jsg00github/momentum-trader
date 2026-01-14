@@ -737,6 +737,7 @@ def get_portfolio_insight():
     # Query database directly instead of calling endpoint functions (which have Depends that don't resolve)
     try:
         import price_service
+        from database import SessionLocal
         db = SessionLocal()
         
         try:
