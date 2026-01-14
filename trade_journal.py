@@ -236,51 +236,76 @@ def get_cached_summary(current_user: models.User = Depends(auth.get_current_user
     FAST endpoint - Returns last known portfolio values from DB without external API calls.
     Used for instant UI load, then background updates fetch live data.
     """
-    # Get open trades from DB (no external calls)
-    open_trades = db.query(models.Trade).filter(
-        models.Trade.user_id == current_user.id,
-        models.Trade.status == 'OPEN'
-    ).all()
-    
-    # Get latest snapshot for cached values
-    last_snapshot = db.query(models.PortfolioSnapshot).filter(
-        models.PortfolioSnapshot.user_id == current_user.id
-    ).order_by(desc(models.PortfolioSnapshot.date)).first()
-    
-    # Calculate from DB values only (no yfinance)
-    total_invested = sum([(t.entry_price or 0) * (t.shares or 0) for t in open_trades])
-    
-    # Use last snapshot for approximate current value
-    cached_value = last_snapshot.total_value_usd if last_snapshot else total_invested
-    cached_pnl = (cached_value - total_invested) if last_snapshot else 0
-    cached_pnl_pct = (cached_pnl / total_invested * 100) if total_invested > 0 else 0
-    
-    # Avg holding days
-    from datetime import date as date_type
-    today = date_type.today()
-    total_days = 0
-    for t in open_trades:
-        if t.entry_date:
+    try:
+        # Get open trades from DB (no external calls)
+        open_trades = db.query(models.Trade).filter(
+            models.Trade.user_id == current_user.id,
+            models.Trade.status == 'OPEN'
+        ).all()
+        
+        # Get latest snapshot for cached values
+        last_snapshot = db.query(models.PortfolioSnapshot).filter(
+            models.PortfolioSnapshot.user_id == current_user.id
+        ).order_by(desc(models.PortfolioSnapshot.date)).first()
+        
+        # Calculate from DB values only (no yfinance)
+        total_invested = sum([(t.entry_price or 0) * (t.shares or 0) for t in open_trades])
+        
+        # Use last snapshot for approximate current value
+        cached_value = last_snapshot.total_value_usd if last_snapshot else total_invested
+        cached_pnl = (cached_value - total_invested) if last_snapshot else 0
+        cached_pnl_pct = (cached_pnl / total_invested * 100) if total_invested > 0 else 0
+        
+        # Avg holding days
+        from datetime import date as date_type
+        today = date_type.today()
+        total_days = 0
+        for t in open_trades:
+            if t.entry_date:
+                try:
+                    if isinstance(t.entry_date, str):
+                        ed = datetime.strptime(t.entry_date, '%Y-%m-%d').date()
+                    else:
+                        ed = t.entry_date
+                    total_days += (today - ed).days
+                except:
+                    pass
+        avg_days = total_days // len(open_trades) if open_trades else 0
+        
+        # Format snapshot date safely
+        snapshot_date_str = None
+        if last_snapshot and last_snapshot.date:
             try:
-                if isinstance(t.entry_date, str):
-                    ed = datetime.strptime(t.entry_date, '%Y-%m-%d').date()
-                else:
-                    ed = t.entry_date
-                total_days += (today - ed).days
+                snapshot_date_str = last_snapshot.date.strftime('%Y-%m-%d')
             except:
-                pass
-    avg_days = total_days // len(open_trades) if open_trades else 0
-    
-    return {
-        "total_invested": round(total_invested, 2),
-        "cached_value": round(cached_value, 2),
-        "cached_pnl": round(cached_pnl, 2),
-        "cached_pnl_pct": round(cached_pnl_pct, 2),
-        "open_count": len(open_trades),
-        "avg_holding_days": avg_days,
-        "snapshot_date": last_snapshot.date.strftime('%Y-%m-%d') if last_snapshot and last_snapshot.date else None,
-        "is_stale": True  # Indicate this is cached data, will be updated
-    }
+                snapshot_date_str = str(last_snapshot.date)
+        
+        return {
+            "total_invested": round(total_invested, 2),
+            "cached_value": round(cached_value, 2),
+            "cached_pnl": round(cached_pnl, 2),
+            "cached_pnl_pct": round(cached_pnl_pct, 2),
+            "open_count": len(open_trades),
+            "avg_holding_days": avg_days,
+            "snapshot_date": snapshot_date_str,
+            "is_stale": True  # Indicate this is cached data, will be updated
+        }
+    except Exception as e:
+        print(f"[cached-summary] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        # Return safe defaults instead of 500
+        return {
+            "total_invested": 0,
+            "cached_value": 0,
+            "cached_pnl": 0,
+            "cached_pnl_pct": 0,
+            "open_count": 0,
+            "avg_holding_days": 0,
+            "snapshot_date": None,
+            "is_stale": True,
+            "error": str(e)
+        }
 
 
 @router.get("/api/trades/metrics")
@@ -759,6 +784,7 @@ def get_portfolio_performance(current_user: models.User = Depends(auth.get_curre
     # Build portfolio P&L data from snapshots
     dates = []
     portfolio_pnl_pct = []  # TRUE P&L % = (value - invested) / invested
+    portfolio_values = []  # Dollar values for chart
     for s in snapshots:
         val = s.total_value_usd or 0
         inv = s.total_invested_usd or val
@@ -766,6 +792,7 @@ def get_portfolio_performance(current_user: models.User = Depends(auth.get_curre
             pnl_pct = ((val - inv) / inv) * 100
             dates.append(s.date.strftime("%Y-%m-%d") if hasattr(s.date, 'strftime') else str(s.date))
             portfolio_pnl_pct.append(round(pnl_pct, 2))
+            portfolio_values.append(round(val, 2))
     
     # Use portfolio_pnl_pct for chart
     portfolio_pct = portfolio_pnl_pct

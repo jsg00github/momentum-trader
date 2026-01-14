@@ -734,60 +734,65 @@ def get_ai_insight(force_refresh: bool = False):
 @app.get("/api/ai/portfolio-insight")
 def get_portfolio_insight():
     """Generate AI portfolio analysis using Gemini"""
-    # Gather portfolio data from trade journal
+    # Query database directly instead of calling endpoint functions (which have Depends that don't resolve)
     try:
-        result = trade_journal.get_trades()
-        trades = result.get("trades", []) if isinstance(result, dict) else []
-        # Fix: status is 'OPEN' not 'open' - use case-insensitive comparison
-        open_trades = [t for t in trades if isinstance(t, dict) and str(t.get('status', '')).upper() == 'OPEN']
+        import price_service
+        db = SessionLocal()
         
-        if not open_trades:
-            return {"insight": "No open positions found in the USA portfolio."}
-        
-        # Get live prices for accurate PnL
-        live_data = trade_journal.get_open_prices()
-        
-        # Calculate portfolio metrics
-        total_value = 0
-        unrealized_pnl = 0
-        positions = []
-        pnl_list = []
-        
-        for t in open_trades:
-            ticker = t.get('ticker', '?')
-            shares = float(t.get('shares', 0) or 0)
-            entry = float(t.get('entry_price', 0) or 0)
+        try:
+            # Get all open trades directly from DB (not user-scoped for this general AI insight)
+            trades = db.query(models.Trade).filter(models.Trade.status == 'OPEN').all()
             
-            # Get current price from live data
-            live = live_data.get(ticker, {})
-            current = float(live.get('price', entry) or entry)
+            if not trades:
+                return {"insight": "No open positions found in the USA portfolio."}
             
-            value = current * shares
-            pnl = (current - entry) * shares
-            pnl_pct = ((current / entry) - 1) * 100 if entry > 0 else 0
+            # Collect tickers for live price fetch
+            tickers = list(set([t.ticker.upper() for t in trades if t.ticker]))
+            live_data = price_service.get_prices(tickers) if tickers else {}
             
-            total_value += value
-            unrealized_pnl += pnl
+            # Calculate portfolio metrics
+            total_value = 0
+            unrealized_pnl = 0
+            positions = []
+            pnl_list = []
             
-            positions.append(f"{ticker} ({int(shares)} @ ${entry:.2f})")
-            pnl_list.append({"ticker": ticker, "pnl_pct": pnl_pct})
-        
-        # Sort by PnL %
-        sorted_by_pnl = sorted(pnl_list, key=lambda x: x['pnl_pct'], reverse=True)
-        winners = [f"{p['ticker']}: +{p['pnl_pct']:.1f}%" for p in sorted_by_pnl[:3] if p['pnl_pct'] > 0]
-        losers = [f"{p['ticker']}: {p['pnl_pct']:.1f}%" for p in sorted_by_pnl if p['pnl_pct'] < 0][-3:]
-        
-        portfolio_data = {
-            "positions": ", ".join(positions[:10]) if positions else "No open positions",
-            "total_value": f"${total_value:,.2f}",
-            "unrealized_pnl": f"${unrealized_pnl:,.2f}",
-            "sectors": "Mixed (data not available)",
-            "winners": ", ".join(winners) if winners else "None",
-            "losers": ", ".join(losers) if losers else "None"
-        }
-        
-        insight = market_brain.get_portfolio_insight(portfolio_data)
-        return {"insight": insight}
+            for t in trades:
+                ticker = t.ticker.upper() if t.ticker else '?'
+                shares = float(t.shares or 0)
+                entry = float(t.entry_price or 0)
+                
+                # Get current price from live data
+                price_info = live_data.get(ticker, {})
+                current = float(price_info.get('price', entry) or entry)
+                
+                value = current * shares
+                pnl = (current - entry) * shares
+                pnl_pct = ((current / entry) - 1) * 100 if entry > 0 else 0
+                
+                total_value += value
+                unrealized_pnl += pnl
+                
+                positions.append(f"{ticker} ({int(shares)} @ ${entry:.2f})")
+                pnl_list.append({"ticker": ticker, "pnl_pct": pnl_pct})
+            
+            # Sort by PnL %
+            sorted_by_pnl = sorted(pnl_list, key=lambda x: x['pnl_pct'], reverse=True)
+            winners = [f"{p['ticker']}: +{p['pnl_pct']:.1f}%" for p in sorted_by_pnl[:3] if p['pnl_pct'] > 0]
+            losers = [f"{p['ticker']}: {p['pnl_pct']:.1f}%" for p in sorted_by_pnl if p['pnl_pct'] < 0][-3:]
+            
+            portfolio_data = {
+                "positions": ", ".join(positions[:10]) if positions else "No open positions",
+                "total_value": f"${total_value:,.2f}",
+                "unrealized_pnl": f"${unrealized_pnl:,.2f}",
+                "sectors": "Mixed (data not available)",
+                "winners": ", ".join(winners) if winners else "None",
+                "losers": ", ".join(losers) if losers else "None"
+            }
+            
+            insight = market_brain.get_portfolio_insight(portfolio_data)
+            return {"insight": insight}
+        finally:
+            db.close()
         
     except Exception as e:
         import traceback
@@ -1140,81 +1145,94 @@ def take_manual_snapshot(current_user: models.User = Depends(auth.get_current_us
 @app.get("/api/portfolio/benchmark")
 def get_portfolio_benchmark(current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
     """Get Global Portfolio P&L% vs SPY benchmark for last 90 days."""
-    from datetime import datetime, timedelta
-    import yfinance as yf
-    
-    # Get last 90 days of snapshots
-    cutoff_date = (datetime.now() - timedelta(days=90)).date()
-    
-    snapshots = db.query(models.PortfolioSnapshot).filter(
-        models.PortfolioSnapshot.user_id == current_user.id,
-        models.PortfolioSnapshot.date >= cutoff_date
-    ).order_by(models.PortfolioSnapshot.date.asc()).all()
-    
-    if not snapshots:
-        return {"dates": [], "portfolio_pct": [], "spy_pct": [], "message": "No snapshots available"}
-    
-    # Build portfolio P&L % data
-    dates = []
-    portfolio_pct = []
-    
-    for s in snapshots:
-        val = s.total_value_usd or 0
-        inv = s.total_invested_usd or val
-        if val > 0 and inv > 0:
-            pnl_pct = ((val - inv) / inv) * 100
-            dates.append(s.date.strftime("%Y-%m-%d") if hasattr(s.date, 'strftime') else str(s.date))
-            portfolio_pct.append(round(pnl_pct, 2))
-    
-    if not dates:
-        return {"dates": [], "portfolio_pct": [], "spy_pct": [], "message": "No valid data"}
-    
-    # Get SPY data for same period
-    spy_pct = []
     try:
-        start_date = dates[0]
-        end_date = dates[-1]
+        from datetime import datetime, timedelta
+        import yfinance as yf
         
-        spy_data = yf.download("SPY", start=start_date, end=end_date, progress=False)
+        # Get last 90 days of snapshots
+        cutoff_date = (datetime.now() - timedelta(days=90)).date()
         
-        if not spy_data.empty:
-            spy_close = spy_data['Close']
-            if len(spy_close) > 0:
-                spy_start = float(spy_close.iloc[0])
-                
-                for date_str in dates:
-                    try:
-                        spy_dates = spy_close.index.strftime('%Y-%m-%d').tolist()
-                        if date_str in spy_dates:
-                            idx = spy_dates.index(date_str)
-                            spy_val = float(spy_close.iloc[idx])
-                        else:
-                            # Use last available value
-                            mask = spy_close.index <= date_str
-                            if mask.any():
-                                spy_val = float(spy_close[mask].iloc[-1])
+        snapshots = db.query(models.PortfolioSnapshot).filter(
+            models.PortfolioSnapshot.user_id == current_user.id,
+            models.PortfolioSnapshot.date >= cutoff_date
+        ).order_by(models.PortfolioSnapshot.date.asc()).all()
+        
+        if not snapshots:
+            return {"dates": [], "portfolio_pct": [], "spy_pct": [], "message": "No snapshots available"}
+        
+        # Build portfolio P&L % data
+        dates = []
+        portfolio_pct = []
+        
+        for s in snapshots:
+            val = s.total_value_usd or 0
+            inv = s.total_invested_usd or val
+            if val > 0 and inv > 0:
+                pnl_pct = ((val - inv) / inv) * 100
+                dates.append(s.date.strftime("%Y-%m-%d") if hasattr(s.date, 'strftime') else str(s.date))
+                portfolio_pct.append(round(pnl_pct, 2))
+        
+        if not dates:
+            return {"dates": [], "portfolio_pct": [], "spy_pct": [], "message": "No valid data"}
+        
+        # Get SPY data for same period
+        spy_pct = []
+        try:
+            start_date = dates[0]
+            end_date = dates[-1]
+            
+            spy_data = yf.download("SPY", start=start_date, end=end_date, progress=False)
+            
+            if not spy_data.empty:
+                spy_close = spy_data['Close']
+                if len(spy_close) > 0:
+                    spy_start = float(spy_close.iloc[0])
+                    
+                    for date_str in dates:
+                        try:
+                            spy_dates = spy_close.index.strftime('%Y-%m-%d').tolist()
+                            if date_str in spy_dates:
+                                idx = spy_dates.index(date_str)
+                                spy_val = float(spy_close.iloc[idx])
                             else:
-                                spy_val = spy_start
-                        
-                        pct = ((spy_val - spy_start) / spy_start) * 100
-                        spy_pct.append(round(pct, 2))
-                    except:
-                        spy_pct.append(spy_pct[-1] if spy_pct else 0)
+                                # Use last available value
+                                mask = spy_close.index <= date_str
+                                if mask.any():
+                                    spy_val = float(spy_close[mask].iloc[-1])
+                                else:
+                                    spy_val = spy_start
+                            
+                            pct = ((spy_val - spy_start) / spy_start) * 100
+                            spy_pct.append(round(pct, 2))
+                        except:
+                            spy_pct.append(spy_pct[-1] if spy_pct else 0)
+        except Exception as e:
+            print(f"[Portfolio Benchmark] SPY fetch error: {e}")
+            spy_pct = [0] * len(dates)
+        
+        # Fill missing SPY values
+        while len(spy_pct) < len(dates):
+            spy_pct.append(spy_pct[-1] if spy_pct else 0)
+        
+        return {
+            "dates": dates,
+            "portfolio_pct": portfolio_pct,
+            "spy_pct": spy_pct,
+            "latest_portfolio_pct": portfolio_pct[-1] if portfolio_pct else 0,
+            "latest_spy_pct": spy_pct[-1] if spy_pct else 0
+        }
     except Exception as e:
-        print(f"[Portfolio Benchmark] SPY fetch error: {e}")
-        spy_pct = [0] * len(dates)
-    
-    # Fill missing SPY values
-    while len(spy_pct) < len(dates):
-        spy_pct.append(spy_pct[-1] if spy_pct else 0)
-    
-    return {
-        "dates": dates,
-        "portfolio_pct": portfolio_pct,
-        "spy_pct": spy_pct,
-        "latest_portfolio_pct": portfolio_pct[-1] if portfolio_pct else 0,
-        "latest_spy_pct": spy_pct[-1] if spy_pct else 0
-    }
+        print(f"[Portfolio Benchmark] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return {
+            "dates": [],
+            "portfolio_pct": [],
+            "spy_pct": [],
+            "latest_portfolio_pct": 0,
+            "latest_spy_pct": 0,
+            "error": str(e)
+        }
 
 
 # -----------------------------------------------------
