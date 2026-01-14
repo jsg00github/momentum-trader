@@ -1027,6 +1027,30 @@ async def upload_trades_csv(file: UploadFile = File(...), current_user: models.U
                     if exit_price and entry_price:
                         # Simple PnL: (Exit - Entry) * Shares
                         pnl = (exit_price - entry_price) * shares
+                
+                # Parse optional fields: SL, TP, Strategy
+                stop_loss = None
+                target = None
+                strategy = None
+                
+                # Stop Loss - try multiple column names
+                sl_val = row.get("stop_loss") or row.get("sl") or row.get("SL") or row.get("stoploss")
+                if sl_val:
+                    try:
+                        stop_loss = float(str(sl_val).replace(",", ".").replace("$", ""))
+                    except: pass
+                
+                # Target/TP - try multiple column names  
+                tp_val = row.get("target") or row.get("tp") or row.get("TP") or row.get("take_profit") or row.get("target1")
+                if tp_val:
+                    try:
+                        target = float(str(tp_val).replace(",", ".").replace("$", ""))
+                    except: pass
+                
+                # Strategy
+                strategy = row.get("strategy") or row.get("Strategy") or row.get("setup") or row.get("pattern")
+                if strategy:
+                    strategy = str(strategy).strip()
                         
                 trade = models.Trade(
                     user_id=current_user.id,
@@ -1038,6 +1062,9 @@ async def upload_trades_csv(file: UploadFile = File(...), current_user: models.U
                     exit_date=exit_date,
                     exit_price=exit_price,
                     pnl=pnl,
+                    stop_loss=stop_loss,
+                    target=target,
+                    strategy=strategy,
                     notes=row.get("notes", "Imported via CSV")
                 )
                 db.add(trade)
