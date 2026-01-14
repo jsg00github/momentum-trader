@@ -3,7 +3,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
-from passlib.context import CryptContext
+import bcrypt
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 import os
@@ -16,7 +16,6 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 # 1 week
 
 # --- Crypto Setup ---
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -43,12 +42,15 @@ class UserResponse(BaseModel):
 
 # --- Utils ---
 def verify_password(plain_password, hashed_password):
-    # bcrypt has 72 byte limit
-    return pwd_context.verify(plain_password[:72], hashed_password)
+    # bcrypt has 72 byte limit, truncate and encode
+    pwd_bytes = plain_password[:72].encode('utf-8')
+    hashed_bytes = hashed_password.encode('utf-8') if isinstance(hashed_password, str) else hashed_password
+    return bcrypt.checkpw(pwd_bytes, hashed_bytes)
 
 def get_password_hash(password):
-    # bcrypt has 72 byte limit
-    return pwd_context.hash(password[:72])
+    # bcrypt has 72 byte limit, truncate and encode
+    pwd_bytes = password[:72].encode('utf-8')
+    return bcrypt.hashpw(pwd_bytes, bcrypt.gensalt()).decode('utf-8')
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
