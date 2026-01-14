@@ -7186,7 +7186,8 @@ function PortfolioDashboardView() {
                                         }}
                                     />
                                     <Tooltip
-                                        contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '8px' }}
+                                        contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '8px', color: '#fff' }}
+                                        itemStyle={{ color: '#fff' }}
                                         labelStyle={{ color: '#94a3b8' }}
                                         formatter={(value) => {
                                             const sign = value >= 0 ? '+' : '';
@@ -7238,7 +7239,7 @@ function PortfolioDashboardView() {
                                         }}
                                     />
                                     <Tooltip
-                                        contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '8px' }}
+                                        contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '8px', color: '#fff' }}
                                         labelStyle={{ color: '#fff' }}
                                         itemStyle={{ color: '#fff' }}
                                         formatter={(value) => {
@@ -7402,7 +7403,9 @@ function PortfolioDashboardView() {
                                                 const displayValue = displayCurrency === 'ars' ? Math.round(value * cclRate) : value;
                                                 return [`${prefix}${displayValue.toLocaleString()}`, 'Valor'];
                                             }}
-                                            contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '8px' }}
+                                            contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '8px', color: '#fff' }}
+                                            itemStyle={{ color: '#fff' }}
+                                            labelStyle={{ color: '#94a3b8' }}
                                         />
                                     </PieChart>
                                 </ResponsiveContainer>
@@ -7447,7 +7450,9 @@ function PortfolioDashboardView() {
                                                 const displayValue = displayCurrency === 'ars' ? Math.round(value * cclRate) : value;
                                                 return [`${prefix}${displayValue.toLocaleString()}`, 'Valor'];
                                             }}
-                                            contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '8px' }}
+                                            contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '8px', color: '#fff' }}
+                                            itemStyle={{ color: '#fff' }}
+                                            labelStyle={{ color: '#94a3b8' }}
                                         />
                                     </PieChart>
                                 </ResponsiveContainer>
@@ -7507,7 +7512,9 @@ function PortfolioDashboardView() {
                                 <XAxis dataKey="date" tick={{ fill: '#64748b', fontSize: 10 }} tickFormatter={(d) => d.substring(5)} />
                                 <YAxis tick={{ fill: '#64748b', fontSize: 10 }} tickFormatter={(v) => `${v >= 0 ? '+' : ''}${v.toFixed(0)}%`} />
                                 <Tooltip
-                                    contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '8px' }}
+                                    contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '8px', color: '#fff' }}
+                                    itemStyle={{ color: '#fff' }}
+                                    labelStyle={{ color: '#94a3b8' }}
                                     formatter={(value, name) => [`${value >= 0 ? '+' : ''}${value.toFixed(2)}%`, name === 'portfolio' ? 'Portfolio' : 'S&P 500']}
                                     labelFormatter={(label) => `Fecha: ${label}`}
                                 />
