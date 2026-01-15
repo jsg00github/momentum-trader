@@ -489,7 +489,7 @@ def get_open_prices(current_user: models.User = Depends(auth.get_current_user), 
     import market_data
     import indicators
     import yfinance as yf
-    import elliott
+    import screener
     
     trades = db.query(models.Trade).filter(
         models.Trade.user_id == current_user.id,
@@ -547,13 +547,13 @@ def get_open_prices(current_user: models.User = Depends(auth.get_current_user), 
                 except:
                     pass
                 
-                # Momentum Path (ABC Target)
+                # Momentum Path (Linear Regression Forecast)
                 momentum_path = None
                 try:
-                    abc = elliott.find_abc_breakout(df)
-                    if abc and "projections" in abc:
-                        mp = abc["projections"].get("1.0")
-                        if mp: momentum_path = round(mp, 2)
+                    path = screener.predict_future_path(df)
+                    if path:
+                        # Get the last projected value (end of the path)
+                        momentum_path = round(path[-1]["projected"], 2)
                 except:
                     pass
 
