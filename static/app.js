@@ -6105,12 +6105,22 @@ function ConnectBinanceModal({ onClose }) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(keys)
             });
+            
+            const data = await res.json();
+            
             if (res.ok) {
-                alert('Keys saved successfully! Sync logic will run in background.');
+                if (data.status === 'warning') {
+                     alert('Keys saved, but initial sync failed: ' + data.message);
+                } else {
+                     alert(data.message || 'Keys saved successfully! Sync logic will run in background.');
+                }
                 onClose();
+            } else {
+                alert('Connection Failed: ' + (data.detail || res.statusText));
             }
         } catch (err) {
             console.error(err);
+            alert("Network or Server Error: " + err.message);
         }
     };
 

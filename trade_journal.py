@@ -1253,3 +1253,78 @@ def download_template():
     response = StreamingResponse(iter([stream.getvalue()]), media_type="text/csv")
     response.headers["Content-Disposition"] = "attachment; filename=usa_trades_template.csv"
     return response
+
+@router.get("/api/trades/analytics/performance")
+def get_performance_analytics(current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    """Get stock portfolio performance analytics (P&L over time + Current Metrics)."""
+    
+    # 1. Line Chart Data (from snapshots)
+    snapshots = db.query(models.PortfolioSnapshot).filter(
+        models.PortfolioSnapshot.user_id == current_user.id
+    ).order_by(models.PortfolioSnapshot.date.asc()).all()
+    
+    line_data = {
+        "dates": [s.date for s in snapshots],
+        "value": [s.total_value_usd for s in snapshots], 
+        "invested": [s.total_invested_usd for s in snapshots],
+        "pnl": [s.total_pnl_usd for s in snapshots]
+    }
+    
+    # 2. Current Portfolio Metrics (Open Trades)
+    open_trades = db.query(models.Trade).filter(
+        models.Trade.user_id == current_user.id,
+        models.Trade.status == 'OPEN'
+    ).all()
+    
+    current_invested = sum((t.entry_price or 0) * t.shares for t in open_trades)
+    
+    # Estimate current value
+    current_value = 0
+    import price_service
+    
+    for t in open_trades:
+        price_data = price_service.get_price(t.ticker) # Uses cache
+        price = price_data.get('price') if price_data else t.entry_price
+        current_value += (price or 0) * t.shares
+
+    current_pnl = current_value - current_invested
+    
+    # 3. Top/Worst Performers (All trades)
+    all_trades = db.query(models.Trade).filter(
+        models.Trade.user_id == current_user.id
+    ).all()
+    
+    performance_by_ticker = []
+    for t in all_trades:
+        if t.status == 'CLOSED':
+            pnl = t.pnl or 0
+            pnl_pct = t.pnl_percent or 0
+        else:
+            # Open PnL
+            price_data = price_service.get_price(t.ticker)
+            price = price_data.get('price') if price_data else t.entry_price
+            val = (price or 0) * t.shares
+            cost = (t.entry_price or 0) * t.shares
+            pnl = val - cost
+            pnl_pct = (pnl / cost * 100) if cost > 0 else 0
+            
+        performance_by_ticker.append({
+            "ticker": t.ticker,
+            "pnl": round(pnl, 2),
+            "pnl_pct": round(pnl_pct, 2),
+            "status": t.status
+        })
+        
+    performance_by_ticker.sort(key=lambda x: x["pnl_pct"], reverse=True)
+    
+    return {
+        "line_data": line_data,
+        "current_metrics": {
+            "total_invested": round(current_invested, 2),
+            "total_value": round(current_value, 2),
+            "total_pnl": round(current_pnl, 2),
+            "roi_pct": round((current_pnl / current_invested * 100) if current_invested > 0 else 0, 2)
+        },
+        "top_performers": performance_by_ticker[:5],
+        "worst_performers": performance_by_ticker[-5:][::-1] if len(performance_by_ticker) > 5 else []
+    }
