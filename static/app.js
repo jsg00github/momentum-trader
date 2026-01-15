@@ -6093,63 +6093,13 @@ function AddCryptoModal({ onClose, onAdd }) {
     );
 }
 
-// Connect Binance Modal
-function ConnectBinanceModal({ onClose }) {
-    const [keys, setKeys] = useState({ api_key: '', api_secret: '' });
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        try {
-            const res = await authFetch('/api/crypto/binance/connect', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(keys)
-            });
-            
-            const data = await res.json();
-            
-            if (res.ok) {
-                if (data.status === 'warning') {
-                     alert('Keys saved, but initial sync failed: ' + data.message);
-                } else {
-                     alert(data.message || 'Keys saved successfully! Sync logic will run in background.');
-                }
-                onClose();
-            } else {
-                alert('Connection Failed: ' + (data.detail || res.statusText));
-            }
-        } catch (err) {
-            console.error(err);
-            alert("Network or Server Error: " + err.message);
-        }
-    };
-
-    return (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-            <div className="bg-[#1a1a1a] rounded-xl border border-[#2a2a2a] w-full max-w-md p-6">
-                <h3 className="text-xl font-bold text-white mb-2">Connect Binance</h3>
-                <p className="text-sm text-slate-400 mb-4">API Key & Secret are stored locally.</p>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    <input className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded p-2 text-white placeholder-slate-600"
-                        placeholder="API Key" value={keys.api_key} onChange={e => setKeys({ ...keys, api_key: e.target.value })} required />
-                    <input type="password" className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded p-2 text-white placeholder-slate-600"
-                        placeholder="API Secret" value={keys.api_secret} onChange={e => setKeys({ ...keys, api_secret: e.target.value })} required />
-                    <div className="flex justify-end gap-2 mt-6">
-                        <button type="button" onClick={onClose} className="px-4 py-2 text-slate-400 hover:text-white">Cancel</button>
-                        <button type="submit" className="px-4 py-2 bg-[#FCD535] hover:bg-[#F0B90B] text-black rounded font-bold">Save Keys</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    );
-}
 
 // Crypto Journal Component
 function CryptoJournal() {
     const [positions, setPositions] = useState([]);
     const [metrics, setMetrics] = useState({ total_invested: 0, total_value: 0, total_pnl: 0 });
     const [showAddModal, setShowAddModal] = useState(false);
-    const [showBinanceModal, setShowBinanceModal] = useState(false);
 
     // Sub-tab navigation
     const [activeSubTab, setActiveSubTab] = useState('log'); // 'log' or 'analytics'
@@ -6270,7 +6220,6 @@ function CryptoJournal() {
     return (
         <div className="p-4 container mx-auto max-w-[1600px]">
             {showAddModal && <AddCryptoModal onClose={() => setShowAddModal(false)} onAdd={fetchData} />}
-            {showBinanceModal && <ConnectBinanceModal onClose={() => setShowBinanceModal(false)} />}
 
             <div className="flex justify-between items-center mb-6">
                 <div>
@@ -6278,7 +6227,7 @@ function CryptoJournal() {
                         ₿ Crypto Journal
                         <span className="text-xs bg-orange-600/20 text-orange-400 px-2 py-0.5 rounded-full">Active</span>
                     </h2>
-                    <p className="text-slate-400 text-sm">Gestiona tus posiciones crypto manuales o vía Binance.</p>
+                    <p className="text-slate-400 text-sm">Gestiona tus posiciones crypto manualmente.</p>
                 </div>
                 <div className="flex gap-2">
                     <input
@@ -6294,9 +6243,7 @@ function CryptoJournal() {
                     <button onClick={handleImportClick} className="bg-slate-700 hover:bg-slate-600 text-slate-200 px-4 py-2 rounded-lg font-medium transition text-sm border border-slate-600">
                         {importLoading ? 'Importing...' : 'Import CSV'}
                     </button>
-                    <button onClick={() => setShowBinanceModal(true)} className="bg-[#1a1a1a] border border-[#333] hover:border-yellow-500 text-white px-4 py-2 rounded-lg font-medium transition text-sm flex items-center gap-2">
-                        <span className="text-[#FCD535]">🔗</span> Binance Connect
-                    </button>
+
                     <button onClick={() => setShowAddModal(true)} className="bg-orange-600 hover:bg-orange-500 text-white px-4 py-2 rounded-lg font-medium transition text-sm flex items-center gap-2">
                         <span>➕</span> Agregar Manual
                     </button>

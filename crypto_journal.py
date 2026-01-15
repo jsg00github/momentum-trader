@@ -20,89 +20,9 @@ class CryptoPositionCreate(BaseModel):
     entry_price: float
     source: str = "MANUAL"
 
-class BinanceConfigCreate(BaseModel):
-    api_key: str
-    api_secret: str
 
-# --- Binance Sync Logic ---
-def sync_binance_internal(user: models.User, api_key: str, api_secret: str, db: Session):
-    try:
-        import ccxt
-        exchange = ccxt.binance({
-            'apiKey': api_key,
-            'secret': api_secret,
-            'enableRateLimit': True
-        })
-        
-        # Fetch balances
-        print(f"[Crypto] Fetching Binance balance for user {user.email}...")
-        balance = exchange.fetch_balance()
-        
-        # Filter non-zero
-        assets = {k: v for k, v in balance['total'].items() if v > 0}
-        if not assets:
-            print("[Crypto] No assets found in Binance.")
-            return 0
 
-        # Get Prices for all assets
-        print("[Crypto] Fetching all tickers to map prices...")
-        try:
-            all_tickers = exchange.fetch_tickers()
-            prices = {}
-            for symbol, data in all_tickers.items():
-                if symbol.endswith('/USDT'):
-                    base = symbol.split('/')[0]
-                    prices[base] = data['last']
-        except Exception as e:
-            print(f"[Crypto] Error fetching tickers: {e}")
-            prices = {}
-        
-        # Stablecoins
-        for stable in ['USDT', 'USDC', 'DAI', 'FDUSD']:
-            prices[stable] = 1.0
 
-        # Filter dust & Prepare positions
-        valid_positions = []
-        for coin, amount in assets.items():
-            price = prices.get(coin, 0)
-            value = amount * price
-            if value > 1.0: # Filter dust > $1
-                valid_positions.append({
-                    'ticker': coin,
-                    'amount': amount,
-                    'price': price
-                })
-        
-        if not valid_positions:
-            print("[Crypto] No positions > $1 found.")
-            return 0
-            
-        # DB Update: Delete ONLY this user's Binance positions
-        db.query(models.CryptoPosition).filter(
-            models.CryptoPosition.user_id == user.id,
-            models.CryptoPosition.source == 'BINANCE'
-        ).delete()
-        
-        count = 0
-        for pos in valid_positions:
-            new_pos = models.CryptoPosition(
-                user_id=user.id,
-                ticker=pos['ticker'],
-                amount=pos['amount'],
-                entry_price=pos['price'], # Using current price as entry for synced positions (limitation of sync)
-                current_price=pos['price'],
-                source='BINANCE'
-            )
-            db.add(new_pos)
-            count += 1
-        
-        db.commit()
-        print(f"[Crypto] Synced {count} positions from Binance for {user.email}.")
-        return count
-        
-    except Exception as e:
-        print(f"[Crypto] Sync Error: {e}")
-        raise e
 
 # --- Endpoints ---
 
@@ -194,41 +114,7 @@ def delete_position(position_id: int, current_user: models.User = Depends(auth.g
     db.commit()
     return {"status": "success"}
 
-@router.post("/api/crypto/binance/connect")
-def connect_binance(config: BinanceConfigCreate, current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
-    # Save/Update Keys
-    existing = db.query(models.BinanceConfig).filter(models.BinanceConfig.user_id == current_user.id).first()
-    if existing:
-        existing.api_key = config.api_key
-        existing.api_secret = config.api_secret
-    else:
-        new_config = models.BinanceConfig(
-            user_id=current_user.id,
-            api_key=config.api_key,
-            api_secret=config.api_secret
-        )
-        db.add(new_config)
-    
-    db.commit()
-    
-    # Trigger Sync
-    try:
-        count = sync_binance_internal(current_user, config.api_key, config.api_secret, db)
-        return {"status": "success", "message": f"Connected! Synced {count} positions."}
-    except Exception as e:
-        return {"status": "warning", "message": f"Keys saved, but sync failed: {str(e)}"}
 
-@router.post("/api/crypto/binance/sync")
-def trigger_sync(current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
-    config = db.query(models.BinanceConfig).filter(models.BinanceConfig.user_id == current_user.id).first()
-    if not config or not config.api_key:
-        raise HTTPException(status_code=400, detail="Binance keys not configured")
-        
-    try:
-        count = sync_binance_internal(current_user, config.api_key, config.api_secret, db)
-        return {"status": "success", "count": count}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 # Helper for other modules (e.g. portfolio snapshots)
 def get_portfolio_metrics(user_id: int, db: Session):
