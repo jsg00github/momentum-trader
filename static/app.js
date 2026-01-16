@@ -47,19 +47,30 @@ const US_MARKET_HOLIDAYS = new Set([
  * @returns {number} Number of trading days
  */
 function getTradingDaysBetween(startDate, endDate = new Date()) {
-    const start = new Date(startDate);
-    const end = new Date(endDate);
+    const parseLocal = (d) => {
+        if (typeof d === 'string' && d.match(/^\d{4}-\d{2}-\d{2}$/)) {
+            const [y, m, day] = d.split('-').map(Number);
+            return new Date(y, m - 1, day);
+        }
+        return new Date(d);
+    };
 
-    if (isNaN(start.getTime()) || start >= end) return 0;
+    const start = parseLocal(startDate);
+    const end = parseLocal(endDate);
+
+    if (isNaN(start.getTime()) || start > end) return 0; // Fixed condition start > end because same day is valid
 
     let tradingDays = 0;
     const current = new Date(start);
     current.setHours(0, 0, 0, 0);
     end.setHours(0, 0, 0, 0);
 
+    // If same date, it's Day 1
+    if (current.getTime() === end.getTime()) return 1;
+
     while (current <= end) {
         const dayOfWeek = current.getDay();
-        const dateStr = current.toISOString().split('T')[0];
+        const dateStr = current.getFullYear() + '-' + String(current.getMonth() + 1).padStart(2, '0') + '-' + String(current.getDate()).padStart(2, '0');
 
         // Skip weekends (0 = Sunday, 6 = Saturday)
         // Skip US market holidays
@@ -70,7 +81,8 @@ function getTradingDaysBetween(startDate, endDate = new Date()) {
         current.setDate(current.getDate() + 1);
     }
 
-    return tradingDays;
+    // Safety check: if today is start date, ensure at least 1 (though logic above covers it)
+    return tradingDays > 0 ? tradingDays : 1;
 }
 
 // --- Components ---
