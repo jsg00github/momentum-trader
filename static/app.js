@@ -6040,7 +6040,7 @@ function AddCryptoModal({ onClose, onAdd }) {
     const handleSubmit = async (e) => {
         e.preventDefault();
         try {
-            const res = await fetch('/api/crypto/positions', {
+            const res = await authFetch('/api/crypto/positions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -6092,7 +6092,6 @@ function AddCryptoModal({ onClose, onAdd }) {
         </div>
     );
 }
-
 
 
 // Crypto Journal Component
@@ -6171,7 +6170,7 @@ function CryptoJournal() {
     const handleDelete = async (id) => {
         if (!confirm('Delete this position?')) return;
         try {
-            await fetch(`/api/crypto/positions/${id}`, { method: 'DELETE' });
+            await authFetch(`/api/crypto/positions/${id}`, { method: 'DELETE' });
             fetchData();
         } catch (e) { console.error(e); }
     };
