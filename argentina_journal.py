@@ -35,6 +35,10 @@ class ArgentinaPositionCreate(BaseModel):
     option_expiry: Optional[str] = None
     option_type: Optional[str] = None
     notes: Optional[str] = None
+    manual_price: Optional[float] = None # Support explicit manual override at creation
+
+class ManualPriceUpdate(BaseModel):
+    price: float
 
 class IOLCredentials(BaseModel):
     username: str
@@ -153,13 +157,31 @@ def api_add_position(pos: ArgentinaPositionCreate, current_user: models.User = D
         option_expiry=pos.option_expiry,
         option_type=pos.option_type,
         status="OPEN",
-        underlying_country=underlying_country
+        underlying_country=underlying_country,
+        manual_price=pos.manual_price
     )
     
     db.add(new_pos)
     db.commit()
     db.refresh(new_pos)
     return {"id": new_pos.id, "status": "created", "detected_country": underlying_country}
+
+@router.put("/positions/{position_id}/price")
+def api_update_manual_price(position_id: int, update: ManualPriceUpdate, current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    """Update the manual price for a specific position (useful for Options)."""
+    pos = db.query(models.ArgentinaPosition).filter(
+        models.ArgentinaPosition.id == position_id,
+        models.ArgentinaPosition.user_id == current_user.id
+    ).first()
+    
+    if not pos:
+        raise HTTPException(status_code=404, detail="Position not found")
+        
+    pos.manual_price = update.price
+    pos.manual_price_updated_at = datetime.now()
+    
+    db.commit()
+    return {"id": position_id, "manual_price": update.price, "status": "updated"}
 
 @router.post("/positions/{position_id}/close")
 def api_close_position(position_id: int, exit_price: float, current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
@@ -226,10 +248,18 @@ def api_get_portfolio(current_user: models.User = Depends(auth.get_current_user)
             else:
                 current_price = argentina_data.get_byma_price_yf(pos.ticker)
         elif pos.asset_type == "option":
-            current_price = pos.entry_price  # Placeholder
+            # Options: Priority to Manual Price > Entry Price
+            if pos.manual_price is not None:
+                current_price = pos.manual_price
+            else:
+                current_price = pos.entry_price  # Placeholder
             
         if current_price is None:
-            current_price = pos.entry_price
+             # Fallback: check manual price field even for stocks if live failed
+             if pos.manual_price is not None:
+                 current_price = pos.manual_price
+             else:
+                 current_price = pos.entry_price
             
         val_ars = current_price * pos.shares
         cost = pos.entry_price * pos.shares
@@ -247,7 +277,11 @@ def api_get_portfolio(current_user: models.User = Depends(auth.get_current_user)
             "current_price": round(current_price, 2),
             "value_ars": round(val_ars, 2),
             "pnl_ars": round(pnl, 2),
-            "pnl_pct": round(pnl_pct, 2)
+            "value_ars": round(val_ars, 2),
+            "pnl_ars": round(pnl, 2),
+            "pnl_pct": round(pnl_pct, 2),
+            "manual_price": pos.manual_price,
+            "manual_price_updated_at": pos.manual_price_updated_at.isoformat() if pos.manual_price_updated_at else None
         })
         
     ccl = rates.get("ccl", 1200)

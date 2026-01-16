@@ -117,6 +117,10 @@ class ArgentinaPosition(Base):
     exit_date = Column(String, nullable=True)
     exit_price = Column(Float, nullable=True)
     
+    # Manual Price Override (for assets without live data like Options)
+    manual_price = Column(Float, nullable=True)
+    manual_price_updated_at = Column(DateTime(timezone=True), nullable=True)
+    
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     user = relationship("User", back_populates="argentina_positions")

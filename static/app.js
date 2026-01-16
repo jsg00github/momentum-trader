@@ -6393,14 +6393,40 @@ function CryptoJournal() {
                                         <td className="px-6 py-4 font-bold text-white">{pos.ticker}</td>
                                         <td className="px-6 py-4 text-right">{pos.amount}</td>
                                         <td className="px-6 py-4 text-right text-slate-400">${pos.entry_price?.toLocaleString()}</td>
-                                        <td className="px-6 py-4 text-right text-slate-300">${pos.current_price?.toLocaleString()}</td>
-                                        <td className="px-6 py-4 text-right font-medium text-white">${pos.value?.toLocaleString()}</td>
-                                        <td className={`px-6 py-4 text-right font-medium ${pos.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                            ${pos.pnl?.toLocaleString()} ({pos.pnl_pct}%)
+                                        <td className="px-6 py-4 text-right text-slate-300">
+                                            {/* Manual Price Override - ONLY for Options as per user request */}
+                                            {['option', 'OPCION', 'call', 'put'].includes((pos.asset_type || '').toLowerCase()) ? (
+                                                <>
+                                                    <EditableCell
+                                                        value={pos.manual_price || pos.current_price}
+                                                        onSave={(val) => {
+                                                            authFetch(`${API_BASE}/argentina/positions/${pos.id}/price`, {
+                                                                method: 'PUT',
+                                                                body: JSON.stringify({ price: parseFloat(val) })
+                                                            })
+                                                                .then(() => fetchData())
+                                                                .catch(e => console.error(e));
+                                                        }}
+                                                        prefix="$"
+                                                        type="number"
+                                                        width="w-24"
+                                                        className={`text-right font-mono text-sm ${pos.manual_price ? 'text-yellow-400 font-bold border-b border-yellow-500/30' : 'text-slate-300'}`}
+                                                    />
+                                                    {pos.manual_price && (
+                                                        <div className="text-[9px] text-yellow-500/60 mt-0.5">MANUAL</div>
+                                                    )}
+                                                </>
+                                            ) : (
+                                                <span className="text-slate-300">${pos.current_price?.toLocaleString()}</span>
+                                            )}
+                                        </td>
+                                        <td className="px-6 py-4 text-right font-medium text-white">${pos.value_ars?.toLocaleString()}</td>
+                                        <td className={`px-6 py-4 text-right font-medium ${pos.pnl_ars >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                            ${pos.pnl_ars?.toLocaleString()} ({pos.pnl_pct}%)
                                         </td>
                                         <td className="px-6 py-4 text-center">
-                                            <span className={`text-[10px] px-2 py-0.5 rounded-full ${pos.source === 'BINANCE' ? 'bg-yellow-900/30 text-yellow-500' : 'bg-slate-800 text-slate-400'}`}>
-                                                {pos.source}
+                                            <span className={`text-[10px] px-2 py-0.5 rounded-full ${pos.asset_type === 'option' ? 'bg-purple-900/30 text-purple-400' : 'bg-slate-800 text-slate-400'}`}>
+                                                {pos.asset_type || pos.source}
                                             </span>
                                         </td>
                                         <td className="px-6 py-4 text-right">
