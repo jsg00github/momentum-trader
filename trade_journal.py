@@ -383,6 +383,9 @@ def get_equity_curve(current_user: models.User = Depends(auth.get_current_user),
             models.Trade.exit_date != None
         ).order_by(models.Trade.exit_date).all()
         
+        if not results:
+             return {"dates": [], "equity": [], "benchmarks": {"SPY": [], "QQQ": []}}
+        
         dates = []
         equity = []
         running_total = 0
@@ -401,6 +404,9 @@ def get_equity_curve(current_user: models.User = Depends(auth.get_current_user),
            
         return {"dates": dates, "equity": equity, "benchmarks": benchmarks}
     except Exception as e:
+        print(f"[equity-curve] Error: {e}")
+        import traceback
+        traceback.print_exc()
         return {"dates": [], "equity": [], "benchmarks": {"SPY": [], "QQQ": []}}
 
 
@@ -605,6 +611,9 @@ def get_open_prices(current_user: models.User = Depends(auth.get_current_user), 
                 continue
     except Exception as e:
         print(f"[open-prices] Batch download error: {e}")
+        import traceback
+        traceback.print_exc()
+        return {}  # Return empty dict on crash to avoid 500
     
     return results
 
@@ -1283,48 +1292,86 @@ def get_performance_analytics(current_user: models.User = Depends(auth.get_curre
     import price_service
     
     for t in open_trades:
-        price_data = price_service.get_price(t.ticker) # Uses cache
-        price = price_data.get('price') if price_data else t.entry_price
-        current_value += (price or 0) * t.shares
+        if not t.ticker: continue
+        try:
+            price_data = price_service.get_price(t.ticker) # Uses cache
+            
+            # Robust price logic: Cache -> Entry -> 0
+            price = None
+            if price_data and price_data.get('price'):
+                price = price_data.get('price')
+            
+            if price is None:
+                price = t.entry_price or 0
+                
+            current_value += price * t.shares
+        except Exception as e:
+            print(f"[Performance] Error evaluating open trade {t.ticker}: {e}")
+            # Fallback to cost basis
+            current_value += (t.entry_price or 0) * t.shares
 
     current_pnl = current_value - current_invested
     
     # 3. Top/Worst Performers (All trades)
-    all_trades = db.query(models.Trade).filter(
-        models.Trade.user_id == current_user.id
-    ).all()
-    
-    performance_by_ticker = []
-    for t in all_trades:
-        if t.status == 'CLOSED':
-            pnl = t.pnl or 0
-            pnl_pct = t.pnl_percent or 0
-        else:
-            # Open PnL
-            price_data = price_service.get_price(t.ticker)
-            price = price_data.get('price') if price_data else t.entry_price
-            val = (price or 0) * t.shares
-            cost = (t.entry_price or 0) * t.shares
-            pnl = val - cost
-            pnl_pct = (pnl / cost * 100) if cost > 0 else 0
-            
-        performance_by_ticker.append({
-            "ticker": t.ticker,
-            "pnl": round(pnl, 2),
-            "pnl_pct": round(pnl_pct, 2),
-            "status": t.status
-        })
+    try:
+        all_trades = db.query(models.Trade).filter(
+            models.Trade.user_id == current_user.id
+        ).all()
         
-    performance_by_ticker.sort(key=lambda x: x["pnl_pct"], reverse=True)
-    
-    return {
-        "line_data": line_data,
-        "current_metrics": {
-            "total_invested": round(current_invested, 2),
-            "total_value": round(current_value, 2),
-            "total_pnl": round(current_pnl, 2),
-            "roi_pct": round((current_pnl / current_invested * 100) if current_invested > 0 else 0, 2)
-        },
-        "top_performers": performance_by_ticker[:5],
-        "worst_performers": performance_by_ticker[-5:][::-1] if len(performance_by_ticker) > 5 else []
-    }
+        performance_by_ticker = []
+        for t in all_trades:
+            if not t.ticker: continue
+            
+            pnl = 0
+            pnl_pct = 0
+            
+            if t.status == 'CLOSED':
+                pnl = t.pnl or 0
+                pnl_pct = t.pnl_percent or 0
+            else:
+                # Open PnL
+                try:
+                    price_data = price_service.get_price(t.ticker)
+                    # Safe fallback: Current Price > Entry Price > 0
+                    current_price = price_data.get('price') if price_data else None
+                    if current_price is None: current_price = t.entry_price or 0
+                    
+                    val = current_price * t.shares
+                    cost = (t.entry_price or 0) * t.shares
+                    pnl = val - cost
+                    pnl_pct = (pnl / cost * 100) if cost > 0 else 0
+                except Exception as ex:
+                    print(f"[Performance] Error calc open PnL for {t.ticker}: {ex}")
+                    continue
+                
+            performance_by_ticker.append({
+                "ticker": t.ticker,
+                "pnl": round(pnl, 2),
+                "pnl_pct": round(pnl_pct, 2),
+                "status": t.status
+            })
+            
+        performance_by_ticker.sort(key=lambda x: x["pnl_pct"], reverse=True)
+        
+        return {
+            "line_data": line_data,
+            "current_metrics": {
+                "total_invested": round(current_invested, 2),
+                "total_value": round(current_value, 2),
+                "total_pnl": round(current_pnl, 2),
+                "roi_pct": round((current_pnl / current_invested * 100) if current_invested > 0 else 0, 2)
+            },
+            "top_performers": performance_by_ticker[:5],
+            "worst_performers": performance_by_ticker[-5:][::-1] if len(performance_by_ticker) > 5 else []
+        }
+    except Exception as e:
+        print(f"[Performance] Critical Error: {e}")
+        import traceback
+        traceback.print_exc()
+        # Return empty structure to prevent frontend crash
+        return {
+            "line_data": {"dates": [], "value": [], "invested": [], "pnl": []},
+            "current_metrics": {"total_invested": 0, "total_value": 0, "total_pnl": 0, "roi_pct": 0},
+            "top_performers": [],
+            "worst_performers": []
+        }
