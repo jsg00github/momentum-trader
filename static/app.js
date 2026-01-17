@@ -6045,9 +6045,238 @@ function ArgentinaPanel() {
 }
 
 
-// Add Crypto Position Modal
+
+// Add Argentina Position Modal
+function AddArgentinaModal({ onClose, onAdd }) {
+    const [formData, setFormData] = useState({
+        ticker: '', asset_type: 'stock', entry_date: new Date().toISOString().split('T')[0],
+        entry_price: '', shares: '', strategy: '', hypothesis: '', notes: '',
+        option_strike: '', option_expiry: '', option_type: 'call'
+    });
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        try {
+            await authFetch(`${API_BASE}/argentina/positions`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(formData)
+            });
+            onAdd();
+            onClose();
+        } catch (e) {
+            console.error(e);
+            alert("Failed to add position");
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+            <div className="bg-slate-900 border border-slate-700 rounded-xl p-6 w-full max-w-lg">
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-xl font-bold text-white">🇦🇷 Nueva Posición Argentina</h3>
+                    <button onClick={onClose} className="text-slate-400 hover:text-white">✕</button>
+                </div>
+                <form onSubmit={handleSubmit} className="space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="text-xs text-slate-400 block mb-1">Ticker</label>
+                            <input className="w-full bg-black/50 border border-slate-700 rounded p-2 text-white uppercase"
+                                value={formData.ticker} onChange={e => setFormData({ ...formData, ticker: e.target.value.toUpperCase() })} required autoFocus />
+                        </div>
+                        <div>
+                            <label className="text-xs text-slate-400 block mb-1">Tipo de Activo</label>
+                            <select className="w-full bg-black/50 border border-slate-700 rounded p-2 text-white"
+                                value={formData.asset_type} onChange={e => setFormData({ ...formData, asset_type: e.target.value })}>
+                                <option value="stock">Acción Local</option>
+                                <option value="cedear">CEDEAR</option>
+                                <option value="option">Opción</option>
+                                <option value="bond">Bono</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    {formData.asset_type === 'option' && (
+                        <div className="bg-purple-900/20 p-3 rounded border border-purple-900/50 grid grid-cols-3 gap-2">
+                            <div>
+                                <label className="text-[10px] text-purple-300 block">Strike</label>
+                                <input type="number" className="w-full bg-black/50 border border-purple-800 rounded p-1 text-white text-sm"
+                                    value={formData.option_strike} onChange={e => setFormData({ ...formData, option_strike: parseFloat(e.target.value) })} />
+                            </div>
+                            <div>
+                                <label className="text-[10px] text-purple-300 block">Vencimiento</label>
+                                <input type="date" className="w-full bg-black/50 border border-purple-800 rounded p-1 text-white text-sm"
+                                    value={formData.option_expiry} onChange={e => setFormData({ ...formData, option_expiry: e.target.value })} />
+                            </div>
+                            <div>
+                                <label className="text-[10px] text-purple-300 block">Tipo</label>
+                                <select className="w-full bg-black/50 border border-purple-800 rounded p-1 text-white text-sm"
+                                    value={formData.option_type} onChange={e => setFormData({ ...formData, option_type: e.target.value })}>
+                                    <option value="call">Call</option>
+                                    <option value="put">Put</option>
+                                </select>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="grid grid-cols-3 gap-3">
+                        <div>
+                            <label className="text-xs text-slate-400 block mb-1">Cantidad</label>
+                            <input type="number" step="any" className="w-full bg-black/50 border border-slate-700 rounded p-2 text-white"
+                                value={formData.shares} onChange={e => setFormData({ ...formData, shares: parseFloat(e.target.value) })} required />
+                        </div>
+                        <div>
+                            <label className="text-xs text-slate-400 block mb-1">Precio Entrada</label>
+                            <input type="number" step="any" className="w-full bg-black/50 border border-slate-700 rounded p-2 text-white"
+                                value={formData.entry_price} onChange={e => setFormData({ ...formData, entry_price: parseFloat(e.target.value) })} required />
+                        </div>
+                        <div>
+                            <label className="text-xs text-slate-400 block mb-1">Fecha</label>
+                            <input type="date" className="w-full bg-black/50 border border-slate-700 rounded p-2 text-white"
+                                value={formData.entry_date} onChange={e => setFormData({ ...formData, entry_date: e.target.value })} required />
+                        </div>
+                    </div>
+                    <div>
+                        <label className="text-xs text-slate-400 block mb-1">Estrategia / Hipotesis</label>
+                        <textarea className="w-full bg-black/50 border border-slate-700 rounded p-2 text-white h-16 text-sm"
+                            value={formData.hypothesis} onChange={e => setFormData({ ...formData, hypothesis: e.target.value })} placeholder="Ej: Rebote en soporte..." />
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-2">
+                        <button type="button" onClick={onClose} className="px-4 py-2 text-slate-400 hover:text-white">Cancelar</button>
+                        <button type="submit" className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded font-bold">Guardar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+}
+
+// Argentina Journal Component
+function ArgentinaJournal() {
+    const [portfolio, setPortfolio] = useState({ holdings: [], total_ars: 0, total_mep: 0, total_ccl: 0 });
+    const [showAddModal, setShowAddModal] = useState(false);
+    const [loading, setLoading] = useState(false);
+
+    const fetchPortfolio = async () => {
+        setLoading(true);
+        try {
+            const res = await authFetch(`${API_BASE}/argentina/portfolio`);
+            const data = await res.json();
+            setPortfolio(data);
+        } catch (e) {
+            console.error(e);
+        }
+        setLoading(false);
+    };
+
+    useEffect(() => {
+        fetchPortfolio();
+        const interval = setInterval(fetchPortfolio, 60000);
+        return () => clearInterval(interval);
+    }, []);
+
+    const handleDelete = async (id) => {
+        if (!confirm("Borrar posicion?")) return;
+        await authFetch(`${API_BASE}/argentina/positions/${id}`, { method: 'DELETE' });
+        fetchPortfolio();
+    };
+
+    return (
+        <div className="p-4 container mx-auto max-w-[1600px]">
+            {showAddModal && <AddArgentinaModal onClose={() => setShowAddModal(false)} onAdd={fetchPortfolio} />}
+
+            <div className="flex justify-between items-center mb-6">
+                <div>
+                    <h2 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2">
+                        🇦🇷 Argentina Journal
+                        <span className="text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-full">MERVAL</span>
+                    </h2>
+                    <div className="flex gap-4 mt-2 text-sm font-mono">
+                        <span className="text-slate-400">ARS: <span className="text-white font-bold">${portfolio.total_ars?.toLocaleString()}</span></span>
+                        <span className="text-slate-400">MEP: <span className="text-green-400 font-bold">${portfolio.total_mep?.toLocaleString()}</span></span>
+                        <span className="text-slate-400">CCL: <span className="text-blue-400 font-bold">${portfolio.total_ccl?.toLocaleString()}</span></span>
+                    </div>
+                </div>
+                <div>
+                    <button onClick={() => setShowAddModal(true)} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-bold shadow-lg flex items-center gap-2">
+                        <span>➕</span> Nueva Posición
+                    </button>
+                </div>
+            </div>
+
+            <div className="bg-[#0f0f0f] rounded-xl border border-[#2a2a2a] overflow-hidden">
+                <table className="w-full text-sm text-left">
+                    <thead className="bg-[#151515] text-slate-400 uppercase text-xs">
+                        <tr>
+                            <th className="px-6 py-4">Ticker</th>
+                            <th className="px-6 py-4 text-right">Cantidad</th>
+                            <th className="px-6 py-4 text-right">Entrada</th>
+                            <th className="px-6 py-4 text-right">Actual</th>
+                            <th className="px-6 py-4 text-right">Valor ARS</th>
+                            <th className="px-6 py-4 text-right">P&L</th>
+                            <th className="px-6 py-4 text-center">Tipo</th>
+                            <th className="px-6 py-4 text-right">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#1a1a1a]">
+                        {portfolio.holdings.length === 0 ? (
+                            <tr><td colSpan="8" className="p-8 text-center text-slate-500">No hay posiciones activas.</td></tr>
+                        ) : portfolio.holdings.map(pos => (
+                            <tr key={pos.id} className="hover:bg-[#1a1a1a]">
+                                <td className="px-6 py-4 font-bold text-white">{pos.ticker}</td>
+                                <td className="px-6 py-4 text-right">{pos.shares}</td>
+                                <td className="px-6 py-4 text-right text-slate-400">${pos.entry_price?.toLocaleString()}</td>
+                                <td className="px-6 py-4 text-right text-white">
+                                    {['option', 'OPCION', 'call', 'put'].includes((pos.asset_type || '').toLowerCase()) ? (
+                                        <>
+                                            <EditableCell
+                                                value={pos.manual_price || pos.current_price}
+                                                onSave={(val) => {
+                                                    authFetch(`${API_BASE}/argentina/positions/${pos.id}/price`, {
+                                                        method: 'PUT',
+                                                        body: JSON.stringify({ price: parseFloat(val) })
+                                                    })
+                                                        .then(() => fetchPortfolio())
+                                                        .catch(e => console.error(e));
+                                                }}
+                                                prefix="$" type="number" width="w-24"
+                                                className={`text-right font-mono text-sm ${pos.manual_price ? 'text-yellow-400 font-bold' : 'text-slate-300'}`}
+                                            />
+                                            {pos.manual_price && <div className="text-[9px] text-yellow-500/60">MANUAL</div>}
+                                        </>
+                                    ) : (
+                                        <span>${pos.current_price?.toLocaleString()}</span>
+                                    )}
+                                </td>
+                                <td className="px-6 py-4 text-right font-bold text-slate-200">${pos.value_ars?.toLocaleString()}</td>
+                                <td className={`px-6 py-4 text-right font-bold ${pos.pnl_ars >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                    ${pos.pnl_ars?.toLocaleString()} ({pos.pnl_pct}%)
+                                </td>
+                                <td className="px-6 py-4 text-center">
+                                    <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold ${pos.asset_type === 'stock' ? 'bg-blue-900/30 text-blue-300' : pos.asset_type === 'cedear' ? 'bg-orange-900/30 text-orange-300' : 'bg-purple-900/30 text-purple-300'}`}>
+                                        {pos.asset_type}
+                                    </span>
+                                </td>
+                                <td className="px-6 py-4 text-right">
+                                    <button onClick={() => handleDelete(pos.id)} className="text-slate-600 hover:text-red-400">🗑️</button>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+}
+
+// Add Crypto Position Modal (Full Parity)
 function AddCryptoModal({ onClose, onAdd }) {
-    const [formData, setFormData] = useState({ ticker: '', amount: '', entry_price: '' });
+    const [formData, setFormData] = useState({
+        ticker: '', amount: '', entry_price: '',
+        entry_date: new Date().toISOString().split('T')[0],
+        strategy: '', stop_loss: '', target: '', notes: ''
+    });
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -6059,6 +6288,11 @@ function AddCryptoModal({ onClose, onAdd }) {
                     ticker: formData.ticker,
                     amount: parseFloat(formData.amount),
                     entry_price: parseFloat(formData.entry_price),
+                    entry_date: formData.entry_date,
+                    strategy: formData.strategy,
+                    stop_loss: formData.stop_loss ? parseFloat(formData.stop_loss) : null,
+                    target: formData.target ? parseFloat(formData.target) : null,
+                    notes: formData.notes,
                     source: 'MANUAL'
                 })
             });
@@ -6075,29 +6309,136 @@ function AddCryptoModal({ onClose, onAdd }) {
 
     return (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-            <div className="bg-[#1a1a1a] rounded-xl border border-[#2a2a2a] w-full max-w-md p-6">
-                <h3 className="text-xl font-bold text-white mb-4">Add Crypto Position</h3>
+            <div className="bg-[#1a1a1a] rounded-xl border border-[#2a2a2a] w-full max-w-2xl p-6 shadow-2xl">
+                <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                        <span>🪙</span> Add Crypto Position
+                    </h3>
+                    <button onClick={onClose} className="text-slate-500 hover:text-white">✕</button>
+                </div>
+
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <div className="grid grid-cols-3 gap-4">
+                        <div>
+                            <label className="text-xs text-slate-400 font-bold uppercase">Ticker</label>
+                            <input className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded p-2 text-white uppercase font-mono tracking-wider focus:border-orange-500 outline-none"
+                                value={formData.ticker} onChange={e => setFormData({ ...formData, ticker: e.target.value.toUpperCase() })} required placeholder="BTC" autoFocus />
+                        </div>
+                        <div>
+                            <label className="text-xs text-slate-400 font-bold uppercase">Date</label>
+                            <input type="date" className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded p-2 text-white focus:border-orange-500 outline-none"
+                                value={formData.entry_date} onChange={e => setFormData({ ...formData, entry_date: e.target.value })} required />
+                        </div>
+                        <div>
+                            <label className="text-xs text-slate-400 font-bold uppercase">Strategy</label>
+                            <input className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded p-2 text-white focus:border-orange-500 outline-none"
+                                value={formData.strategy} onChange={e => setFormData({ ...formData, strategy: e.target.value })} placeholder="e.g. Breakout" />
+                        </div>
+                    </div>
+
+                    <div className="bg-slate-900/50 p-4 rounded-lg border border-slate-800">
+                        <h4 className="text-xs text-slate-500 font-bold uppercase mb-3 border-b border-slate-800 pb-1">Trade Details</h4>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-xs text-slate-400 font-bold uppercase">Amount (Coins)</label>
+                                <input type="number" step="any" className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded p-2 text-white font-mono focus:border-orange-500 outline-none"
+                                    value={formData.amount} onChange={e => setFormData({ ...formData, amount: e.target.value })} required placeholder="e.g. 0.5" />
+                            </div>
+                            <div>
+                                <label className="text-xs text-slate-400 font-bold uppercase">Entry Price ($)</label>
+                                <input type="number" step="any" className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded p-2 text-white font-mono focus:border-orange-500 outline-none"
+                                    value={formData.entry_price} onChange={e => setFormData({ ...formData, entry_price: e.target.value })} required placeholder="e.g. 50000" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="bg-slate-900/50 p-4 rounded-lg border border-slate-800">
+                        <h4 className="text-xs text-slate-500 font-bold uppercase mb-3 border-b border-slate-800 pb-1">Risk Management</h4>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-xs text-slate-400 font-bold uppercase">Stop Loss ($)</label>
+                                <input type="number" step="any" className="w-full bg-[#0a0a0a] border border-red-900/50 rounded p-2 text-red-200 font-mono focus:border-red-500 outline-none"
+                                    value={formData.stop_loss} onChange={e => setFormData({ ...formData, stop_loss: e.target.value })} placeholder="Optional" />
+                            </div>
+                            <div>
+                                <label className="text-xs text-slate-400 font-bold uppercase">Target / TP ($)</label>
+                                <input type="number" step="any" className="w-full bg-[#0a0a0a] border border-green-900/50 rounded p-2 text-green-200 font-mono focus:border-green-500 outline-none"
+                                    value={formData.target} onChange={e => setFormData({ ...formData, target: e.target.value })} placeholder="Optional" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="text-xs text-slate-400 font-bold uppercase">Notes</label>
+                        <textarea className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded p-2 text-white h-20 outline-none focus:border-orange-500"
+                            value={formData.notes} onChange={e => setFormData({ ...formData, notes: e.target.value })} placeholder="Analysis, thesis, etc." />
+                    </div>
+
+                    <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-800">
+                        <button type="button" onClick={onClose} className="px-6 py-2 text-slate-400 hover:text-white transition">Cancel</button>
+                        <button type="submit" className="px-8 py-2 bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500 text-white rounded shadow-lg shadow-orange-900/20 font-bold transition transform hover:scale-105">
+                            Add Position
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+}
+
+// Close Crypto Position Modal
+function CloseCryptoModal({ position, onClose, onSave }) {
+    const [formData, setFormData] = useState({
+        exit_price: position.current_price || '',
+        exit_date: new Date().toISOString().split('T')[0],
+        notes: ''
+    });
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        try {
+            await authFetch(`/api/crypto/positions/${position.id}/close`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    exit_price: parseFloat(formData.exit_price),
+                    exit_date: formData.exit_date,
+                    notes: formData.notes
+                })
+            });
+            onSave();
+            onClose();
+        } catch (err) {
+            console.error(err);
+            alert('Failed to close position');
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+            <div className="bg-[#1a1a1a] rounded-xl border border-[#2a2a2a] w-full max-w-md p-6 shadow-2xl">
+                <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                    <span>🏁</span> Close Position: <span className="text-orange-400">{position.ticker}</span>
+                </h3>
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
-                        <label className="text-sm text-slate-400">Ticker (e.g. BTC, ETH)</label>
-                        <input className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded p-2 text-white uppercase"
-                            value={formData.ticker} onChange={e => setFormData({ ...formData, ticker: e.target.value })} required />
+                        <label className="text-xs text-slate-400 font-bold uppercase">Exit Price ($)</label>
+                        <input type="number" step="any" className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded p-2 text-white font-mono focus:border-blue-500 outline-none"
+                            value={formData.exit_price} onChange={e => setFormData({ ...formData, exit_price: e.target.value })} required autoFocus />
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="text-sm text-slate-400">Amount</label>
-                            <input type="number" step="any" className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded p-2 text-white"
-                                value={formData.amount} onChange={e => setFormData({ ...formData, amount: e.target.value })} required />
-                        </div>
-                        <div>
-                            <label className="text-sm text-slate-400">Entry USD</label>
-                            <input type="number" step="any" className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded p-2 text-white"
-                                value={formData.entry_price} onChange={e => setFormData({ ...formData, entry_price: e.target.value })} required />
-                        </div>
+                    <div>
+                        <label className="text-xs text-slate-400 font-bold uppercase">Exit Date</label>
+                        <input type="date" className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded p-2 text-white focus:border-blue-500 outline-none"
+                            value={formData.exit_date} onChange={e => setFormData({ ...formData, exit_date: e.target.value })} required />
+                    </div>
+                    <div>
+                        <label className="text-xs text-slate-400 font-bold uppercase">Closing Notes</label>
+                        <textarea className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded p-2 text-white h-20 outline-none focus:border-blue-500"
+                            value={formData.notes} onChange={e => setFormData({ ...formData, notes: e.target.value })} placeholder="Reason for exit..." />
                     </div>
                     <div className="flex justify-end gap-2 mt-6">
-                        <button type="button" onClick={onClose} className="px-4 py-2 text-slate-400 hover:text-white">Cancel</button>
-                        <button type="submit" className="px-4 py-2 bg-orange-600 hover:bg-orange-500 text-white rounded font-bold">Add Position</button>
+                        <button type="button" onClick={onClose} className="px-4 py-2 text-slate-400">Cancel</button>
+                        <button type="submit" className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded font-bold shadow-lg">Confirm Close</button>
                     </div>
                 </form>
             </div>
@@ -6106,23 +6447,51 @@ function AddCryptoModal({ onClose, onAdd }) {
 }
 
 
-// Crypto Journal Component
+// Crypto Journal Component (Full Parity)
 function CryptoJournal() {
     const [positions, setPositions] = useState([]);
+    const [history, setHistory] = useState([]);
     const [metrics, setMetrics] = useState({ total_invested: 0, total_value: 0, total_pnl: 0 });
     const [showAddModal, setShowAddModal] = useState(false);
+    const [closeModalPos, setCloseModalPos] = useState(null);
 
-    // Sub-tab navigation
-    const [activeSubTab, setActiveSubTab] = useState('log'); // 'log' or 'analytics'
+    // Tab navigation
+    const [activeTab, setActiveTab] = useState('active'); // 'active' | 'history'
+    const [activeSubTab, setActiveSubTab] = useState('log'); // 'log' | 'analytics'
 
-    // Analytics Data (same structure as USA/Argentina)
+    // Analytics Data
     const [openAnalytics, setOpenAnalytics] = useState(null);
     const [performanceData, setPerformanceData] = useState(null);
     const [snapshotData, setSnapshotData] = useState([]);
 
-    // AI Portfolio Analysis
+    // AI
     const [aiInsight, setAiInsight] = useState(null);
     const [aiAnalyzing, setAiAnalyzing] = useState(false);
+
+    // Sorting
+    const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
+
+    const fetchData = async () => {
+        try {
+            // Fetch Open Positions
+            const res = await authFetch('/api/crypto/positions');
+            if (res.ok) {
+                const data = await res.json();
+                setPositions(data.positions || []);
+                setMetrics(data.metrics || { total_invested: 0, total_value: 0, total_pnl: 0 });
+            }
+
+            // Fetch History if needed (lazy load or always load)
+            const histRes = await authFetch('/api/crypto/trades/history');
+            if (histRes.ok) {
+                const histData = await histRes.json();
+                setHistory(histData || []);
+            }
+
+        } catch (err) {
+            console.error(err);
+        }
+    };
 
     const handleAnalyzePortfolio = async () => {
         setAiAnalyzing(true);
@@ -6131,26 +6500,12 @@ function CryptoJournal() {
             const data = await res.json();
             setAiInsight(data.insight);
         } catch (err) {
-            console.error('AI Analysis failed:', err);
-            setAiInsight('Error analyzing portfolio. Please try again.');
+            setAiInsight('Error analyzing portfolio.');
         }
         setAiAnalyzing(false);
     };
 
-    const fetchData = async () => {
-        try {
-            const res = await authFetch('/api/crypto/positions');
-            if (res.ok) {
-                const data = await res.json();
-                setPositions(data.positions || []);
-                setMetrics(data.metrics || { total_invested: 0, total_value: 0, total_pnl: 0 });
-            }
-        } catch (err) {
-            console.error(err);
-        }
-    };
-
-    // Fetch analytics data when switching to analytics tab
+    // Fetch analytics data
     const fetchHeavyData = async () => {
         try {
             const [anaRes, perfRes, snapRes] = await Promise.all([
@@ -6172,268 +6527,220 @@ function CryptoJournal() {
         return () => clearInterval(interval);
     }, []);
 
-    // Fetch analytics when tab switches to 'analytics'
     useEffect(() => {
-        if (activeSubTab === 'analytics') {
-            fetchHeavyData();
-        }
+        if (activeSubTab === 'analytics') fetchHeavyData();
     }, [activeSubTab]);
 
+    const requestSort = (key) => {
+        let direction = 'asc';
+        if (sortConfig.key === key && sortConfig.direction === 'asc') {
+            direction = 'desc';
+        }
+        setSortConfig({ key, direction });
+    };
+
+    const getSortedData = () => {
+        let data = activeTab === 'active' ? [...positions] : [...history];
+        if (sortConfig.key) {
+            data.sort((a, b) => {
+                if (a[sortConfig.key] < b[sortConfig.key]) return sortConfig.direction === 'asc' ? -1 : 1;
+                if (a[sortConfig.key] > b[sortConfig.key]) return sortConfig.direction === 'asc' ? 1 : -1;
+                return 0;
+            });
+        }
+        return data;
+    };
+
+    const sortedRows = getSortedData();
+
+    // Import/Export
+    const fileInputRef = React.useRef(null);
+    const [importLoading, setImportLoading] = useState(false);
+    const handleFileChange = async (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+        const formData = new FormData();
+        formData.append("file", file);
+        setImportLoading(true);
+        try {
+            const res = await axios.post(`${API_BASE}/crypto/upload_csv`, formData, { headers: { "Content-Type": "multipart/form-data" } });
+            alert(res.data.status === 'success' ? `Imported ${res.data.imported} trades!` : "Import failed");
+            fetchData();
+        } catch (e) { alert("Import failed: " + e.message); }
+        setImportLoading(false);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+    };
+
     const handleDelete = async (id) => {
-        if (!confirm('Delete this position?')) return;
+        if (!confirm('Delete this position completely?')) return;
         try {
             await authFetch(`/api/crypto/positions/${id}`, { method: 'DELETE' });
             fetchData();
         } catch (e) { console.error(e); }
     };
 
-    const fileInputRef = React.useRef(null);
-    const [importLoading, setImportLoading] = useState(false);
-
-    const handleDownloadTemplate = () => {
-        window.location.href = `${API_BASE}/crypto/template`;
-    };
-
-    const handleImportClick = () => {
-        if (fileInputRef.current) {
-            fileInputRef.current.click();
-        }
-    };
-
-    const handleFileChange = async (event) => {
-        const file = event.target.files[0];
-        if (!file) return;
-
-        const formData = new FormData();
-        formData.append("file", file);
-
-        setImportLoading(true);
-        try {
-            const res = await axios.post(`${API_BASE}/crypto/upload_csv`, formData, {
-                headers: { "Content-Type": "multipart/form-data" }
-            });
-
-            if (res.data.status === 'success') {
-                alert(`Import successful! ${res.data.imported} trades imported.`);
-                fetchData();
-            } else {
-                alert("Import failed? " + JSON.stringify(res.data));
-            }
-        } catch (e) {
-            console.error(e);
-            alert("Import failed: " + (e.response?.data?.detail || e.message));
-        } finally {
-            setImportLoading(false);
-            if (fileInputRef.current) fileInputRef.current.value = "";
-        }
-    };
 
     return (
         <div className="p-4 container mx-auto max-w-[1600px]">
             {showAddModal && <AddCryptoModal onClose={() => setShowAddModal(false)} onAdd={fetchData} />}
+            {closeModalPos && <CloseCryptoModal position={closeModalPos} onClose={() => setCloseModalPos(null)} onSave={fetchData} />}
 
             <div className="flex justify-between items-center mb-6">
                 <div>
                     <h2 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2 mb-1">
-                        ₿ Crypto Journal
-                        <span className="text-xs bg-orange-600/20 text-orange-400 px-2 py-0.5 rounded-full">Active</span>
+                        <span>🪙</span> Crypto Journal
+                        <span className="text-xs bg-orange-600/20 text-orange-400 px-2 py-0.5 rounded-full">Pro</span>
                     </h2>
-                    <p className="text-slate-400 text-sm">Gestiona tus posiciones crypto manualmente.</p>
+                    <p className="text-slate-400 text-xs">Advanced Crypto Portfolio Tracker</p>
                 </div>
                 <div className="flex gap-2">
-                    <input
-                        type="file"
-                        ref={fileInputRef}
-                        onChange={handleFileChange}
-                        style={{ display: 'none' }}
-                        accept=".csv"
-                    />
-                    <button onClick={handleDownloadTemplate} className="bg-slate-800 hover:bg-slate-700 text-slate-400 px-3 py-2 rounded-lg font-medium transition text-sm border border-slate-700" title="Download Template">
-                        ⬇️ CSV
-                    </button>
-                    <button onClick={handleImportClick} className="bg-slate-700 hover:bg-slate-600 text-slate-200 px-4 py-2 rounded-lg font-medium transition text-sm border border-slate-600">
-                        {importLoading ? 'Importing...' : 'Import CSV'}
-                    </button>
+                    <input type="file" ref={fileInputRef} onChange={handleFileChange} style={{ display: 'none' }} accept=".csv" />
+                    <button onClick={() => window.location.href = `${API_BASE}/crypto/template`} className="bg-slate-800 hover:bg-slate-700 text-slate-400 px-3 py-2 rounded-lg text-sm border border-slate-700">⬇️ CSV</button>
+                    <button onClick={() => fileInputRef.current.click()} className="bg-slate-700 hover:bg-slate-600 text-slate-200 px-4 py-2 rounded-lg text-sm border border-slate-600">{importLoading ? '...' : 'Import'}</button>
 
-                    <button onClick={() => setShowAddModal(true)} className="bg-orange-600 hover:bg-orange-500 text-white px-4 py-2 rounded-lg font-medium transition text-sm flex items-center gap-2">
-                        <span>➕</span> Agregar Manual
+                    <button onClick={() => setShowAddModal(true)} className="bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500 text-white px-4 py-2 rounded-lg font-bold text-sm shadow-lg flex items-center gap-2">
+                        <span>➕</span> Log Trade
                     </button>
-                    <button
-                        onClick={handleAnalyzePortfolio}
-                        disabled={aiAnalyzing}
-                        className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white px-4 py-2 rounded-lg font-medium transition text-sm shadow-lg"
-                    >
-                        {aiAnalyzing ? '🔄 Analyzing...' : '🤖 AI Insights'}
+                    <button onClick={handleAnalyzePortfolio} disabled={aiAnalyzing} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-bold text-sm shadow-lg">
+                        {aiAnalyzing ? 'Analyzing...' : '🤖 AI Insight'}
                     </button>
                 </div>
             </div>
 
+            {/* AI Insight */}
+            {aiInsight && (
+                <div className="mb-6 bg-blue-900/20 border border-blue-500/30 rounded-xl p-4 relative">
+                    <button onClick={() => setAiInsight(null)} className="absolute top-2 right-2 text-slate-500 hover:text-white">✕</button>
+                    <h3 className="text-blue-400 font-bold mb-2">🤖 Portfolio Insight</h3>
+                    <p className="text-slate-300 text-sm whitespace-pre-wrap">{aiInsight}</p>
+                </div>
+            )}
+
+            {/* Metric Cards (Summary) */}
+            {activeSubTab === 'log' && (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                    <div className="bg-[#0f0f0f] rounded-xl p-4 border border-[#2a2a2a] relative overflow-hidden group">
+                        <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition text-6xl">💰</div>
+                        <div className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Total Value</div>
+                        <div className="text-2xl font-bold text-white">${metrics.total_value?.toLocaleString()}</div>
+                    </div>
+                    <div className="bg-[#0f0f0f] rounded-xl p-4 border border-[#2a2a2a] relative overflow-hidden group">
+                        <div className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Invested</div>
+                        <div className="text-2xl font-bold text-white">${metrics.total_invested?.toLocaleString()}</div>
+                    </div>
+                    <div className="bg-[#0f0f0f] rounded-xl p-4 border border-[#2a2a2a] relative overflow-hidden group">
+                        <div className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Unrealized P&L</div>
+                        <div className={`text-2xl font-bold ${metrics.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                            {metrics.total_pnl >= 0 ? '+' : ''}${metrics.total_pnl?.toLocaleString()}
+                        </div>
+                    </div>
+                    <div className="bg-[#0f0f0f] rounded-xl p-4 border border-[#2a2a2a] relative overflow-hidden group">
+                        <div className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">ROI</div>
+                        <div className={`text-2xl font-bold ${metrics.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                            {metrics.total_invested > 0 ? ((metrics.total_pnl / metrics.total_invested) * 100).toFixed(2) : '0.00'}%
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Sub-Tab Navigation */}
-            <div className="flex gap-2 mb-6 bg-[#0a0a0a] p-1.5 rounded-xl border border-[#1a1a1a] w-fit">
-                <button
-                    onClick={() => setActiveSubTab('log')}
-                    className={`px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${activeSubTab === 'log' ? 'bg-gradient-to-r from-orange-600 to-orange-500 text-white shadow-lg shadow-orange-600/30' : 'text-slate-400 hover:text-white'}`}
-                >
+            <div className="flex gap-4 border-b border-slate-800 mb-6">
+                <button onClick={() => setActiveSubTab('log')} className={`pb-3 text-sm font-bold tracking-wide transition border-b-2 flex items-center gap-2 ${activeSubTab === 'log' ? 'border-orange-500 text-orange-400' : 'border-transparent text-slate-500 hover:text-slate-300'}`}>
                     📋 Positions
                 </button>
-                <button
-                    onClick={() => setActiveSubTab('analytics')}
-                    className={`px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${activeSubTab === 'analytics' ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg shadow-blue-600/30' : 'text-slate-400 hover:text-white'}`}
-                >
+                <button onClick={() => setActiveSubTab('analytics')} className={`pb-3 text-sm font-bold tracking-wide transition border-b-2 flex items-center gap-2 ${activeSubTab === 'analytics' ? 'border-orange-500 text-orange-400' : 'border-transparent text-slate-500 hover:text-slate-300'}`}>
                     📊 Analytics
                 </button>
             </div>
 
-            {/* Analytics Tab */}
-            {activeSubTab === 'analytics' && (
-                <PerformanceDashboard
-                    data={openAnalytics}
-                    performanceData={performanceData}
-                    snapshotData={snapshotData}
-                />
-            )}
-
-            {/* Log/Positions Tab */}
-            {activeSubTab === 'log' && (
+            {/* CONTENT AREA */}
+            {activeSubTab === 'analytics' ? (
+                <PerformanceDashboard data={openAnalytics} performanceData={performanceData} snapshotData={snapshotData} />
+            ) : (
                 <div className="space-y-6">
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                        <div className="bg-[#0f0f0f] rounded-xl p-4 border border-[#2a2a2a]">
-                            <p className="text-slate-500 text-xs uppercase mb-1">Total Value</p>
-                            <p className="text-2xl font-bold text-white">${metrics.total_value?.toLocaleString()}</p>
-                        </div>
-                        <div className="bg-[#0f0f0f] rounded-xl p-4 border border-[#2a2a2a]">
-                            <p className="text-slate-500 text-xs uppercase mb-1">Invested</p>
-                            <p className="text-2xl font-bold text-slate-400">${metrics.total_invested?.toLocaleString()}</p>
-                        </div>
-                        <div className="bg-[#0f0f0f] rounded-xl p-4 border border-[#2a2a2a]">
-                            <p className="text-slate-500 text-xs uppercase mb-1">P&L ($)</p>
-                            <p className={`text-2xl font-bold ${metrics.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                {metrics.total_pnl >= 0 ? '+' : ''}${metrics.total_pnl?.toLocaleString()}
-                            </p>
-                        </div>
-                        <div className="bg-[#0f0f0f] rounded-xl p-4 border border-[#2a2a2a]">
-                            <p className="text-slate-500 text-xs uppercase mb-1">Positions</p>
-                            <p className="text-2xl font-bold text-white">{positions.length}</p>
-                        </div>
+                    <div className="flex gap-6 border-b border-slate-800 mb-6">
+                        <button onClick={() => setActiveTab('active')} className={`pb-3 text-sm font-bold tracking-wide transition border-b-2 ${activeTab === 'active' ? 'border-white text-white' : 'border-transparent text-slate-500 hover:text-slate-300'}`}>
+                            🚀 Active Positions ({positions.length})
+                        </button>
+                        <button onClick={() => setActiveTab('history')} className={`pb-3 text-sm font-bold tracking-wide transition border-b-2 ${activeTab === 'history' ? 'border-white text-white' : 'border-transparent text-slate-500 hover:text-slate-300'}`}>
+                            📜 Trade History
+                        </button>
                     </div>
 
-                    {/* AI Insight Display */}
-                    {aiInsight && (
-                        <div className="mb-6 bg-gradient-to-r from-purple-900/30 to-blue-900/30 border border-purple-500/30 rounded-xl p-4">
-                            <div className="flex justify-between items-start mb-3">
-                                <h3 className="text-purple-400 font-bold flex items-center gap-2">
-                                    🤖 AI Crypto Portfolio Analysis
-                                </h3>
-                                <button onClick={() => setAiInsight(null)} className="text-slate-500 hover:text-white text-sm">✕ Close</button>
-                            </div>
-                            {(() => {
-                                const text = aiInsight;
-                                const sentimentMatch = text.match(/\*\*Sentiment:\*\*\s*(\d+)\/100\s*\(([^)]+)\)/);
-                                const analysisMatch = text.match(/\*\*Analysis:\*\*\s*([\s\S]*?)(?=\*\*Actionable|$)/);
-                                const actionMatch = text.match(/\*\*Actionable Insight:\*\*\s*([\s\S]*?)$/);
-
-                                if (sentimentMatch) {
-                                    const score = parseInt(sentimentMatch[1]);
-                                    const mood = sentimentMatch[2];
-                                    const analysis = analysisMatch ? analysisMatch[1].trim() : '';
-                                    const action = actionMatch ? actionMatch[1].trim() : '';
-
-                                    const moodColor = score >= 60 ? 'text-green-400' : score >= 40 ? 'text-yellow-400' : 'text-red-400';
-                                    const barColor = score >= 60 ? 'bg-green-500' : score >= 40 ? 'bg-yellow-500' : 'bg-red-500';
-
-                                    return (
-                                        <div className="space-y-3">
-                                            <div className="flex items-center gap-4">
-                                                <div className="flex-1">
-                                                    <div className="w-full bg-slate-700 rounded-full h-2 overflow-hidden">
-                                                        <div className={`${barColor} h-full rounded-full transition-all duration-500`} style={{ width: `${score}%` }}></div>
-                                                    </div>
-                                                </div>
-                                                <span className={`text-lg font-bold ${moodColor}`}>{score}/100 {mood}</span>
-                                            </div>
-                                            {analysis && <p className="text-slate-300 text-sm">{analysis}</p>}
-                                            {action && (
-                                                <div className="bg-blue-900/40 rounded-lg p-3 border border-blue-500/30">
-                                                    <span className="text-blue-400 font-bold text-xs">🎯 ACTION:</span>
-                                                    <p className="text-white text-sm mt-1">{action}</p>
-                                                </div>
-                                            )}
-                                        </div>
-                                    );
-                                }
-                                return <p className="text-slate-300 text-sm whitespace-pre-wrap">{text.replace(/\*\*/g, '')}</p>;
-                            })()}
-                        </div>
-                    )}
-
-                    {/* Positions Table */}
-                    <div className="bg-[#0f0f0f] rounded-xl border border-[#2a2a2a] overflow-hidden">
-                        <table className="w-full text-sm text-left">
-                            <thead className="bg-[#151515] text-slate-400 uppercase text-xs">
+                    <div className="bg-[#111] border border-[#222] overflow-x-auto rounded-xl shadow-xl">
+                        <table className="w-full text-left text-xs whitespace-nowrap">
+                            <thead className="bg-[#1a1a1a] text-slate-400 uppercase font-bold border-b border-[#333]">
                                 <tr>
-                                    <th className="px-6 py-4">Ticker</th>
-                                    <th className="px-6 py-4 text-right">Amount</th>
-                                    <th className="px-6 py-4 text-right">Entry</th>
-                                    <th className="px-6 py-4 text-right">Current</th>
-                                    <th className="px-6 py-4 text-right">Value</th>
-                                    <th className="px-6 py-4 text-right">P&L</th>
-                                    <th className="px-6 py-4 text-center">Source</th>
-                                    <th className="px-6 py-4 text-right">Actions</th>
+                                    <th onClick={() => requestSort('ticker')} className="p-3 cursor-pointer hover:text-white">Ticker {sortConfig.key === 'ticker' ? (sortConfig.direction === 'asc' ? '▲' : '▼') : ''}</th>
+                                    <th className="p-3">Date</th>
+                                    <th onClick={() => requestSort('amount')} className="p-3 text-right cursor-pointer hover:text-white">Amount</th>
+                                    <th onClick={() => requestSort('entry_price')} className="p-3 text-right cursor-pointer hover:text-white">Entry $</th>
+                                    <th className="p-3 text-right">Last $</th>
+                                    <th onClick={() => requestSort('value')} className="p-3 text-right cursor-pointer hover:text-white">Value</th>
+                                    <th onClick={() => requestSort('pnl')} className="p-3 text-right cursor-pointer hover:text-white">P&L $</th>
+                                    <th onClick={() => requestSort('pnl_pct')} className="p-3 text-right cursor-pointer hover:text-white">P&L %</th>
+                                    <th className="p-3 text-center">SL / TP</th>
+                                    <th className="p-3">Strategy</th>
+                                    <th className="p-3 text-center">Actions</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-[#1a1a1a]">
-                                {positions.length === 0 ? (
+                            <tbody className="divide-y divide-[#222]">
+                                {sortedRows.map(pos => {
+                                    const isClosed = activeTab === 'history';
+                                    const price = isClosed ? pos.exit_price : (pos.current_price || pos.entry_price);
+
+                                    // SL/TP warnings
+                                    const slHit = !isClosed && pos.stop_loss && price <= pos.stop_loss;
+                                    const tpHit = !isClosed && pos.target && price >= pos.target;
+
+                                    return (
+                                        <tr key={pos.id} className={`hover:bg-[#1a1a1a] transition ${slHit ? 'bg-red-900/10' : tpHit ? 'bg-green-900/10' : ''}`}>
+                                            <td className="p-3 font-bold text-white border-l-2 border-transparent hover:border-orange-500">
+                                                {pos.ticker}
+                                                {slHit && <span className="ml-2 text-[10px] bg-red-600 px-1 rounded text-white">SL HIT</span>}
+                                                {tpHit && <span className="ml-2 text-[10px] bg-green-600 px-1 rounded text-white">TP HIT</span>}
+                                            </td>
+                                            <td className="p-3 text-slate-500 font-mono text-[10px]">
+                                                {pos.entry_date}
+                                                {isClosed && <div className="text-slate-600">➜ {pos.exit_date}</div>}
+                                            </td>
+                                            <td className="p-3 text-right text-slate-300 font-mono">{pos.shares || pos.amount}</td>
+                                            <td className="p-3 text-right text-slate-400 font-mono">${pos.entry_price?.toLocaleString()}</td>
+                                            <td className="p-3 text-right text-blue-300 font-bold font-mono">
+                                                ${price?.toLocaleString()}
+                                            </td>
+                                            <td className="p-3 text-right text-slate-200 font-mono font-bold">
+                                                ${(price * (pos.shares || pos.amount)).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                            </td>
+                                            <td className={`p-3 text-right font-bold font-mono ${pos.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                                ${pos.pnl?.toLocaleString()}
+                                            </td>
+                                            <td className={`p-3 text-right font-bold ${pos.pnl_pct >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                                {pos.pnl_pct?.toFixed(2)}%
+                                            </td>
+                                            <td className="p-3 text-center">
+                                                <div className="text-[10px] text-red-400">SL: {pos.stop_loss || '-'}</div>
+                                                <div className="text-[10px] text-green-400">TP: {pos.target || '-'}</div>
+                                            </td>
+                                            <td className="p-3 text-slate-500 text-[10px] italic">{pos.strategy || '-'}</td>
+                                            <td className="p-3 text-center flex justify-center gap-2">
+                                                {!isClosed && (
+                                                    <button onClick={() => setCloseModalPos(pos)} className="px-2 py-1 bg-blue-900/40 border border-blue-800 text-blue-300 text-[10px] rounded hover:bg-blue-800 transition">
+                                                        Close
+                                                    </button>
+                                                )}
+                                                <button onClick={() => handleDelete(pos.id)} className="text-slate-600 hover:text-red-400 text-sm" title="Delete record">🗑️</button>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                                {sortedRows.length === 0 && (
                                     <tr>
-                                        <td colSpan="8" className="px-6 py-12 text-center text-slate-500">
-                                            No hay posiciones. Agrega una manualmente.
+                                        <td colSpan="11" className="p-10 text-center text-slate-500">
+                                            {activeTab === 'active' ? 'No active crypto positions.' : 'No closed trades history.'}
                                         </td>
                                     </tr>
-                                ) : positions.map(pos => (
-                                    <tr key={pos.id} className="hover:bg-[#151515]">
-                                        <td className="px-6 py-4 font-bold text-white">{pos.ticker}</td>
-                                        <td className="px-6 py-4 text-right">{pos.amount}</td>
-                                        <td className="px-6 py-4 text-right text-slate-400">${pos.entry_price?.toLocaleString()}</td>
-                                        <td className="px-6 py-4 text-right text-slate-300">
-                                            {/* Manual Price Override - ONLY for Options as per user request */}
-                                            {['option', 'OPCION', 'call', 'put'].includes((pos.asset_type || '').toLowerCase()) ? (
-                                                <>
-                                                    <EditableCell
-                                                        value={pos.manual_price || pos.current_price}
-                                                        onSave={(val) => {
-                                                            authFetch(`${API_BASE}/argentina/positions/${pos.id}/price`, {
-                                                                method: 'PUT',
-                                                                body: JSON.stringify({ price: parseFloat(val) })
-                                                            })
-                                                                .then(() => fetchData())
-                                                                .catch(e => console.error(e));
-                                                        }}
-                                                        prefix="$"
-                                                        type="number"
-                                                        width="w-24"
-                                                        className={`text-right font-mono text-sm ${pos.manual_price ? 'text-yellow-400 font-bold border-b border-yellow-500/30' : 'text-slate-300'}`}
-                                                    />
-                                                    {pos.manual_price && (
-                                                        <div className="text-[9px] text-yellow-500/60 mt-0.5">MANUAL</div>
-                                                    )}
-                                                </>
-                                            ) : (
-                                                <span className="text-slate-300">${pos.current_price?.toLocaleString()}</span>
-                                            )}
-                                        </td>
-                                        <td className="px-6 py-4 text-right font-medium text-white">${pos.value_ars?.toLocaleString()}</td>
-                                        <td className={`px-6 py-4 text-right font-medium ${pos.pnl_ars >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                            ${pos.pnl_ars?.toLocaleString()} ({pos.pnl_pct}%)
-                                        </td>
-                                        <td className="px-6 py-4 text-center">
-                                            <span className={`text-[10px] px-2 py-0.5 rounded-full ${pos.asset_type === 'option' ? 'bg-purple-900/30 text-purple-400' : 'bg-slate-800 text-slate-400'}`}>
-                                                {pos.asset_type || pos.source}
-                                            </span>
-                                        </td>
-                                        <td className="px-6 py-4 text-right">
-                                            <button onClick={() => handleDelete(pos.id)} className="text-red-500 hover:text-red-400">✕</button>
-                                        </td>
-                                    </tr>
-                                ))}
+                                )}
                             </tbody>
                         </table>
                     </div>
@@ -6442,6 +6749,7 @@ function CryptoJournal() {
         </div>
     );
 }
+
 
 // Sharpe Portfolio View Component
 function SharpePortfolioView() {

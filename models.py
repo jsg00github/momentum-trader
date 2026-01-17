@@ -137,6 +137,18 @@ class CryptoPosition(Base):
     current_price = Column(Float, nullable=True)
     source = Column(String, default="MANUAL")
     
+    # Parity Fields with USA Journal
+    entry_date = Column(String, nullable=True) # YYYY-MM-DD
+    exit_date = Column(String, nullable=True)
+    exit_price = Column(Float, nullable=True)
+    status = Column(String, default="OPEN") # OPEN, CLOSED
+    
+    strategy = Column(String, nullable=True)
+    stop_loss = Column(Float, nullable=True)
+    target = Column(Float, nullable=True)
+    notes = Column(String, nullable=True)
+    
+    initial_risk = Column(Float, nullable=True) # For R-multiple calcs
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     user = relationship("User", back_populates="crypto_positions")

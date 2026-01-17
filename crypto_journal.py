@@ -18,7 +18,17 @@ class CryptoPositionCreate(BaseModel):
     ticker: str
     amount: float
     entry_price: float
+    entry_date: Optional[str] = None
+    strategy: Optional[str] = None
+    stop_loss: Optional[float] = None
+    target: Optional[float] = None
+    notes: Optional[str] = None
     source: str = "MANUAL"
+
+class CryptoClose(BaseModel):
+    exit_price: float
+    exit_date: Optional[str] = None
+    notes: Optional[str] = None
 
 
 
@@ -27,9 +37,12 @@ class CryptoPositionCreate(BaseModel):
 # --- Endpoints ---
 
 @router.get("/api/crypto/positions")
-def get_positions(current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+def get_positions(status: str = "OPEN", current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
     # 1. Get positions from DB
-    positions = db.query(models.CryptoPosition).filter(models.CryptoPosition.user_id == current_user.id).all()
+    positions = db.query(models.CryptoPosition).filter(
+        models.CryptoPosition.user_id == current_user.id,
+        models.CryptoPosition.status == status
+    ).all()
     
     # 2. Map to list and collect tickers
     pos_list = []
@@ -72,7 +85,14 @@ def get_positions(current_user: models.User = Depends(auth.get_current_user), db
             "current_price": round(price, 5),
             "value": round(value, 2),
             "pnl": round(pnl, 2),
-            "pnl_pct": round(pnl_pct, 2)
+            "pnl": round(pnl, 2),
+            "pnl_pct": round(pnl_pct, 2),
+            "entry_date": p.entry_date,
+            "strategy": p.strategy,
+            "stop_loss": p.stop_loss,
+            "target": p.target,
+            "notes": p.notes,
+            "status": p.status
         })
         total_invested += invested
         total_value += value
@@ -94,11 +114,37 @@ def add_position(pos: CryptoPositionCreate, current_user: models.User = Depends(
         amount=pos.amount,
         entry_price=pos.entry_price,
         current_price=pos.entry_price,
-        source=pos.source
+        source=pos.source,
+        entry_date=pos.entry_date or datetime.now().strftime("%Y-%m-%d"),
+        strategy=pos.strategy,
+        stop_loss=pos.stop_loss,
+        target=pos.target,
+        notes=pos.notes,
+        status="OPEN"
     )
     db.add(new_pos)
     db.commit()
     return {"status": "success", "message": "Position added"}
+
+@router.post("/api/crypto/positions/{position_id}/close")
+def close_position(position_id: int, close_data: CryptoClose, current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    pos = db.query(models.CryptoPosition).filter(
+        models.CryptoPosition.id == position_id,
+        models.CryptoPosition.user_id == current_user.id
+    ).first()
+    
+    if not pos:
+        raise HTTPException(status_code=404, detail="Position not found")
+        
+    pos.status = "CLOSED"
+    pos.exit_price = close_data.exit_price
+    pos.exit_date = close_data.exit_date or datetime.now().strftime("%Y-%m-%d")
+    pos.current_price = close_data.exit_price # Freeze price
+    if close_data.notes:
+        pos.notes = (pos.notes or "") + f" | Closed: {close_data.notes}"
+        
+    db.commit()
+    return {"status": "success", "message": "Position closed"}
 
 @router.delete("/api/crypto/positions/{position_id}")
 def delete_position(position_id: int, current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
@@ -138,6 +184,38 @@ def get_portfolio_metrics(user_id: int, db: Session):
         "total_value": value,
         "total_pnl": value - invested
     }
+
+@router.get("/api/crypto/trades/history")
+def get_trade_history(current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    """Get history of CLOSED crypto trades."""
+    trades = db.query(models.CryptoPosition).filter(
+        models.CryptoPosition.user_id == current_user.id,
+        models.CryptoPosition.status == "CLOSED"
+    ).order_by(models.CryptoPosition.exit_date.desc()).all()
+    
+    formatted = []
+    for t in trades:
+        invested = t.amount * t.entry_price
+        exit_val = t.amount * (t.exit_price or 0)
+        pnl = exit_val - invested
+        pnl_pct = (pnl / invested * 100) if invested > 0 else 0
+        
+        formatted.append({
+            "id": t.id,
+            "ticker": t.ticker,
+            "entry_date": t.entry_date,
+            "exit_date": t.exit_date,
+            "entry_price": t.entry_price,
+            "exit_price": t.exit_price,
+            "shares": t.amount, # Frontend expects 'shares'
+            "pnl": round(pnl, 2),
+            "pnl_percent": round(pnl_pct, 2), # Frontend expects 'pnl_percent'
+            "strategy": t.strategy,
+            "notes": t.notes,
+            "status": "CLOSED"
+        })
+        
+    return formatted
 
 @router.get("/api/crypto/ai/portfolio-insight")
 def api_ai_crypto_insight(current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
