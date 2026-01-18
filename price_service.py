@@ -467,7 +467,7 @@ def background_price_update():
     from database import SessionLocal
     import models
     
-    print("[PriceService] 🔄 Background price update starting...")
+    print("[PriceService] [INFO] Background price update starting...")
     
     db = SessionLocal()
     try:

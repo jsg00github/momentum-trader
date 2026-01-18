@@ -44,7 +44,7 @@ app = FastAPI(title="Momentum Screener API")
 # CORS - Configurable via env var for production
 CORS_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 if CORS_ORIGINS == ["*"]:
-    print("[⚠️ CORS] Using wildcard origins - Set ALLOWED_ORIGINS env var for production!")
+    print("[WARNING CORS] Using wildcard origins - Set ALLOWED_ORIGINS env var for production!")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
@@ -1026,10 +1026,10 @@ async def start_alert_monitor():
     import scheduled_scan
     scheduled_scan.start_scheduler()
     
-    print("✅ Alert monitoring started (runs hourly)")
-    print("✅ Scheduled briefings started")
-    print("ℹ️ Options Scanner: ON-DEMAND only (use /api/scan-options)")
-    print("✅ Scheduled RSI Scanner started (6pm Argentina daily)")
+    print("[OK] Alert monitoring started (runs hourly)")
+    print("[OK] Scheduled briefings started")
+    print("[INFO] Options Scanner: ON-DEMAND only (use /api/scan-options)")
+    print("[OK] Scheduled RSI Scanner started (6pm Argentina daily)")
 
 class BacktestRequest(BaseModel):
     ticker: str
