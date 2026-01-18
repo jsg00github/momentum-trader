@@ -155,14 +155,14 @@ def run_market_scan(limit=1000, strategy="weekly_rsi"):
     period = "6mo" if strategy == "weekly_rsi" else screener.PERIOD
     cached_data, to_download = c.batch_check(subset, period, "1d", max_age_hours=12)
     
-    print(f"📦 Cache: {len(cached_data)} tickers cached, {len(to_download)} need download")
+    print(f"[CACHE] Cache: {len(cached_data)} tickers cached, {len(to_download)} need download")
     SCAN_STATUS["last_ticker"] = f"Cache: {len(cached_data)} cached, downloading {len(to_download)}..."
 
     results = []
     
     # PHASE 2: Process cached tickers immediately (fast!)
     if cached_data:
-        print(f"⚡ Processing {len(cached_data)} cached tickers...")
+        print(f"[FAST] Processing {len(cached_data)} cached tickers...")
         for ticker, df in cached_data.items():
             SCAN_STATUS["current"] += 1
             SCAN_STATUS["last_ticker"] = f"[CACHE] {ticker}"
@@ -186,7 +186,7 @@ def run_market_scan(limit=1000, strategy="weekly_rsi"):
             batch = to_download[i:i + batch_size]
             batch_num = (i // batch_size) + 1
             
-            print(f"📡 Downloading Batch {batch_num}/{total_batches} ({len(batch)} tickers)...")
+            print(f"[NET] Downloading Batch {batch_num}/{total_batches} ({len(batch)} tickers)...")
             SCAN_STATUS["last_ticker"] = f"Batch {batch_num}/{total_batches}: {', '.join(batch[:3])}..."
 
             try:
@@ -218,11 +218,11 @@ def run_market_scan(limit=1000, strategy="weekly_rsi"):
                 else:
                     # If batch download failed, increment counters anyway
                     SCAN_STATUS["current"] += len(batch)
-                    print(f"⚠️ Batch {batch_num} returned empty, skipping...")
+                    print(f"[WARN] Batch {batch_num} returned empty, skipping...")
                     
             except Exception as e:
                 SCAN_STATUS["current"] += len(batch)
-                print(f"❌ Batch {batch_num} failed: {e}")
+                print(f"[ERROR] Batch {batch_num} failed: {e}")
             
             # Rate limiting delay between batches
             if batch_num < total_batches:
@@ -240,7 +240,7 @@ def run_market_scan(limit=1000, strategy="weekly_rsi"):
     SCAN_STATUS["last_run"] = datetime.now().isoformat()
     SCAN_STATUS["spy_ret_3m"] = clean_type(round(spy_ret_3m, 2))
     
-    print(f"✅ Scan complete! Found {len(results)} results from {len(subset)} tickers")
+    print(f"[OK] Scan complete! Found {len(results)} results from {len(subset)} tickers")
     
     return {
         "results": SCAN_STATUS["results"], 
