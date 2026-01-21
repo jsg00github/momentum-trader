@@ -3890,6 +3890,9 @@ function Scanner({ onTickerClick }) {
                             <th className="p-2 text-right cursor-pointer hover:text-white transition" onClick={() => handleSort('ema60_d')}>
                                 EMA60
                             </th>
+                            <th className="p-2 text-right cursor-pointer hover:text-white transition" onClick={() => handleSort('sma200_d')}>
+                                SMA200
+                            </th>
                             <th className="p-2 text-center cursor-pointer hover:text-white transition" onClick={() => handleSort('di_plus')}>
                                 DMI & Strength
                             </th>
@@ -3920,6 +3923,9 @@ function Scanner({ onTickerClick }) {
                                 </td>
                                 <td className={`p-2 text-right font-mono text-xs ${row.price > row.ema60_d ? 'text-green-400 font-bold' : 'text-slate-500'}`}>
                                     {row.ema60_d?.toFixed(0)}
+                                </td>
+                                <td className={`p-2 text-right font-mono text-xs ${row.is_above_sma200 ? 'text-green-400 font-bold' : 'text-red-400'}`}>
+                                    {row.sma200_d ? row.sma200_d.toFixed(0) : '-'}
                                 </td>
                                 <td className="p-2 text-center">
                                     <div className={`text-[10px] font-bold ${row.is_bullish ? 'text-green-400' : 'text-slate-500'}`}>
@@ -5789,6 +5795,7 @@ function ArgentinaPanel() {
                                     </th>
                                     <th className="p-2 border-r border-slate-800">Strategy</th>
                                     <th className="p-2 text-center border-r border-slate-800">EMA 8</th>
+                                    <th className="p-2 text-center border-r border-slate-800">Actions</th>
                                     <th className="p-2 text-center border-r border-slate-800">EMA 21</th>
                                     <th className="p-2 text-center border-r border-slate-800">EMA 35</th>
                                     <th className="p-2 text-center">EMA 200</th>
@@ -5852,6 +5859,36 @@ function ArgentinaPanel() {
                                                 </td>
                                                 <td className={`p-2 text-center border-r border-slate-800 ${getEmaColor(currentPrice || 0, emas.ema_8)}`}>
                                                     {emas.ema_8 ? <span>${emas.ema_8.toFixed(2)}</span> : '-'}
+                                                </td>
+                                                <td className="p-2 border-r border-slate-800 flex gap-1 justify-center">
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); setFormData({ ...formData, ticker }); setShowAddForm(true); }}
+                                                        className="bg-green-600/20 hover:bg-green-600 text-green-400 hover:text-white px-2 py-0.5 rounded text-[10px] transition border border-green-600/30"
+                                                        title="Comprar más"
+                                                    >
+                                                        +
+                                                    </button>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            const sellPrice = prompt(`Precio de venta para cerrar ${ticker}?`, currentPrice || 0);
+                                                            if (sellPrice) {
+                                                                // Close first trade found (simplified logic for now)
+                                                                const tradeToClose = groupTrades.find(t => t.status === 'OPEN');
+                                                                if (tradeToClose) {
+                                                                    axios.post(`${API_BASE}/argentina/positions/${tradeToClose.id}/close`, null, { params: { exit_price: parseFloat(sellPrice) } })
+                                                                        .then(() => fetchEssentialData())
+                                                                        .catch(err => alert("Error closing: " + err));
+                                                                } else {
+                                                                    alert("No open positions found in this group.");
+                                                                }
+                                                            }
+                                                        }}
+                                                        className="bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white px-2 py-0.5 rounded text-[10px] transition border border-red-600/30"
+                                                        title="Vender / Cerrar Posición"
+                                                    >
+                                                        x
+                                                    </button>
                                                 </td>
                                                 <td className={`p-2 text-center border-r border-slate-800 ${getEmaColor(currentPrice || 0, emas.ema_21)}`}>
                                                     {emas.ema_21 ? <span>${emas.ema_21.toFixed(2)}</span> : '-'}

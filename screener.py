@@ -240,6 +240,7 @@ def scan_rsi_crossover(df: pd.DataFrame):
         # Phase 17/18/19: Daily Intelligence
         macd_d = indicators.calculate_daily_macd(df)
         ema60_d = indicators.calculate_ema(df, 60)
+        sma200_d = indicators.calculate_sma(df, 200) # Added SMA 200
         di_plus, di_minus, adx = indicators.calculate_adx_di(df)
         
         last_close = df['Close'].iloc[-1]
@@ -268,6 +269,8 @@ def scan_rsi_crossover(df: pd.DataFrame):
             "ema3": round(rsi_data['ema3'], 2),
             "ema14": round(rsi_data['ema14'], 2),
             "ema60_d": round(ema60_d, 2),
+            "sma200_d": round(sma200_d, 2) if sma200_d else None,
+            "is_above_sma200": last_close > (sma200_d or 999999), 
             "di_plus": round(di_plus, 2),
             "di_minus": round(di_minus, 2),
             "adx": round(adx, 2),
