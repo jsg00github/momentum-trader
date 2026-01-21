@@ -1,4 +1,6 @@
 from fastapi import FastAPI, Request, Depends, HTTPException, status
+from dotenv import load_dotenv
+load_dotenv() # Load environment variables early
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
