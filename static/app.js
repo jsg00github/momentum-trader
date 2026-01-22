@@ -5400,8 +5400,9 @@ function ArgentinaPanel() {
     const activeGroups = useMemo(() => {
         const active = {};
         Object.keys(groupedTrades).forEach(ticker => {
-            if (groupedTrades[ticker].some(t => t.status === 'OPEN')) {
-                active[ticker] = groupedTrades[ticker];
+            const openTrades = groupedTrades[ticker].filter(t => t.status === 'OPEN');
+            if (openTrades.length > 0) {
+                active[ticker] = openTrades; // Show ONLY open trades in Active tab
             }
         });
         return active;
@@ -5410,8 +5411,9 @@ function ArgentinaPanel() {
     const historyGroups = useMemo(() => {
         const history = {};
         Object.keys(groupedTrades).forEach(ticker => {
-            if (!groupedTrades[ticker].some(t => t.status === 'OPEN')) {
-                history[ticker] = groupedTrades[ticker];
+            const closedTrades = groupedTrades[ticker].filter(t => t.status !== 'OPEN');
+            if (closedTrades.length > 0) {
+                history[ticker] = closedTrades; // Show ONLY closed trades in History tab
             }
         });
         return history;
