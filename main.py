@@ -199,10 +199,12 @@ def run_scan(req: ScanRequest, background_tasks: BackgroundTasks):
     import scan_engine # Lazy import to avoid circular dep early on
     
     # Reset status if it was already finished
-    if not scan_engine.SCAN_STATUS["is_running"]:
-        scan_engine.SCAN_STATUS["current"] = 0
-        scan_engine.SCAN_STATUS["total"] = req.limit
-        scan_engine.SCAN_STATUS["results"] = []
+    if scan_engine.SCAN_STATUS["is_running"]:
+        return {"status": "error", "message": "Scan already in progress", "limit": req.limit}
+    
+    scan_engine.SCAN_STATUS["current"] = 0
+    scan_engine.SCAN_STATUS["total"] = req.limit
+    scan_engine.SCAN_STATUS["results"] = []
     
     background_tasks.add_task(scan_engine.run_market_scan, limit=req.limit, strategy=req.strategy)
     return {"status": "scanning", "message": "Scan initiated in background", "limit": req.limit}
