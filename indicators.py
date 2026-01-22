@@ -177,6 +177,21 @@ def calculate_ema(df: pd.DataFrame, span: int):
         
     return float(close.ewm(span=span, adjust=False).mean().iloc[-1])
 
+def calculate_sma(df: pd.DataFrame, window: int):
+    """
+    Calculates SMA for a given window.
+    """
+    df = normalize_dataframe(df)
+    if df is None or len(df) < window:
+        return 0.0
+    
+    # Ensure Series
+    close = df['Close']
+    if isinstance(close, pd.DataFrame):
+        close = close.iloc[:, 0]
+        
+    return float(close.rolling(window=window).mean().iloc[-1])
+
 def calculate_adx_di(df: pd.DataFrame, period=14):
     """
     Calculates Plus & Minus Directional Indicators (DI+ and DI-).
