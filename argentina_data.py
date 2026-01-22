@@ -175,7 +175,7 @@ def get_dolar_rates() -> Dict[str, float]:
     Get current CCL, MEP, and Oficial rates from DolarAPI.
     Returns dict with 'ccl', 'mep', 'oficial' keys.
     """
-    global _rates_cache
+    # global _rates_cache # Not needed
     
     # Use cache if updated within last 5 minutes
     if _rates_cache["updated_at"]:
@@ -226,7 +226,7 @@ def get_bcra_rate() -> float:
     Get current BCRA reference rate (Badlar or similar).
     Returns annual rate as decimal (e.g., 0.40 for 40%).
     """
-    global _rates_cache
+    # global _rates_cache # Not needed
     
     # Use cache if updated within last hour
     if _rates_cache["bcra_rate"] and _rates_cache["updated_at"]:

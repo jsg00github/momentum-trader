@@ -27,7 +27,7 @@ UNIVERSE = [
 ACTIVE_RECS = {"Aggressive": [], "Moderate": [], "Safe": [], "last_scan": 0, "is_scanning": False}
 
 def load_cache():
-    global ACTIVE_RECS
+    # global ACTIVE_RECS # not needed
     if os.path.exists(CACHE_FILE):
         try:
             with open(CACHE_FILE, 'r') as f:
@@ -104,7 +104,7 @@ def analyze_ticker(ticker):
     except Exception: return None
 
 def update_recommendations_worker():
-    global ACTIVE_RECS
+    # global ACTIVE_RECS # not needed
     if ACTIVE_RECS["is_scanning"]: return
     ACTIVE_RECS["is_scanning"] = True
     print("\n>>> AI ADVISOR BACKGROUND SCAN STARTED <<<")
@@ -138,7 +138,7 @@ def update_recommendations_worker():
     print(">>> AI ADVISOR BATCH UPDATE COMPLETE <<<")
 
 def get_recommendations():
-    global ACTIVE_RECS
+    # global ACTIVE_RECS # not needed
     
     # If first time, load from file
     if not ACTIVE_RECS["Aggressive"] and not ACTIVE_RECS["Moderate"] and not ACTIVE_RECS["Safe"]:

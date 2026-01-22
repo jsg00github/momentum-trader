@@ -109,35 +109,36 @@ def safe_yf_download(tickers, **kwargs):
                 time.sleep(1)
     
     # === FALLBACK TO FINNHUB (quotes only on free tier) ===
-    if config.FINNHUB_ENABLED:
-        print(f"[safe_yf_download] Yahoo failed, trying Finnhub for {tickers_str}...")
-        try:
-            # For single ticker
-            if len(tickers) == 1:
-                df = finnhub_provider.fetch_candles(tickers[0], period=period)
-                if not df.empty:
-                    print(f"[Finnhub] Successfully fetched {tickers[0]}")
-                    return df
-            else:
-                # For multiple tickers, fetch each and combine into MultiIndex DataFrame
-                all_dfs = {}
-                for ticker in tickers[:10]:  # Limit to 10 to respect rate limits
-                    ticker_df = finnhub_provider.fetch_candles(ticker, period=period)
-                    if not ticker_df.empty:
-                        all_dfs[ticker] = ticker_df
-                
-                if all_dfs:
-                    # Combine into MultiIndex DataFrame similar to yfinance
-                    combined = pd.concat(all_dfs, axis=1)
-                    # Restructure to match yfinance MultiIndex format
-                    combined.columns = pd.MultiIndex.from_tuples(
-                        [(col, ticker) for ticker, df in all_dfs.items() for col in df.columns],
-                        names=['Price', 'Ticker']
-                    )
-                    print(f"[Finnhub] Successfully fetched {len(all_dfs)} tickers")
-                    return combined
-        except Exception as e:
-            print(f"[Finnhub] Fallback failed: {e}")
+    # DISABLED: Finnhub free tier does not support candles for US stocks, causing 403 errors and CI failure.
+    # if config.FINNHUB_ENABLED:
+    #     print(f"[safe_yf_download] Yahoo failed, trying Finnhub for {tickers_str}...")
+    #     try:
+    #         # For single ticker
+    #         if len(tickers) == 1:
+    #             df = finnhub_provider.fetch_candles(tickers[0], period=period)
+    #             if not df.empty:
+    #                 print(f"[Finnhub] Successfully fetched {tickers[0]}")
+    #                 return df
+    #         else:
+    #             # For multiple tickers, fetch each and combine into MultiIndex DataFrame
+    #             all_dfs = {}
+    #             for ticker in tickers[:10]:  # Limit to 10 to respect rate limits
+    #                 ticker_df = finnhub_provider.fetch_candles(ticker, period=period)
+    #                 if not ticker_df.empty:
+    #                     all_dfs[ticker] = ticker_df
+    #             
+    #             if all_dfs:
+    #                 # Combine into MultiIndex DataFrame similar to yfinance
+    #                 combined = pd.concat(all_dfs, axis=1)
+    #                 # Restructure to match yfinance MultiIndex format
+    #                 combined.columns = pd.MultiIndex.from_tuples(
+    #                     [(col, ticker) for ticker, df in all_dfs.items() for col in df.columns],
+    #                     names=['Price', 'Ticker']
+    #                 )
+    #                 print(f"[Finnhub] Successfully fetched {len(all_dfs)} tickers")
+    #                 return combined
+    #     except Exception as e:
+    #         print(f"[Finnhub] Fallback failed: {e}")
     
     # === FINAL FALLBACK: LOCAL CACHE (stale data) ===
     if len(tickers) == 1:
@@ -459,7 +460,7 @@ def get_economic_calendar():
     ]
 
 def get_market_status():
-    global MARKET_STATUS_CACHE
+    # global MARKET_STATUS_CACHE # Not needed, modifying in place
     now = time.time()
     
     # 1. Return cache if fresh (5 minutes)
@@ -492,7 +493,7 @@ def get_market_status():
     }
 
 def update_market_status_worker():
-    global MARKET_STATUS_CACHE
+    # global MARKET_STATUS_CACHE # Not needed, modifying in place
     if MARKET_STATUS_CACHE["is_updating"]: return
     MARKET_STATUS_CACHE["is_updating"] = True
     print("\n>>> MARKET STATUS BACKGROUND UPDATE STARTED <<<")
