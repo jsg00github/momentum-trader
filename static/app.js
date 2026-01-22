@@ -6649,9 +6649,11 @@ function AddCryptoModal({ onClose, onAdd }) {
 }
 
 // Close Crypto Position Modal
+// Close Crypto Position Modal
 function CloseCryptoModal({ position, onClose, onSave }) {
     const [formData, setFormData] = useState({
         exit_price: position.current_price || '',
+        amount: position.amount, // Default to full amount
         exit_date: new Date().toISOString().split('T')[0],
         notes: ''
     });
@@ -6664,6 +6666,7 @@ function CloseCryptoModal({ position, onClose, onSave }) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     exit_price: parseFloat(formData.exit_price),
+                    amount: parseFloat(formData.amount),
                     exit_date: formData.exit_date,
                     notes: formData.notes
                 })
@@ -6672,22 +6675,36 @@ function CloseCryptoModal({ position, onClose, onSave }) {
             onClose();
         } catch (err) {
             console.error(err);
-            alert('Failed to close position');
+            alert('Failed to close position: ' + (err.message || 'Unknown error'));
         }
     };
 
     return (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 animate-fade-in">
             <div className="bg-[#1a1a1a] rounded-xl border border-[#2a2a2a] w-full max-w-md p-6 shadow-2xl">
                 <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
                     <span>🏁</span> Close Position: <span className="text-orange-400">{position.ticker}</span>
                 </h3>
                 <form onSubmit={handleSubmit} className="space-y-4">
-                    <div>
-                        <label className="text-xs text-slate-400 font-bold uppercase">Exit Price ($)</label>
-                        <input type="number" step="any" className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded p-2 text-white font-mono focus:border-blue-500 outline-none"
-                            value={formData.exit_price} onChange={e => setFormData({ ...formData, exit_price: e.target.value })} required autoFocus />
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="text-xs text-slate-400 font-bold uppercase">Amount to Sell</label>
+                            <div className="relative">
+                                <input type="number" step="any" className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded p-2 text-white font-mono focus:border-blue-500 outline-none"
+                                    value={formData.amount}
+                                    onChange={e => setFormData({ ...formData, amount: e.target.value })}
+                                    max={position.amount}
+                                    required />
+                                <span className="absolute right-2 top-2 text-xs text-slate-600">/ {position.amount}</span>
+                            </div>
+                        </div>
+                        <div>
+                            <label className="text-xs text-slate-400 font-bold uppercase">Exit Price ($)</label>
+                            <input type="number" step="any" className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded p-2 text-white font-mono focus:border-blue-500 outline-none"
+                                value={formData.exit_price} onChange={e => setFormData({ ...formData, exit_price: e.target.value })} required />
+                        </div>
                     </div>
+
                     <div>
                         <label className="text-xs text-slate-400 font-bold uppercase">Exit Date</label>
                         <input type="date" className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded p-2 text-white focus:border-blue-500 outline-none"
@@ -6699,8 +6716,8 @@ function CloseCryptoModal({ position, onClose, onSave }) {
                             value={formData.notes} onChange={e => setFormData({ ...formData, notes: e.target.value })} placeholder="Reason for exit..." />
                     </div>
                     <div className="flex justify-end gap-2 mt-6">
-                        <button type="button" onClick={onClose} className="px-4 py-2 text-slate-400">Cancel</button>
-                        <button type="submit" className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded font-bold shadow-lg">Confirm Close</button>
+                        <button type="button" onClick={onClose} className="px-4 py-2 text-slate-400 hover:text-white transition">Cancel</button>
+                        <button type="submit" className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded font-bold shadow-lg transition">Confirm Close</button>
                     </div>
                 </form>
             </div>

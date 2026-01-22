@@ -27,6 +27,7 @@ class CryptoPositionCreate(BaseModel):
 
 class CryptoClose(BaseModel):
     exit_price: float
+    amount: Optional[float] = None # Added for partial sell
     exit_date: Optional[str] = None
     notes: Optional[str] = None
 
@@ -136,15 +137,51 @@ def close_position(position_id: int, close_data: CryptoClose, current_user: mode
     if not pos:
         raise HTTPException(status_code=404, detail="Position not found")
         
-    pos.status = "CLOSED"
-    pos.exit_price = close_data.exit_price
-    pos.exit_date = close_data.exit_date or datetime.now().strftime("%Y-%m-%d")
-    pos.current_price = close_data.exit_price # Freeze price
-    if close_data.notes:
-        pos.notes = (pos.notes or "") + f" | Closed: {close_data.notes}"
+    current_amount = float(pos.amount)
+    sell_amount = float(close_data.amount) if close_data.amount is not None else current_amount
+    
+    if sell_amount <= 0 or sell_amount > current_amount:
+         raise HTTPException(status_code=400, detail=f"Invalid amount. You own {current_amount}")
+
+    # FULL CLOSE
+    if sell_amount >= current_amount:
+        pos.status = "CLOSED"
+        pos.exit_price = close_data.exit_price
+        pos.exit_date = close_data.exit_date or datetime.now().strftime("%Y-%m-%d")
+        pos.current_price = close_data.exit_price # Freeze price
+        if close_data.notes:
+            pos.notes = (pos.notes or "") + f" | Closed: {close_data.notes}"
+        db.commit()
+        return {"status": "success", "message": "Position closed fully"}
+
+    # PARTIAL CLOSE
+    else:
+        # Create closed portion
+        closed_part = models.CryptoPosition(
+            user_id=current_user.id,
+            ticker=pos.ticker,
+            amount=sell_amount,
+            entry_price=pos.entry_price,
+            current_price=close_data.exit_price, # Freeze exit price
+            source=pos.source,
+            entry_date=pos.entry_date,
+            strategy=pos.strategy,
+            stop_loss=pos.stop_loss,
+            target=pos.target,
+            notes=(pos.notes or "") + f" | Partial Sell @ {close_data.exit_price}",
+            status="CLOSED",
+            exit_price=close_data.exit_price,
+            exit_date=close_data.exit_date or datetime.now().strftime("%Y-%m-%d")
+        )
+        db.add(closed_part)
         
-    db.commit()
-    return {"status": "success", "message": "Position closed"}
+        # Update original (remaining)
+        pos.amount = current_amount - sell_amount
+        # Optionally update notes on original too
+        # pos.notes = (pos.notes or "") + f" | Sold {sell_amount}"
+        
+        db.commit()
+        return {"status": "success", "message": f"Partial sell of {sell_amount} executed"}
 
 @router.delete("/api/crypto/positions/{position_id}")
 def delete_position(position_id: int, current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
