@@ -152,7 +152,7 @@ def run_market_scan(limit=1000, strategy="weekly_rsi"):
 
     # PHASE 1: Check cache for all tickers first
     c = cache.get_cache()
-    period = "6mo" if strategy == "weekly_rsi" else screener.PERIOD
+    period = "2y" if strategy == "weekly_rsi" else screener.PERIOD
     cached_data, to_download = c.batch_check(subset, period, "1d", max_age_hours=12)
     
     print(f"[CACHE] Cache: {len(cached_data)} tickers cached, {len(to_download)} need download")
