@@ -11,6 +11,7 @@ import time
 import threading
 from typing import Dict, List, Optional
 import finnhub
+import pandas as pd
 
 # Lazy import yfinance to avoid slowing startup
 _yfinance = None
