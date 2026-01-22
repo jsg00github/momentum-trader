@@ -5204,6 +5204,15 @@ function ArgentinaPanel() {
     const [optionResult, setOptionResult] = useState(null);
     const [analyzingOption, setAnalyzingOption] = useState(false);
 
+    // Partial Sell Modal State
+    const [showSellModal, setShowSellModal] = useState(false);
+    const [sellData, setSellData] = useState({
+        positionId: null,
+        ticker: '',
+        currentShares: 0,
+        currentPrice: 0
+    });
+
     // AI Portfolio Analysis
     const [aiInsight, setAiInsight] = useState(null);
     const [aiAnalyzing, setAiAnalyzing] = useState(false);
@@ -5722,6 +5731,78 @@ function ArgentinaPanel() {
                 </div>
             )}
 
+            {/* Sell Modal */}
+            {showSellModal && (
+                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 backdrop-blur-sm animate-fade-in">
+                    <div className="bg-slate-900 border border-slate-700 rounded-xl p-6 w-full max-w-sm shadow-2xl">
+                        <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                            💸 Venta Parcial: {sellData.ticker}
+                        </h3>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="text-slate-400 text-xs uppercase font-bold block mb-1">Cantidad a Vender (Max: {sellData.currentShares})</label>
+                                <input
+                                    type="number"
+                                    value={sellData.sharesToSell || ''}
+                                    onChange={(e) => setSellData({ ...sellData, sharesToSell: e.target.value })}
+                                    className="w-full bg-slate-800 border border-slate-600 rounded p-3 text-white font-mono text-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                    placeholder="Todo"
+                                />
+                                <div className="flex justify-end mt-1">
+                                    <button
+                                        onClick={() => setSellData({ ...sellData, sharesToSell: sellData.currentShares })}
+                                        className="text-xs text-blue-400 hover:text-blue-300"
+                                    >
+                                        Vender Todo ({sellData.currentShares})
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="text-slate-400 text-xs uppercase font-bold block mb-1">Precio de Salida</label>
+                                <input
+                                    type="number"
+                                    value={sellData.exitPrice || ''}
+                                    onChange={(e) => setSellData({ ...sellData, exitPrice: e.target.value })}
+                                    className="w-full bg-slate-800 border border-slate-600 rounded p-3 text-white font-mono text-lg focus:ring-2 focus:ring-green-500 outline-none"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3 mt-6">
+                            <button
+                                onClick={() => setShowSellModal(false)}
+                                className="bg-slate-700 hover:bg-slate-600 text-white py-3 rounded-lg font-bold transition"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={async () => {
+                                    if (!sellData.exitPrice) return alert("Ingresa precio de salida");
+
+                                    try {
+                                        await axios.post(`${API_BASE}/argentina/positions/${sellData.positionId}/close`, null, {
+                                            params: {
+                                                exit_price: parseFloat(sellData.exitPrice),
+                                                shares: sellData.sharesToSell ? parseFloat(sellData.sharesToSell) : null
+                                            }
+                                        });
+                                        setShowSellModal(false);
+                                        fetchEssentialData();
+                                    } catch (err) {
+                                        alert("Error cerrando posición: " + (err.response?.data?.detail || err.message));
+                                    }
+                                }}
+                                className="bg-red-600 hover:bg-red-500 text-white py-3 rounded-lg font-bold transition shadow-lg shadow-red-900/20"
+                            >
+                                📉 VENDER
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Add Position Form - UPDATED with targets */}
             {showAddForm && (
                 <div className="bg-slate-800/70 rounded-xl p-4 mb-6 border border-slate-700">
@@ -5897,17 +5978,19 @@ function ArgentinaPanel() {
                                                     <button
                                                         onClick={(e) => {
                                                             e.stopPropagation();
-                                                            const sellPrice = prompt(`Precio de venta para cerrar ${ticker}?`, currentPrice || 0);
-                                                            if (sellPrice) {
-                                                                // Close first trade found (simplified logic for now)
-                                                                const tradeToClose = groupTrades.find(t => t.status === 'OPEN');
-                                                                if (tradeToClose) {
-                                                                    axios.post(`${API_BASE}/argentina/positions/${tradeToClose.id}/close`, null, { params: { exit_price: parseFloat(sellPrice) } })
-                                                                        .then(() => fetchEssentialData())
-                                                                        .catch(err => alert("Error closing: " + err));
-                                                                } else {
-                                                                    alert("No open positions found in this group.");
-                                                                }
+                                                            const tradeToClose = groupTrades.find(t => t.status === 'OPEN');
+                                                            if (tradeToClose) {
+                                                                setSellData({
+                                                                    positionId: tradeToClose.id,
+                                                                    ticker: ticker,
+                                                                    currentShares: tradeToClose.shares,
+                                                                    currentPrice: currentPrice || tradeToClose.entry_price,
+                                                                    exitPrice: currentPrice || tradeToClose.entry_price,
+                                                                    sharesToSell: '' // Default to empty (implies all if not set, or user types)
+                                                                });
+                                                                setShowSellModal(true);
+                                                            } else {
+                                                                alert("No hay posiciones abiertas para cerrar.");
                                                             }
                                                         }}
                                                         className="bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white px-2 py-0.5 rounded text-[10px] transition border border-red-600/30"

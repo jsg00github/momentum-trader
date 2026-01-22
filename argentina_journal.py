@@ -184,8 +184,8 @@ def api_update_manual_price(position_id: int, update: ManualPriceUpdate, current
     return {"id": position_id, "manual_price": update.price, "status": "updated"}
 
 @router.post("/positions/{position_id}/close")
-def api_close_position(position_id: int, exit_price: float, current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
-    """Close an existing position."""
+def api_close_position(position_id: int, exit_price: float, shares: float = None, current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    """Close an existing position (full or partial)."""
     pos = db.query(models.ArgentinaPosition).filter(
         models.ArgentinaPosition.id == position_id,
         models.ArgentinaPosition.user_id == current_user.id
@@ -194,12 +194,46 @@ def api_close_position(position_id: int, exit_price: float, current_user: models
     if not pos:
         raise HTTPException(status_code=404, detail="Position not found")
         
-    pos.status = 'CLOSED'
-    pos.exit_date = datetime.now().strftime("%Y-%m-%d")
-    pos.exit_price = exit_price
+    current_shares = float(pos.shares)
+    shares_to_sell = float(shares) if shares is not None else current_shares
     
-    db.commit()
-    return {"id": position_id, "status": "closed"}
+    if shares_to_sell <= 0 or shares_to_sell > current_shares:
+        raise HTTPException(status_code=400, detail=f"Invalid share count. You have {current_shares}.")
+
+    # FULL EXIT
+    if shares_to_sell >= current_shares:
+        pos.status = 'CLOSED'
+        pos.exit_date = datetime.now().strftime("%Y-%m-%d")
+        pos.exit_price = exit_price
+        db.commit()
+        return {"id": position_id, "status": "closed", "type": "full"}
+        
+    # PARTIAL EXIT
+    else:
+        # Create new closed position for the sold portion
+        closed_part = models.ArgentinaPosition(
+            user_id=pos.user_id,
+            ticker=pos.ticker,
+            asset_type=pos.asset_type,
+            entry_date=pos.entry_date,
+            entry_price=pos.entry_price, # Cost basis remains same
+            shares=shares_to_sell,
+            status='CLOSED',
+            exit_date=datetime.now().strftime("%Y-%m-%d"),
+            exit_price=exit_price,
+            notes=f"Partial fill from ID {pos.id}"
+        )
+        db.add(closed_part)
+        
+        # Update original position (remaining shares)
+        pos.shares = current_shares - shares_to_sell
+        if pos.notes:
+            pos.notes += f" | Sold {shares_to_sell} @ {exit_price}"
+        else:
+            pos.notes = f"Sold {shares_to_sell} @ {exit_price}"
+            
+        db.commit()
+        return {"original_id": pos.id, "new_closed_id": closed_part.id, "status": "partial_close"}
 
 @router.delete("/positions/{position_id}")
 def api_delete_position(position_id: int, current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
