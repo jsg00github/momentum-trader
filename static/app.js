@@ -1277,6 +1277,14 @@ function TradeJournal() {
         return { activeGroups: active, historyGroups: history };
     }, [groupedTrades]);
 
+    // State for Partial Sell Modal (USA)
+    const [showSellModal, setShowSellModal] = useState(false);
+    const [sellData, setSellData] = useState({
+        ticker: '',
+        currentShares: 0,
+        currentPrice: 0
+    });
+
     const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
 
     const currentGroups = activeTab === 'active' ? activeGroups : historyGroups;
@@ -2065,6 +2073,81 @@ ${res.data.errors.join("\n")}`);
                 </button>
             </div>
 
+            {/* Sell Modal (USA) */}
+            {showSellModal && (
+                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 backdrop-blur-sm animate-fade-in">
+                    <div className="bg-slate-900 border border-slate-700 rounded-xl p-6 w-full max-w-sm shadow-2xl">
+                        <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                            💸 Venta Parcial: {sellData.ticker}
+                        </h3>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="text-slate-400 text-xs uppercase font-bold block mb-1">Cantidad a Vender (Max: {sellData.currentShares})</label>
+                                <input
+                                    type="number"
+                                    value={sellData.sharesToSell || ''}
+                                    onChange={(e) => setSellData({ ...sellData, sharesToSell: e.target.value })}
+                                    className="w-full bg-slate-800 border border-slate-600 rounded p-3 text-white font-mono text-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                    placeholder="Todo"
+                                />
+                                <div className="flex justify-end mt-1">
+                                    <button
+                                        onClick={() => setSellData({ ...sellData, sharesToSell: sellData.currentShares })}
+                                        className="text-xs text-blue-400 hover:text-blue-300"
+                                    >
+                                        Vender Todo ({sellData.currentShares})
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="text-slate-400 text-xs uppercase font-bold block mb-1">Precio de Salida</label>
+                                <input
+                                    type="number"
+                                    value={sellData.exitPrice || ''}
+                                    onChange={(e) => setSellData({ ...sellData, exitPrice: e.target.value })}
+                                    className="w-full bg-slate-800 border border-slate-600 rounded p-3 text-white font-mono text-lg focus:ring-2 focus:ring-green-500 outline-none"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3 mt-6">
+                            <button
+                                onClick={() => setShowSellModal(false)}
+                                className="bg-slate-700 hover:bg-slate-600 text-white py-3 rounded-lg font-bold transition"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={async () => {
+                                    if (!sellData.exitPrice) return alert("Ingresa precio de salida");
+                                    const shares = sellData.sharesToSell ? parseInt(sellData.sharesToSell) : sellData.currentShares;
+
+                                    try {
+                                        await axios.post(`${API_BASE}/trades/add`, {
+                                            ticker: sellData.ticker,
+                                            entry_date: new Date().toISOString().split('T')[0],
+                                            entry_price: parseFloat(sellData.exitPrice),
+                                            shares: shares,
+                                            direction: 'SELL',
+                                            status: 'CLOSED'
+                                        });
+                                        setShowSellModal(false);
+                                        fetchEssentialData(); // Refresh
+                                    } catch (err) {
+                                        alert("Error cerrando posición: " + (err.response?.data?.detail || err.message));
+                                    }
+                                }}
+                                className="bg-red-600 hover:bg-red-500 text-white py-3 rounded-lg font-bold transition shadow-lg shadow-red-900/20"
+                            >
+                                📉 VENDER
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* CONTENT AREA */}
             {
                 activeSubTab === 'analytics' ? (
@@ -2280,7 +2363,38 @@ ${res.data.errors.join("\n")}`);
                                                             return <span className={colorClass}>${mPath.toFixed(2)}</span>;
                                                         })()}
                                                     </td>
-                                                    <td className="p-2 bg-slate-900"></td>
+                                                    <td className="p-2 border-l border-slate-800 flex justify-center gap-1 bg-slate-900">
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                // Open Add Trade Modal pre-filled for BUY (Not implemented fully yet, just simple adder)
+                                                                // Ideally we reuse TradeForm but let's stick to Sell for now as requested
+                                                            }}
+                                                            className="bg-green-600/20 hover:bg-green-600 text-green-400 hover:text-white px-2 py-0.5 rounded text-[10px] transition border border-green-600/30 opacity-50 cursor-not-allowed"
+                                                            title="Comprar más (coming soon)"
+                                                        >
+                                                            +
+                                                        </button>
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                if (activeTab === 'active') {
+                                                                    setSellData({
+                                                                        ticker: ticker,
+                                                                        currentShares: displayShares,
+                                                                        currentPrice: currentPrice || avgPpc,
+                                                                        exitPrice: currentPrice || avgPpc,
+                                                                        sharesToSell: ''
+                                                                    });
+                                                                    setShowSellModal(true);
+                                                                }
+                                                            }}
+                                                            className="bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white px-2 py-0.5 rounded text-[10px] transition border border-red-600/30"
+                                                            title="Vender / Cerrar Posición"
+                                                        >
+                                                            x
+                                                        </button>
+                                                    </td>
                                                 </tr>
 
                                                 {/* DETAIL ROWS */}
