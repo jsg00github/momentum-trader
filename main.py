@@ -124,7 +124,7 @@ def process_ticker(ticker, use_cache=True, strategy="rally_3m"):
                 # Determine period based on strategy
                 period = screener.PERIOD
                 if strategy == "weekly_rsi":
-                    period = "1y" # Need more history for Weekly RSI
+                    period = "2y" # Need more history for Weekly RSI + SMA 200
 
                 # Use auto_adjust=False as verified in Colab to match results
                 # CRITICAL: threads=False prevents yfinance from grouping multiple ticker downloads

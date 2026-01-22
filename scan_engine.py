@@ -72,7 +72,7 @@ def process_ticker(ticker, data_df=None, use_cache=True, strategy="rally_3m"):
             if df is None:
                 period = screener.PERIOD
                 if strategy == "weekly_rsi":
-                    period = "1y" 
+                    period = "2y" 
                 df = market_data.safe_yf_download(ticker, period=period, auto_adjust=False)
                 if c and df is not None and not df.empty:
                     c.set(ticker, screener.PERIOD, screener.INTERVAL, df)
