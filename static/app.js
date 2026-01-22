@@ -3688,6 +3688,8 @@ function Scanner({ onTickerClick }) {
     const [progress, setProgress] = useState({ total: 0, current: 0 });
     const [sortConfig, setSortConfig] = useState({ key: 'score', direction: 'desc' });
 
+    const [showAboveSMA, setShowAboveSMA] = useState(false);
+
     useEffect(() => {
         let interval;
         if (scanning) {
@@ -3756,6 +3758,12 @@ function Scanner({ onTickerClick }) {
 
     const sortedResults = useMemo(() => {
         let sortableItems = [...results];
+
+        // Filter: Show Only > SMA200 if enabled
+        if (showAboveSMA) {
+            sortableItems = sortableItems.filter(item => item.sma200_d && item.price > item.sma200_d);
+        }
+
         if (sortConfig.key !== null) {
             sortableItems.sort((a, b) => {
                 let aVal = a[sortConfig.key];
@@ -3766,7 +3774,7 @@ function Scanner({ onTickerClick }) {
             });
         }
         return sortableItems;
-    }, [results, sortConfig]);
+    }, [results, sortConfig, showAboveSMA]);
 
     const handleDownloadPDF = () => {
         if (!sortedResults.length) return;
@@ -3969,6 +3977,19 @@ function Scanner({ onTickerClick }) {
                     <p className="text-slate-400 text-sm mt-1">Detecting Early Reversals (30-50 RSI) with EMA(3/14) Bullish Alignment.</p>
                 </div>
                 <div className="flex gap-4 items-center">
+                    <div className="flex items-center gap-2 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2">
+                        <input
+                            type="checkbox"
+                            id="smaFilter"
+                            checked={showAboveSMA}
+                            onChange={(e) => setShowAboveSMA(e.target.checked)}
+                            className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-600 ring-offset-gray-800"
+                        />
+                        <label htmlFor="smaFilter" className="text-slate-300 text-sm cursor-pointer select-none">
+                            Show &gt; SMA200
+                        </label>
+                    </div>
+
                     <select
                         value={limit}
                         onChange={(e) => setLimit(Number(e.target.value))}
