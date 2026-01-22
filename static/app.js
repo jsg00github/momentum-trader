@@ -3929,7 +3929,7 @@ function Scanner({ onTickerClick }) {
                                 <td className={`p-2 text-right font-mono text-xs ${row.price > row.ema60_d ? 'text-green-400 font-bold' : 'text-slate-500'}`}>
                                     {row.ema60_d?.toFixed(0)}
                                 </td>
-                                <td className={`p-2 text-right font-mono text-xs ${row.is_above_sma200 ? 'text-green-400 font-bold' : 'text-red-400'}`}>
+                                <td className={`p-2 text-right font-mono text-xs ${row.sma200_d && row.price > row.sma200_d ? 'text-green-400 font-bold' : 'text-red-400'}`}>
                                     {row.sma200_d ? row.sma200_d.toFixed(0) : '-'}
                                 </td>
                                 <td className="p-2 text-center">
