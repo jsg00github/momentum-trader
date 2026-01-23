@@ -513,8 +513,8 @@ def get_open_prices(current_user: models.User = Depends(auth.get_current_user), 
     results = {}
     
     try:
-        # Batch download historical data for EMAs
-        data = market_data.safe_yf_download(tickers, period="2y", threads=True)
+        # Batch download historical data for EMAs (threads=False for production stability)
+        data = market_data.safe_yf_download(tickers, period="2y", threads=False)
         
         for ticker in tickers:
             try:
@@ -563,34 +563,12 @@ def get_open_prices(current_user: models.User = Depends(auth.get_current_user), 
                 except:
                     pass
 
-                # Premarket data
+                # Premarket data - DISABLED in production (stock.info can hang indefinitely)
+                # Will be None unless we add a faster data source
                 extended_price = None
                 extended_change_pct = None
                 is_premarket = False
                 is_postmarket = False
-                
-                try:
-                    stock = yf.Ticker(ticker)
-                    info = {}
-                    try:
-                        info_data = stock.info
-                        if isinstance(info_data, dict):
-                            info = info_data
-                    except:
-                        pass
-                    
-                    regular_price = info.get('regularMarketPrice', info.get('currentPrice', 0))
-                    premarket_price = info.get('preMarketPrice')
-                    postmarket_price = info.get('postMarketPrice')
-                    ext_price = premarket_price or postmarket_price
-                    
-                    if ext_price and regular_price and regular_price > 0:
-                        extended_price = round(ext_price, 2)
-                        extended_change_pct = round(((ext_price - regular_price) / regular_price) * 100, 2)
-                        is_premarket = premarket_price is not None
-                        is_postmarket = postmarket_price is not None
-                except Exception as e:
-                    print(f"[open-prices] Premarket error for {ticker}: {e}")
                 
                 results[ticker] = {
                     "price": round(last_price, 2),
