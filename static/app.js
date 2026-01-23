@@ -5739,6 +5739,20 @@ function ArgentinaPanel() {
         return sum + ((current - t.entry_price) * t.shares);
     }, 0);
 
+    // Avg Days Open (matching USA Journal)
+    const openPositions = Object.values(activeGroups).flat();
+    const avgDaysOpen = openPositions.length > 0
+        ? openPositions.reduce((sum, t) => {
+            const start = new Date(t.entry_date);
+            const end = new Date();
+            const days = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
+            return sum + days;
+        }, 0) / openPositions.length
+        : 0;
+
+    // Open R.O.I. (matching USA Journal)
+    const openRoi = totalInvested > 0 ? (totalOpenPnl / totalInvested) * 100 : 0;
+
     return (
         <div className="p-4 container mx-auto max-w-[1600px]">
             {/* Header */}
@@ -5947,12 +5961,12 @@ function ArgentinaPanel() {
                 </div>
             )}
 
-            {/* Metrics Cards */}
+            {/* Metrics Cards - Same as USA Journal */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                <MetricCard label="Total Invested" value={`${currencySymbol}${convertToDisplay(totalInvested).toLocaleString('en-US', { maximumFractionDigits: 0 })}`} subtext={`${Object.keys(activeGroups).length} activos`} color="text-sky-400" />
-                <MetricCard label="Open P&L" value={`${currencySymbol}${convertToDisplay(totalOpenPnl).toLocaleString('en-US', { maximumFractionDigits: 0 })}`} color={totalOpenPnl >= 0 ? "text-green-400" : "text-red-400"} />
-                <MetricCard label="Realized P&L" value={`${currencySymbol}${convertToDisplay(metrics?.realized_pnl_ars || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}`} color={(metrics?.realized_pnl_ars || 0) >= 0 ? "text-green-400" : "text-red-400"} />
-                <MetricCard label="Win Rate" value={`${metrics?.win_rate?.toFixed(1) || 0}%`} subtext={`${metrics?.wins || 0}W / ${metrics?.losses || 0}L`} color="text-yellow-400" />
+                <MetricCard label="Total Invested" value={`${currencySymbol}${convertToDisplay(totalInvested).toLocaleString('en-US', { maximumFractionDigits: 0 })}`} subtext={`${openPositions.length} open trades`} color="text-sky-400" />
+                <MetricCard label="Open P&L $" value={`${totalOpenPnl >= 0 ? '+' : ''}${currencySymbol}${convertToDisplay(totalOpenPnl).toLocaleString('en-US', { maximumFractionDigits: 2 })}`} color={totalOpenPnl >= 0 ? "text-green-400" : "text-red-400"} />
+                <MetricCard label="Avg Days (Open)" value={avgDaysOpen.toFixed(0)} subtext="Average Holding" color="text-yellow-400" />
+                <MetricCard label="Open R.O.I." value={`${openRoi >= 0 ? '+' : ''}${openRoi.toFixed(2)}%`} color={openRoi >= 0 ? "text-green-400" : "text-red-400"} />
             </div>
 
             {/* Sub Tabs */}
@@ -6147,6 +6161,49 @@ function ArgentinaPanel() {
                             </tbody>
                         </table>
                     </div>
+
+                    {/* Trade History Summary (matching USA Journal) */}
+                    {activeTab === 'history' && Object.keys(historyGroups).length > 0 && (() => {
+                        const closedTrades = Object.values(historyGroups).flat();
+                        const totalClosedPL = closedTrades.reduce((sum, t) => sum + (t.pnl || 0), 0);
+                        const avgTradePercent = closedTrades.length > 0
+                            ? closedTrades.reduce((sum, t) => sum + ((t.pnl / (t.entry_price * t.shares)) * 100 || 0), 0) / closedTrades.length
+                            : 0;
+                        const avgDays = closedTrades.length > 0
+                            ? closedTrades.reduce((sum, t) => {
+                                if (t.exit_date && t.entry_date) {
+                                    const days = Math.floor((new Date(t.exit_date) - new Date(t.entry_date)) / (1000 * 60 * 60 * 24));
+                                    return sum + days;
+                                }
+                                return sum;
+                            }, 0) / closedTrades.length
+                            : 0;
+                        return (
+                            <div className="mt-6 p-4 bg-slate-800/50 rounded-xl border border-slate-700">
+                                <h3 className="text-sm font-bold text-slate-300 mb-3">📊 Trade History Summary</h3>
+                                <div className="grid grid-cols-3 gap-4">
+                                    <div className="text-center">
+                                        <div className="text-[10px] text-slate-500 uppercase">Total Closed P&L</div>
+                                        <div className={`text-lg font-bold ${totalClosedPL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                            {totalClosedPL >= 0 ? '+' : ''}{currencySymbol}{convertToDisplay(totalClosedPL).toFixed(2)}
+                                        </div>
+                                    </div>
+                                    <div className="text-center">
+                                        <div className="text-[10px] text-slate-500 uppercase">Avg % per Trade</div>
+                                        <div className={`text-lg font-bold ${avgTradePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                            {avgTradePercent >= 0 ? '+' : ''}{avgTradePercent.toFixed(2)}%
+                                        </div>
+                                    </div>
+                                    <div className="text-center">
+                                        <div className="text-[10px] text-slate-500 uppercase">Avg Days Held</div>
+                                        <div className="text-lg font-bold text-white">
+                                            {Math.round(avgDays)} days
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })()}
                 </div>
             )}
 
