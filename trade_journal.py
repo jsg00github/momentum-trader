@@ -491,11 +491,11 @@ def delete_trade(trade_id: int, current_user: models.User = Depends(auth.get_cur
 
 @router.get("/api/trades/open-prices")
 def get_open_prices(current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
-    """Fetch live data for open trades (User Scoped) - Includes EMAs, RSI, and premarket"""
+    """Fetch live data for open trades (User Scoped) - Uses Finnhub + yfinance fallback"""
     import market_data
     import indicators
-    import yfinance as yf
     import screener
+    import price_service  # Finnhub (primary) + yfinance (fallback) with cache
     
     trades = db.query(models.Trade).filter(
         models.Trade.user_id == current_user.id,
@@ -512,13 +512,27 @@ def get_open_prices(current_user: models.User = Depends(auth.get_current_user), 
     
     results = {}
     
+    # === STEP 1: Get current prices from Finnhub (fast) with yfinance fallback ===
+    try:
+        live_prices = price_service.get_prices(tickers)
+        print(f"[open-prices] Got {len(live_prices)} prices from price_service")
+    except Exception as e:
+        print(f"[open-prices] price_service error: {e}")
+        live_prices = {}
+    
+    # === STEP 2: Get historical data for EMAs (slower, but needed for technical analysis) ===
     try:
         # Batch download historical data for EMAs (threads=False for production stability)
         data = market_data.safe_yf_download(tickers, period="2y", threads=False)
         
         for ticker in tickers:
             try:
-                # Extract data for this ticker
+                # Get live price from Finnhub/cache (fast)
+                price_data = live_prices.get(ticker, {})
+                live_price = price_data.get('price')
+                live_change_pct = price_data.get('change_pct', 0)
+                
+                # Extract historical data for this ticker (for EMAs)
                 if len(tickers) == 1:
                     df = data
                 else:
@@ -527,62 +541,66 @@ def get_open_prices(current_user: models.User = Depends(auth.get_current_user), 
                     except:
                         df = data
                 
-                if df.empty:
-                    continue
-                
-                close = df['Close']
-                if len(close) < 2:
-                    continue
-                    
-                # Calculate EMAs
-                ema_8 = close.ewm(span=8, adjust=False).mean()
-                ema_21 = close.ewm(span=21, adjust=False).mean()
-                ema_35 = close.ewm(span=35, adjust=False).mean()
-                ema_200 = close.ewm(span=200, adjust=False).mean()
-                
-                last_price = float(close.iloc[-1])
-                prev_price = float(close.iloc[-2]) if len(close) > 1 else last_price
-                change_pct = ((last_price - prev_price) / prev_price) * 100 if prev_price > 0 else 0
-                
-                # Weekly RSI
+                # Calculate EMAs if we have historical data
+                ema_8 = ema_21 = ema_35 = ema_200 = None
                 rsi_summary = None
-                try:
-                    r = indicators.calculate_weekly_rsi_analytics(df)
-                    if r:
-                        rsi_summary = {"val": round(r['rsi'], 2), "bullish": r['sma3'] > r['sma14']}
-                except:
-                    pass
-                
-                # Momentum Path (Linear Regression Forecast)
                 momentum_path = None
-                try:
-                    path = screener.predict_future_path(df)
-                    if path:
-                        # Get the last projected value (end of the path)
-                        momentum_path = round(path[-1]["projected"], 2)
-                except:
-                    pass
-
-                # Premarket data - DISABLED in production (stock.info can hang indefinitely)
-                # Will be None unless we add a faster data source
-                extended_price = None
-                extended_change_pct = None
-                is_premarket = False
-                is_postmarket = False
+                
+                if not df.empty and 'Close' in df.columns and len(df['Close']) >= 2:
+                    close = df['Close']
+                    
+                    # Use live price if available, else use last historical close
+                    if live_price is None:
+                        live_price = float(close.iloc[-1])
+                        prev_price = float(close.iloc[-2]) if len(close) > 1 else live_price
+                        live_change_pct = ((live_price - prev_price) / prev_price) * 100 if prev_price > 0 else 0
+                    
+                    # Calculate EMAs
+                    ema_8_series = close.ewm(span=8, adjust=False).mean()
+                    ema_21_series = close.ewm(span=21, adjust=False).mean()
+                    ema_35_series = close.ewm(span=35, adjust=False).mean()
+                    ema_200_series = close.ewm(span=200, adjust=False).mean()
+                    
+                    ema_8 = round(float(ema_8_series.iloc[-1]), 2)
+                    ema_21 = round(float(ema_21_series.iloc[-1]), 2)
+                    ema_35 = round(float(ema_35_series.iloc[-1]), 2) if len(ema_35_series) > 0 else None
+                    ema_200 = round(float(ema_200_series.iloc[-1]), 2) if len(ema_200_series) >= 200 else None
+                    
+                    # Weekly RSI
+                    try:
+                        r = indicators.calculate_weekly_rsi_analytics(df)
+                        if r:
+                            rsi_summary = {"val": round(r['rsi'], 2), "bullish": r['sma3'] > r['sma14']}
+                    except:
+                        pass
+                    
+                    # Momentum Path (Linear Regression Forecast)
+                    try:
+                        path = screener.predict_future_path(df)
+                        if path:
+                            momentum_path = round(path[-1]["projected"], 2)
+                    except:
+                        pass
+                
+                # Skip ticker if we have no price at all
+                if live_price is None:
+                    print(f"[open-prices] No price for {ticker}, skipping")
+                    continue
                 
                 results[ticker] = {
-                    "price": round(last_price, 2),
-                    "change_pct": round(change_pct, 2),
-                    "ema_8": round(float(ema_8.iloc[-1]), 2),
-                    "ema_21": round(float(ema_21.iloc[-1]), 2),
-                    "ema_35": round(float(ema_35.iloc[-1]), 2) if len(ema_35) > 0 else None,
-                    "ema_200": round(float(ema_200.iloc[-1]), 2) if len(ema_200) >= 200 else None,
+                    "price": round(live_price, 2),
+                    "change_pct": round(live_change_pct, 2) if live_change_pct else 0,
+                    "ema_8": ema_8,
+                    "ema_21": ema_21,
+                    "ema_35": ema_35,
+                    "ema_200": ema_200,
                     "rsi_weekly": rsi_summary,
                     "momentum_path": momentum_path,
-                    "extended_price": extended_price,
-                    "extended_change_pct": extended_change_pct,
-                    "is_premarket": is_premarket,
-                    "is_postmarket": is_postmarket
+                    "extended_price": None,  # Premarket disabled for now
+                    "extended_change_pct": None,
+                    "is_premarket": False,
+                    "is_postmarket": False,
+                    "source": price_data.get('source', 'unknown')  # Debug: show data source
                 }
             except Exception as e:
                 print(f"[open-prices] Error for {ticker}: {e}")
