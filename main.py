@@ -574,9 +574,9 @@ def analyze_ticker(req: AnalyzeRequest):
                     if isinstance(df_pred.columns, pd.MultiIndex):
                         df_pred.columns = [c[0] for c in df_pred.columns]
                     
-                    entry_p = result["metrics"].get("entry")
-                    target_p = result["metrics"].get("target")
-                    predictions = screener.predict_future_path(df_pred, entry_price=entry_p, target=target_p)
+                    # Momentum path is now independent of journal TPs
+                    # Uses only linear regression of last 30 days
+                    predictions = screener.predict_future_path(df_pred)
                     result["chart_data"].extend(predictions)
             except Exception as e:
                 print(f"Prediction merging failed for {req.ticker}: {e}")
