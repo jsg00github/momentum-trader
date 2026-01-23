@@ -27,7 +27,7 @@ YF_DOWNLOAD_TIMEOUT = 60
 
 def safe_yf_download(tickers, **kwargs):
     """
-    Wrapper for yf.download with retries and a fresh session.
+    Wrapper for yf.download with retries, cache-first lookup, and exponential backoff.
     Enforces threads=False for stability in a concurrent (FastAPI) environment.
     Falls back to Finnhub if Yahoo Finance fails and Finnhub is enabled.
     """
@@ -45,23 +45,30 @@ def safe_yf_download(tickers, **kwargs):
     # where the caller handles the risk (e.g. market_data background worker)
     use_threads = kwargs.pop('threads', False)
     
-    # Extract period for Finnhub fallback
+    # Extract period for cache lookup
     period = kwargs.get('period', '6mo')
+    interval = kwargs.get('interval', '1d')
     
     print(f"[safe_yf_download] Fetching: {tickers_str} (threads={use_threads})")
     
-    # === TRY YAHOO FINANCE FIRST ===
+    # === STEP 1: CHECK CACHE FIRST (avoid unnecessary API calls) ===
+    try:
+        import cache
+        c = cache.get_cache()
+        if len(tickers) == 1:
+            cached_df = c.get(tickers[0], period, interval)
+            if cached_df is not None and not cached_df.empty:
+                print(f"[safe_yf_download] ✅ Cache hit for {tickers[0]}")
+                return cached_df
+    except Exception as e:
+        print(f"[safe_yf_download] Cache lookup error: {e}")
+    
+    # === STEP 2: TRY YAHOO FINANCE WITH EXPONENTIAL BACKOFF ===
     for i in range(retries + 1):
         try:
-            # Use direct call with timeout (supported by yfinance) instead of ThreadPoolExecutor
-            # to avoid nesting issues in FastAPI/Uvicorn.
-            try:
-                # Add timeout to kwargs if not present
-                kwargs['timeout'] = kwargs.get('timeout', YF_DOWNLOAD_TIMEOUT)
-                df = yf.download(tickers_str, threads=use_threads, **kwargs)
-            except Exception as e:
-                print(f"[Yahoo] Download failed or timed out for {tickers_str}: {e}")
-                df = pd.DataFrame()
+            # Add timeout to kwargs if not present
+            kwargs['timeout'] = kwargs.get('timeout', YF_DOWNLOAD_TIMEOUT)
+            df = yf.download(tickers_str, threads=use_threads, **kwargs)
             
             if df is not None and not df.empty:
                 # Diagnostics: verify we got what we asked for
@@ -75,10 +82,6 @@ def safe_yf_download(tickers, **kwargs):
                 
                 # SUCCESS: Save to cache for future fallback (both single and batch downloads)
                 try:
-                    import cache
-                    c = cache.get_cache()
-                    interval = kwargs.get('interval', '1d')
-                    
                     if len(tickers) == 1:
                         # Single ticker - cache directly
                         c.set(tickers[0], period, interval, df)
@@ -93,16 +96,29 @@ def safe_yf_download(tickers, **kwargs):
                                         c.set(ticker, period, interval, ticker_df)
                                 except Exception:
                                     pass
-                except Exception:
-                    pass
+                except Exception as cache_err:
+                    print(f"[safe_yf_download] Cache save error: {cache_err}")
                 
                 return df
-            
+                
         except Exception as e:
-            if i == retries:
-                print(f"[Yahoo] Failed to download {tickers_str} after {retries} retries: {e}")
-            else:
+            error_msg = str(e).lower()
+            
+            # Check for rate limit (429) error
+            if '429' in error_msg or 'too many requests' in error_msg or 'rate' in error_msg:
+                backoff_time = 2 ** i  # Exponential: 1, 2, 4 seconds
+                print(f"[Yahoo] Rate limited (429). Waiting {backoff_time}s before retry {i+1}/{retries}...")
+                time.sleep(backoff_time)
+            elif i < retries:
+                # Regular error - wait 1 second and retry
+                print(f"[Yahoo] Error for {tickers_str} (attempt {i+1}): {e}")
                 time.sleep(1)
+            else:
+                print(f"[Yahoo] Failed to download {tickers_str} after {retries} retries: {e}")
+    
+    # === STEP 3: Return empty DataFrame if all fails ===
+    print(f"[safe_yf_download] ⚠️ All sources failed for {tickers_str}")
+    return pd.DataFrame()
     
     # === FALLBACK TO FINNHUB (quotes only on free tier) ===
     # DISABLED: Finnhub free tier does not support candles for US stocks, causing 403 errors and CI failure.
