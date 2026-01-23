@@ -2257,7 +2257,7 @@ ${res.data.errors.join("\n")}`);
                                                         <span className="text-slate-500 text-[10px] w-4">{isExpanded ? '▼' : '▶'}</span>
                                                         {/* Ticker Link - Opens Chart in New Tab */}
                                                         <a
-                                                            href={`/?ticker=${ticker}&entry=${avgPpc}&stop=${groupTrades[0]?.stop_loss || ''}&target=${groupTrades[0]?.target || ''}`}
+                                                            href={`/?ticker=${ticker}&view=charts&entry=${avgPpc}&stop=${groupTrades[0]?.stop_loss || ''}&target=${groupTrades[0]?.target || ''}`}
                                                             target="_blank"
                                                             rel="noopener noreferrer"
                                                             className="font-bold hover:text-blue-300 transition-colors"
