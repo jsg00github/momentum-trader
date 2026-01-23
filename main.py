@@ -439,7 +439,7 @@ def analyze_ticker(req: AnalyzeRequest):
                 interp_cols = ['RSI', 'RSI_SMA_3', 'RSI_SMA_14', 'RSI_SMA_21']
                 # Create a temporary DF with daily index, reindex weekly data, and interpolate
                 df_interp = df_weekly[interp_cols].reindex(df.index)
-                df_interp = df_interp.interpolate(method='linear').fillna(method='bfill')
+                df_interp = df_interp.interpolate(method='linear').bfill()
                 
                 # Add to main DF
                 df['rsi_weekly'] = df_interp['RSI']
