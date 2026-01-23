@@ -53,20 +53,16 @@ def safe_yf_download(tickers, **kwargs):
     # === TRY YAHOO FINANCE FIRST ===
     for i in range(retries + 1):
         try:
-            # Use ThreadPoolExecutor with timeout to prevent indefinite hangs
-            # NOTE: Removed global lock - yfinance handles its own threading
-            # The lock was causing UI requests to wait for background tasks
-            def _do_download():
-                return yf.download(tickers_str, threads=use_threads, **kwargs)
+            # Use direct call with timeout (supported by yfinance) instead of ThreadPoolExecutor
+            # to avoid nesting issues in FastAPI/Uvicorn.
+            try:
+                # Add timeout to kwargs if not present
+                kwargs['timeout'] = kwargs.get('timeout', YF_DOWNLOAD_TIMEOUT)
+                df = yf.download(tickers_str, threads=use_threads, **kwargs)
+            except Exception as e:
+                print(f"[Yahoo] Download failed or timed out for {tickers_str}: {e}")
+                df = pd.DataFrame()
             
-            with ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(_do_download)
-                try:
-                    df = future.result(timeout=YF_DOWNLOAD_TIMEOUT)
-                except FuturesTimeoutError:
-                    print(f"[Yahoo] Download timeout after {YF_DOWNLOAD_TIMEOUT}s for {tickers_str}")
-                    df = pd.DataFrame()
-                
             if df is not None and not df.empty:
                 # Diagnostics: verify we got what we asked for
                 if isinstance(df.columns, pd.MultiIndex):
