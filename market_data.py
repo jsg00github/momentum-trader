@@ -553,18 +553,38 @@ def update_market_status_worker():
                         elif lp < e50: color, desc = "Red", "Downtrend"
                         
                         ep, echg = lp, 0.0
+                        # Use price_service (Finnhub) for current price - more reliable than fast_info
                         try:
-                            fi = yf.Ticker(ticker).fast_info
-                            ep = getattr(fi, "last_price", lp)
-                            pc = getattr(fi, "previous_close", lp)
-                            if pc > 0: echg = ((ep - pc) / pc) * 100
-                        except: pass
+                            import price_service
+                            price_data = price_service.get_price(ticker)
+                            if price_data and price_data.get('price'):
+                                ep = price_data.get('price', lp)
+                                echg = price_data.get('change_pct', 0)
+                        except Exception as ps_err:
+                            print(f"price_service error for {ticker}: {ps_err}")
                         
                         status[ticker] = {
                             "price": round(lp, 2), "ext_price": round(float(ep), 2), "ext_change_pct": round(float(echg), 2),
                             "ema21": round(e21, 2), "ema50": round(e50, 2), "color": color, "desc": desc,
                             "sparkline": [round(float(p), 2) for p in ser.tolist()]
                         }
+                    else:
+                        # Fallback: No historical data, use Finnhub for at least the price
+                        try:
+                            import price_service
+                            price_data = price_service.get_price(ticker)
+                            if price_data and price_data.get('price'):
+                                status[ticker] = {
+                                    "price": round(price_data.get('price'), 2),
+                                    "ext_price": round(price_data.get('price'), 2),
+                                    "ext_change_pct": round(price_data.get('change_pct', 0), 2),
+                                    "ema21": 0, "ema50": 0,
+                                    "color": "Green" if price_data.get('change_pct', 0) > 0 else ("Red" if price_data.get('change_pct', 0) < 0 else "Yellow"),
+                                    "desc": "Live" if price_data.get('source') == 'finnhub' else "Cached",
+                                    "sparkline": []
+                                }
+                        except Exception as ps_err:
+                            print(f"Finnhub fallback error for {ticker}: {ps_err}")
                 except Exception as ex: print(f"Error processing {ticker}: {ex}")
 
             # 2. VIX Check
@@ -583,11 +603,12 @@ def update_market_status_worker():
                         "sparkline": [round(float(p), 2) for p in vix_close.tolist()]
                     }
                 else:
-                    # Fallback if download fails
-                    v_fi = yf.Ticker("^VIX").fast_info
-                    vp = getattr(v_fi, "last_price", 0)
-                    status["VIX"] = {"price": round(float(vp), 2), "level": "Low" if vp < 15 else ("High" if vp > 20 else "Elevated")}
-            except: pass
+                    # Fallback if download fails - use price_service (Finnhub doesn't support VIX directly)
+                    # Just set a default since VIX is not available via Finnhub
+                    status["VIX"] = {"price": 0, "level": "Unknown", "sparkline": []}
+            except Exception as vix_err: 
+                print(f"VIX error: {vix_err}")
+                status["VIX"] = {"price": 0, "level": "Unknown", "sparkline": []}
             
             # 2b. Bitcoin (BTC-USD)
             try:
@@ -606,8 +627,32 @@ def update_market_status_worker():
                             "color": "Green" if btc_chg > 0 else ("Red" if btc_chg < 0 else "Yellow"),
                             "sparkline": [round(float(p), 2) for p in btc_close.tolist()]
                         }
+                else:
+                    # Fallback to price_service (Finnhub) for BTC
+                    import price_service
+                    btc_price = price_service.get_crypto_price("BTC")
+                    if btc_price and btc_price.get('price'):
+                        status["BTC"] = {
+                            "price": round(btc_price.get('price'), 2),
+                            "change_24h": round(btc_price.get('change_pct', 0), 2),
+                            "color": "Green" if btc_price.get('change_pct', 0) > 0 else ("Red" if btc_price.get('change_pct', 0) < 0 else "Yellow"),
+                            "sparkline": []
+                        }
             except Exception as ex:
                 print(f"Error fetching BTC: {ex}")
+                # Try Finnhub as last resort
+                try:
+                    import price_service
+                    btc_price = price_service.get_crypto_price("BTC")
+                    if btc_price and btc_price.get('price'):
+                        status["BTC"] = {
+                            "price": round(btc_price.get('price'), 2),
+                            "change_24h": round(btc_price.get('change_pct', 0), 2),
+                            "color": "Yellow",
+                            "sparkline": []
+                        }
+                except:
+                    status["BTC"] = {"price": 0, "change_24h": 0, "color": "Yellow", "sparkline": []}
     except Exception as e:
         print(f"Error in primary indices: {e}")
 
