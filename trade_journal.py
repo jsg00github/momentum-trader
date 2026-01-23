@@ -596,8 +596,8 @@ def get_open_prices(current_user: models.User = Depends(auth.get_current_user), 
                     "ema_200": ema_200,
                     "rsi_weekly": rsi_summary,
                     "momentum_path": momentum_path,
-                    "extended_price": None,  # Premarket disabled for now
-                    "extended_change_pct": None,
+                    "extended_price": price_data.get('extended_price'), 
+                    "extended_change_pct": price_data.get('extended_change_pct'),
                     "is_premarket": False,
                     "is_postmarket": False,
                     "source": price_data.get('source', 'unknown')  # Debug: show data source
