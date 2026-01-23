@@ -2,6 +2,7 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
+import market_data
 
 def run_backtest(ticker: str, strategy: str = "momentum_trend"):
     """

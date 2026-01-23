@@ -15,7 +15,7 @@ OPTIONS_CACHE = {
 }
 
 def get_cached_options_flow():
-    global OPTIONS_CACHE
+    # global OPTIONS_CACHE # Not needed
     now = time.time()
     
     # Cache valid for 30 minutes
@@ -28,7 +28,7 @@ def get_cached_options_flow():
     return OPTIONS_CACHE["data"]
 
 def refresh_options_sync():
-    global OPTIONS_CACHE
+    # global OPTIONS_CACHE # Not needed
     if OPTIONS_CACHE["is_updating"]: return
     OPTIONS_CACHE["is_updating"] = True
     try:

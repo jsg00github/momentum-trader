@@ -11,6 +11,7 @@ import time
 import threading
 from typing import Dict, List, Optional
 import finnhub
+import pandas as pd
 
 # Lazy import yfinance to avoid slowing startup
 _yfinance = None
@@ -245,11 +246,21 @@ def get_crypto_price(symbol: str, use_cache: bool = True) -> dict:
     # Fallback to yfinance
     try:
         yf = get_yfinance()
-        ticker = yf.Ticker(f"{symbol}-USD")
-        info = ticker.fast_info
+        # Crypto symbols in yfinance are usually BTC-USD
+        yf_symbol = f"{symbol}-USD"
+        
+        # Use history() instead of fast_info to avoid hangs
+        t = yf.Ticker(yf_symbol)
+        hist = t.history(period="1d")
+        
+        if hist.empty:
+            return {'price': None, 'source': 'error', 'symbol': symbol}
+            
+        last_price = float(hist['Close'].iloc[-1])
+        
         data = {
-            'price': info.last_price,
-            'change': 0,
+            'price': last_price,
+            'change': 0, # simplified
             'change_pct': 0,
             'source': 'yfinance',
             'timestamp': time.time()
@@ -281,20 +292,27 @@ def get_argentina_price(ticker: str, use_cache: bool = True) -> dict:
         yf = get_yfinance()
         # Try with .BA suffix for BCBA
         yf_ticker = f"{ticker}.BA" if not ticker.endswith('.BA') else ticker
-        t = yf.Ticker(yf_ticker)
-        info = t.fast_info
         
-        prev_close = info.previous_close or info.last_price
-        change = info.last_price - prev_close if prev_close else 0
+        # Use history instead of fast_info
+        t = yf.Ticker(yf_ticker)
+        hist = t.history(period="2d") # Get 2 days to calc change
+        
+        if hist.empty:
+             return {'price': None, 'source': 'error', 'ticker': ticker}
+             
+        last_price = float(hist['Close'].iloc[-1])
+        prev_close = float(hist['Close'].iloc[-2]) if len(hist) > 1 else last_price
+        
+        change = last_price - prev_close
         change_pct = (change / prev_close * 100) if prev_close else 0
         
         data = {
-            'price': info.last_price,
+            'price': last_price,
             'change': change,
             'change_pct': change_pct,
-            'high': info.day_high,
-            'low': info.day_low,
-            'open': info.open,
+            'high': float(hist['High'].iloc[-1]),
+            'low': float(hist['Low'].iloc[-1]),
+            'open': float(hist['Open'].iloc[-1]),
             'prev_close': prev_close,
             'source': 'yfinance',
             'timestamp': time.time()
@@ -335,29 +353,48 @@ def _fetch_finnhub(ticker: str) -> dict:
 
 
 def _fetch_yfinance(ticker: str) -> dict:
-    """Fetch single ticker from yfinance."""
-    yf = get_yfinance()
-    t = yf.Ticker(ticker)
-    info = t.fast_info
-    
-    if not info or not info.last_price:
+    """Fetch single ticker from yfinance using download (more robust)."""
+    try:
+        yf = get_yfinance()
+        
+        # Use simple download to avoid fast_info hangs
+        # period="5d" to ensure we get previous close even after weekends/holidays
+        df = yf.download(ticker, period="5d", progress=False, threads=False)
+        
+        if df.empty:
+            return None
+            
+        # Handle MultiIndex columns if present (common in new yfinance)
+        if isinstance(df.columns, pd.MultiIndex):
+             # If columns are MultiIndex, the close column might be ('Close', 'AAPL') or similar
+             # We just want the 'Close' level
+             pass # yfinance download usually handles this unless multiple tickers passed
+
+        last_idx = -1
+        last_price = float(df['Close'].iloc[last_idx])
+        
+        # Find previous close (different day)
+        prev_close = last_price
+        if len(df) > 1:
+            prev_close = float(df['Close'].iloc[-2])
+            
+        change = last_price - prev_close
+        change_pct = (change / prev_close * 100) if prev_close else 0
+        
+        return {
+            'price': last_price,
+            'change': change,
+            'change_pct': change_pct,
+            'high': float(df['High'].iloc[-1]),
+            'low': float(df['Low'].iloc[-1]),
+            'open': float(df['Open'].iloc[-1]),
+            'prev_close': prev_close,
+            'source': 'yfinance',
+            'timestamp': time.time()
+        }
+    except Exception as e:
+        print(f"[PriceService] _fetch_yfinance error for {ticker}: {e}")
         return None
-    
-    prev_close = info.previous_close or info.last_price
-    change = info.last_price - prev_close if prev_close else 0
-    change_pct = (change / prev_close * 100) if prev_close else 0
-    
-    return {
-        'price': info.last_price,
-        'change': change,
-        'change_pct': change_pct,
-        'high': info.day_high,
-        'low': info.day_low,
-        'open': info.open,
-        'prev_close': prev_close,
-        'source': 'yfinance',
-        'timestamp': time.time()
-    }
 
 
 def _fetch_yfinance_batch(tickers: List[str]) -> Dict[str, dict]:

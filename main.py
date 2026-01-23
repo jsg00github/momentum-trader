@@ -1,4 +1,6 @@
 from fastapi import FastAPI, Request, Depends, HTTPException, status
+from dotenv import load_dotenv
+load_dotenv() # Load environment variables early
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -122,7 +124,7 @@ def process_ticker(ticker, use_cache=True, strategy="rally_3m"):
                 # Determine period based on strategy
                 period = screener.PERIOD
                 if strategy == "weekly_rsi":
-                    period = "1y" # Need more history for Weekly RSI
+                    period = "2y" # Need more history for Weekly RSI + SMA 200
 
                 # Use auto_adjust=False as verified in Colab to match results
                 # CRITICAL: threads=False prevents yfinance from grouping multiple ticker downloads
@@ -197,10 +199,12 @@ def run_scan(req: ScanRequest, background_tasks: BackgroundTasks):
     import scan_engine # Lazy import to avoid circular dep early on
     
     # Reset status if it was already finished
-    if not scan_engine.SCAN_STATUS["is_running"]:
-        scan_engine.SCAN_STATUS["current"] = 0
-        scan_engine.SCAN_STATUS["total"] = req.limit
-        scan_engine.SCAN_STATUS["results"] = []
+    if scan_engine.SCAN_STATUS["is_running"]:
+        return {"status": "error", "message": "Scan already in progress", "limit": req.limit}
+    
+    scan_engine.SCAN_STATUS["current"] = 0
+    scan_engine.SCAN_STATUS["total"] = req.limit
+    scan_engine.SCAN_STATUS["results"] = []
     
     background_tasks.add_task(scan_engine.run_market_scan, limit=req.limit, strategy=req.strategy)
     return {"status": "scanning", "message": "Scan initiated in background", "limit": req.limit}
