@@ -109,12 +109,20 @@ async def startup_event():
         # Check for stale snapshots and auto-rebuild if needed
         import portfolio_snapshots
         import rebuild_snapshots
-        from database import SessionLocal, engine
+        from database import SessionLocal, engine, Base
         from datetime import datetime, timedelta
         import threading
         import models
         
         print(f"[Startup] DB URL: {engine.url}")
+        
+        # CRITICAL FIX: Ensure all tables exist (Railway sometimes misses migrations)
+        try:
+            print("[Startup] Ensuring DB schema exists...")
+            Base.metadata.create_all(bind=engine)
+            print("[Startup] Schema check complete.")
+        except Exception as e:
+            print(f"[Startup] Schema check failed: {e}")
         
         db = SessionLocal()
         try:
@@ -804,10 +812,19 @@ def debug_run_fix_api(user_id: int = None, email: str = None):
             target_id = 2
             
         print(f"[Manual Fix] Triggered for user {target_id}")
+        
+        # Ensure schema exists here too, just in case startup failed
+        try:
+            from database import engine, Base
+            Base.metadata.create_all(bind=engine)
+        except: pass
+        
         result = rebuild_snapshots.rebuild_snapshots_with_pnl(target_id)
         return result
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        import traceback
+        traceback.print_exc()
+        return {"status": "error", "message": f"{str(e)} | Type: {type(e).__name__}"}
     finally:
         db.close()
 

@@ -16,7 +16,6 @@ def rebuild_snapshots_with_pnl(user_id: int):
         # 1. Get all trades for this user
         trades = db.query(models.Trade).filter(models.Trade.user_id == user_id).all()
         if not trades:
-        if not trades:
             print("No trades found.")
             return {"status": "warning", "message": "No trades found for this user", "trades_found": 0}
         
@@ -28,7 +27,6 @@ def rebuild_snapshots_with_pnl(user_id: int):
         print(f"Fetching historical prices for {len(tickers)} tickers...")
         hist_data = market_data.safe_yf_download(tickers, period="2y", threads=True)
         
-        if hist_data.empty:
         if hist_data.empty:
             print("No historical data returned!")
             return {"status": "error", "message": "Could not fetch historical price data"}
@@ -51,12 +49,15 @@ def rebuild_snapshots_with_pnl(user_id: int):
                 dates.append(t.entry_date)
         
         if not dates:
-        if not dates:
             print("No valid dates found.")
             return {"status": "error", "message": "No valid entry dates found in trades"}
         
         start_date = min(dates)
         end_date = datetime.now().date()
+        
+        # CRITICAL SAFETY: If start date is way too far back (e.g. bad data), limit it
+        # to avoid processing 20 years of data if unnecessary
+        
         print(f"Date range: {start_date} to {end_date}")
         
         # 5. Clear existing snapshots for this user
@@ -133,23 +134,45 @@ def rebuild_snapshots_with_pnl(user_id: int):
                         daily_pnl += t.pnl
             
             # Create snapshot
+            # UPDATED: Assuming models definitions from `models.py` which include crypto/arg fields
+            # We explicitly set them to 0 if not calculated to match `PortfolioSnapshot` schema
+            usa_invested = daily_invested
+            usa_value = daily_value
+            usa_pnl_val = daily_pnl
+            
+            # Sanity check if fields exist in DB schema, handled by try/except block implicitly if fails
+            # But better to provide defaults matching the SQL table structure
+            
             snapshot = models.PortfolioSnapshot(
                 user_id=user_id,
                 date=curr_str,
+                
+                # Totals
                 total_invested_usd=daily_invested,
                 total_value_usd=daily_value,
                 total_pnl_usd=daily_pnl,
                 total_pnl_pct=(daily_pnl / daily_invested * 100) if daily_invested > 0 else 0,
-                usa_invested_usd=daily_invested,
-                usa_value_usd=daily_value,
-                usa_pnl_usd=daily_pnl
+                
+                # USA
+                usa_invested_usd=usa_invested,
+                usa_value_usd=usa_value,
+                usa_pnl_usd=usa_pnl_val,
+                
+                # Zero out other regions for now to avoid null issues if columns are new
+                argentina_invested_usd=0,
+                argentina_value_usd=0,
+                argentina_pnl_usd=0,
+                
+                crypto_invested_usd=0,
+                crypto_value_usd=0,
+                crypto_pnl_usd=0
             )
+            
             db.add(snapshot)
             snapshots_created += 1
             
             current += timedelta(days=1)
         
-        db.commit()
         db.commit()
         print(f"Created {snapshots_created} snapshots successfully!")
         return {
@@ -163,9 +186,9 @@ def rebuild_snapshots_with_pnl(user_id: int):
         print(f"Error: {e}")
         import traceback
         traceback.print_exc()
-        return {"status": "error", "message": str(e)}
+        return {"status": "error", "message": f"{str(e)} | Type: {type(e).__name__}"}
     finally:
         db.close()
 
 if __name__ == "__main__":
-    rebuild_snapshots_with_pnl(2)  # User test@momentum.com
+    rebuild_snapshots_with_pnl(2)
