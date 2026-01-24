@@ -730,6 +730,68 @@ def backfill_snapshots_api(files: bool = False):
         return {"status": "error", "message": str(e)}
 
 # -----------------------------------------------------
+# DEBUG / ADMIN TOOLS
+# -----------------------------------------------------
+@app.get("/api/debug/status")
+def debug_status_api():
+    """Diagnostic endpoint to inspect DB state in production"""
+    from database import SessionLocal, engine
+    import models
+    from sqlalchemy import text
+    import os
+    
+    db = SessionLocal()
+    try:
+        # 1. DB Connection
+        db_url = str(engine.url)
+        if "@" in db_url:
+            db_url = "...@" + db_url.split("@")[-1] # Redact
+            
+        # 2. Users & Stats
+        users = db.query(models.User).all()
+        user_stats = []
+        for u in users:
+            t_count = db.query(models.Trade).filter(models.Trade.user_id == u.id).count()
+            s_count = db.query(models.PortfolioSnapshot).filter(models.PortfolioSnapshot.user_id == u.id).count()
+            
+            # Get latest snapshot
+            latest = db.query(models.PortfolioSnapshot).filter(
+                models.PortfolioSnapshot.user_id == u.id
+            ).order_by(models.PortfolioSnapshot.date.desc()).first()
+            
+            user_stats.append({
+                "id": u.id,
+                "email": u.email,
+                "trade_count": t_count,
+                "snapshot_count": s_count,
+                "latest_snapshot": latest.date if latest else None
+            })
+            
+        return {
+            "environment": {
+                "cwd": os.getcwd(),
+                "db_url": db_url,
+                "server_time": datetime.now().isoformat()
+            },
+            "users": user_stats
+        }
+    except Exception as e:
+        return {"error": str(e)}
+    finally:
+        db.close()
+
+@app.get("/api/debug/fix")
+def debug_run_fix_api(user_id: int = 2):
+    """Manually trigger snapshot rebuild (accessible via browser)"""
+    import rebuild_snapshots
+    try:
+        print(f"[Manual Fix] Triggered for user {user_id}")
+        rebuild_snapshots.rebuild_snapshots_with_pnl(user_id)
+        return {"status": "success", "message": f"Rebuild complete for user {user_id}"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+# -----------------------------------------------------
 # Sharpe Portfolio Endpoints (Fundamental Analysis)
 # -----------------------------------------------------
 import fundamental_screener
