@@ -781,15 +781,35 @@ def debug_status_api():
         db.close()
 
 @app.get("/api/debug/fix")
-def debug_run_fix_api(user_id: int = 2):
+def debug_run_fix_api(user_id: int = None, email: str = None):
     """Manually trigger snapshot rebuild (accessible via browser)"""
     import rebuild_snapshots
+    from database import SessionLocal
+    import models
+    
+    db = SessionLocal()
     try:
-        print(f"[Manual Fix] Triggered for user {user_id}")
-        rebuild_snapshots.rebuild_snapshots_with_pnl(user_id)
-        return {"status": "success", "message": f"Rebuild complete for user {user_id}"}
+        target_id = user_id
+        
+        # If email provided, look up user
+        if email:
+            u = db.query(models.User).filter(models.User.email == email).first()
+            if u:
+                target_id = u.id
+            else:
+                return {"status": "error", "message": f"User with email {email} not found"}
+        
+        # Default to 2 if nothing provided
+        if target_id is None:
+            target_id = 2
+            
+        print(f"[Manual Fix] Triggered for user {target_id}")
+        result = rebuild_snapshots.rebuild_snapshots_with_pnl(target_id)
+        return result
     except Exception as e:
         return {"status": "error", "message": str(e)}
+    finally:
+        db.close()
 
 # -----------------------------------------------------
 # Sharpe Portfolio Endpoints (Fundamental Analysis)

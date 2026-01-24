@@ -16,8 +16,9 @@ def rebuild_snapshots_with_pnl(user_id: int):
         # 1. Get all trades for this user
         trades = db.query(models.Trade).filter(models.Trade.user_id == user_id).all()
         if not trades:
+        if not trades:
             print("No trades found.")
-            return
+            return {"status": "warning", "message": "No trades found for this user", "trades_found": 0}
         
         # 2. Get unique tickers
         tickers = list(set([t.ticker for t in trades if t.ticker]))
@@ -28,8 +29,9 @@ def rebuild_snapshots_with_pnl(user_id: int):
         hist_data = market_data.safe_yf_download(tickers, period="2y", threads=True)
         
         if hist_data.empty:
+        if hist_data.empty:
             print("No historical data returned!")
-            return
+            return {"status": "error", "message": "Could not fetch historical price data"}
         
         # Extract Close prices
         if len(tickers) == 1:
@@ -49,8 +51,9 @@ def rebuild_snapshots_with_pnl(user_id: int):
                 dates.append(t.entry_date)
         
         if not dates:
+        if not dates:
             print("No valid dates found.")
-            return
+            return {"status": "error", "message": "No valid entry dates found in trades"}
         
         start_date = min(dates)
         end_date = datetime.now().date()
@@ -147,12 +150,20 @@ def rebuild_snapshots_with_pnl(user_id: int):
             current += timedelta(days=1)
         
         db.commit()
+        db.commit()
         print(f"Created {snapshots_created} snapshots successfully!")
-        
+        return {
+            "status": "success", 
+            "trades_found": len(trades), 
+            "snapshots_created": snapshots_created,
+            "period": f"{start_date} to {end_date}"
+        }
+            
     except Exception as e:
         print(f"Error: {e}")
         import traceback
         traceback.print_exc()
+        return {"status": "error", "message": str(e)}
     finally:
         db.close()
 
