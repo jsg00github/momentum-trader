@@ -23,6 +23,7 @@ def rebuild_snapshots_with_pnl(user_id: int):
         try:
             arg_positions = db.query(models.ArgentinaPosition).filter(models.ArgentinaPosition.user_id == user_id).all()
         except:
+            db.rollback() # Reset transaction if table missing
             arg_positions = []
             print("Warning: Could not fetch Argentina positions (table might be missing)")
             
@@ -30,6 +31,7 @@ def rebuild_snapshots_with_pnl(user_id: int):
         try:
             crypto_positions = db.query(models.CryptoPosition).filter(models.CryptoPosition.user_id == user_id).all()
         except:
+            db.rollback() # Reset transaction if table missing
             crypto_positions = []
             print("Warning: Could not fetch Crypto positions (table might be missing)")
 
