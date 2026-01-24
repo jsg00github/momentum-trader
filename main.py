@@ -101,6 +101,66 @@ class ScanRequest(BaseModel):
 class AnalyzeRequest(BaseModel):
     ticker: str
 
+@app.on_event("startup")
+async def startup_event():
+    """Run startup checks and self-healing tasks"""
+    try:
+        import os
+        # Check for stale snapshots and auto-rebuild if needed
+        import portfolio_snapshots
+        import rebuild_snapshots
+        from database import SessionLocal, engine
+        from datetime import datetime, timedelta
+        import threading
+        import models
+        
+        print(f"[Startup] DB URL: {engine.url}")
+        
+        db = SessionLocal()
+        try:
+            # Check user 2 specifically
+            user2 = db.query(models.User).filter(models.User.id == 2).first()
+            user_count = db.query(models.User).count()
+            
+            # Force rebuild for User 2 if it exists, or first user
+            target_user = 2 if user2 else (db.query(models.User).first().id if user_count > 0 else None)
+            
+            if target_user:
+                # Check freshness
+                latest = portfolio_snapshots.get_latest(target_user, db)
+                should_rebuild = False
+                
+                if not latest:
+                    print(f"[Startup] No snapshots found for User {target_user}. Scheduling initial build.")
+                    should_rebuild = True
+                else:
+                    last_date_str = latest.get('date')
+                    if last_date_str:
+                        last_date = datetime.strptime(last_date_str, "%Y-%m-%d").date()
+                        days_lag = (datetime.now().date() - last_date).days
+                        if days_lag > 0: # Rebuild if missing even 1 day
+                            print(f"[Startup] Snapshots are stale by {days_lag} days (Last: {last_date}). Scheduling rebuild.")
+                            should_rebuild = True
+                        else:
+                            print(f"[Startup] Snapshots are up to date (Last: {last_date}).")
+                
+                if should_rebuild:
+                    print(f"[Startup] Triggering background rebuild for User {target_user}...")
+                    # Run in background thread to avoid blocking startup
+                    thread = threading.Thread(target=rebuild_snapshots.rebuild_snapshots_with_pnl, args=(target_user,))
+                    thread.daemon = True
+                    thread.start()
+            else:
+                print("[Startup] No target user found for snapshot check.")
+                
+        except Exception as e:
+            print(f"[Startup] Error checking DB/Snapshots: {e}")
+        finally:
+            db.close()
+            
+    except Exception as e:
+        print(f"[Startup] Global startup error: {str(e)}")
+
 import time
 import random
 
@@ -267,6 +327,15 @@ async def scheduled_reports_loop():
                 if last_sent["POST_MARKET"] != current_date:
                     alerts.send_scheduled_briefing("POST_MARKET")
                     last_sent["POST_MARKET"] = current_date
+                    
+                    # --- AUTO SNAPSHOT ---
+                    print(f"[{now}] Taking Daily Portfolio Snapshot...")
+                    try:
+                        import portfolio_snapshots
+                        portfolio_snapshots.take_snapshot()
+                        print(f"[{now}] Snapshot complete.")
+                    except Exception as e:
+                        print(f"[{now}] Snapshot failed: {e}")
                 
                 if last_sent["SCAN"] != current_date:
                     print(f"[{now}] Running Post-Market Automated Scan...")
@@ -643,6 +712,22 @@ def run_scan_now():
     if filepath:
         return {"status": "complete", "report": filepath}
     return {"status": "error", "message": "Scan failed"}
+
+@app.post("/api/snapshots/backfill")
+def backfill_snapshots_api(files: bool = False):
+    """Trigger manual backfill of portfolio snapshots"""
+    import rebuild_snapshots
+    from database import SessionLocal
+    import models
+    
+    try:
+        # Default to user 2 as observed in codebase
+        # TODO: Make this dynamic based on auth if needed, but this is an admin/fix tool
+        user_id = 2 
+        rebuild_snapshots.rebuild_snapshots_with_pnl(user_id)
+        return {"status": "complete", "message": "Backfill triggered successfully"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 # -----------------------------------------------------
 # Sharpe Portfolio Endpoints (Fundamental Analysis)
