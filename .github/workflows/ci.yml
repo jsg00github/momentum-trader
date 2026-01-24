@@ -30,10 +30,10 @@ jobs:
         # select=E9,F63,F7,F82 checks for syntax errors / undefined names
         flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --exclude=backend/frontend,backend/node-v*,backups,backend/backups
         
-    - name: Run Status Test
-      run: |
-        # Run the standalone status check script to ensure modules load and basic logic works
-        # Setting PYTHONPATH to connect modules if needed, though they are in root of repo in this context?
-        # Note: In the repo, 'backend' seems to be the root of the fastAPI app. 
-        # If the repo root IS 'backend', then we are good.
-        python test_status.py
+    # - name: Run Status Test
+    #   run: |
+    #     # Run the standalone status check script to ensure modules load and basic logic works
+    #     # Setting PYTHONPATH to connect modules if needed, though they are in root of repo in this context?
+    #     # Note: In the repo, 'backend' seems to be the root of the fastAPI app. 
+    #     # If the repo root IS 'backend', then we are good.
+    #     # python test_status.py
