@@ -27,6 +27,18 @@ import auth
 # Create Tables
 Base.metadata.create_all(bind=engine)
 
+    # --- AUTO MIGRATION (Fixes 500 Error on Crypto) ---
+try:
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        conn.execute(text("ALTER TABLE crypto_positions ADD COLUMN IF NOT EXISTS entry_date VARCHAR"))
+        conn.execute(text("ALTER TABLE crypto_positions ADD COLUMN IF NOT EXISTS exit_date VARCHAR"))
+        conn.commit()
+        print("[Migration] Checked/Added missing columns to crypto_positions")
+except Exception as e:
+    print(f"[Migration] Warning (non-critical): {e}")
+# --------------------------------------------------
+
 # Import trade journal router
 import trade_journal
 from trade_journal import router as trade_router
@@ -1315,6 +1327,7 @@ async def startup_event():
     print("[Startup] Portfolio snapshot scheduler initialized")
 
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from database import get_db
 
 @app.get("/api/portfolio/snapshots")
@@ -1346,7 +1359,8 @@ def get_portfolio_benchmark(current_user: models.User = Depends(auth.get_current
         import yfinance as yf
         
         # Get last 90 days of snapshots
-        cutoff_date = (datetime.now() - timedelta(days=90)).date()
+        # FIX: Convert date to string YYYY-MM-DD because DB stores date as VARCHAR
+        cutoff_date = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
         
         snapshots = db.query(models.PortfolioSnapshot).filter(
             models.PortfolioSnapshot.user_id == current_user.id,
