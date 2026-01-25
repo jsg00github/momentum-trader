@@ -212,6 +212,14 @@ def get_history(user_id: int, days: int = 365, db: Session = None):
                 "usa_invested_usd": clean_nan(s.usa_invested_usd),
                 "usa_value_usd": clean_nan(s.usa_value_usd),
                 "usa_pnl_usd": clean_nan(s.usa_pnl_usd),
+                # Argentina
+                "argentina_invested_usd": clean_nan(s.argentina_invested_usd),
+                "argentina_value_usd": clean_nan(s.argentina_value_usd),
+                "argentina_pnl_usd": clean_nan(s.argentina_pnl_usd),
+                # Crypto
+                "crypto_invested_usd": clean_nan(s.crypto_invested_usd),
+                "crypto_value_usd": clean_nan(s.crypto_value_usd),
+                "crypto_pnl_usd": clean_nan(s.crypto_pnl_usd),
                 # Additional fields for frontend charts
                 "total_equity": current_value,
                 "dailyChange": round(daily_change, 2),
