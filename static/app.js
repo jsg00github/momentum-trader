@@ -7413,6 +7413,28 @@ function SharpePortfolioView() {
     );
 }
 
+// Debug Component
+function DebugStatusChecker() {
+    const [data, setData] = useState(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        authFetch(`${API_BASE}/debug/portfolio-check`)
+            .then(res => res.json())
+            .then(d => { setData(d); setLoading(false); })
+            .catch(err => { console.error(err); setLoading(false); });
+    }, []);
+
+    if (loading) return <span className="text-xs text-slate-500">Checking DB...</span>;
+    if (!data) return <span className="text-xs text-red-500">Debug check failed</span>;
+
+    return (
+        <div className="text-xs font-mono text-slate-300 bg-black/50 p-2 rounded">
+            <pre>{JSON.stringify(data, null, 2)}</pre>
+        </div>
+    );
+}
+
 // Portfolio Dashboard View Component (Unified Multi-Currency)
 function PortfolioDashboardView() {
     const [metrics, setMetrics] = useState(null);
@@ -7689,6 +7711,15 @@ function PortfolioDashboardView() {
                     </button>
                 </div>
             </div>
+
+            {/* DEBUG ALERT: Show if data seems empty */}
+            {metrics && metrics.usa && metrics.usa.invested_usd === 0 && (
+                <div className="mb-6 p-4 bg-yellow-900/20 border border-yellow-700/50 rounded-lg">
+                    <h3 className="text-yellow-400 font-bold flex items-center gap-2">⚠️ Debug Info: Zero Data Detected</h3>
+                    <p className="text-slate-400 text-xs mb-2">Fetching DB status counts to diagnose...</p>
+                    <DebugStatusChecker />
+                </div>
+            )}
 
             {/* Currency Selector */}
             <div className="flex items-center gap-4 mb-6">

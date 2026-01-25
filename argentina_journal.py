@@ -65,12 +65,13 @@ def api_get_positions(status: str = "open", current_user: models.User = Depends(
     
     # Actually, legacy schema had status default 'open'. 
     
+    
     query = db.query(models.ArgentinaPosition).filter(models.ArgentinaPosition.user_id == current_user.id)
     
     if status:
         # Filter by status (OPEN/CLOSED)
         # We use strict string matching or case insensitive
-        query = query.filter(models.ArgentinaPosition.status == status.upper())
+        query = query.filter(models.ArgentinaPosition.status.in_([status.upper(), status.capitalize()]))
     
     positions = query.all()
     
@@ -156,7 +157,9 @@ def api_add_position(pos: ArgentinaPositionCreate, current_user: models.User = D
         option_strike=pos.option_strike,
         option_expiry=pos.option_expiry,
         option_type=pos.option_type,
-        status="OPEN",
+        option_expiry=pos.option_expiry,
+        option_type=pos.option_type,
+        status="OPEN", # Default consistency
         underlying_country=underlying_country,
         manual_price=pos.manual_price
     )
@@ -343,7 +346,7 @@ def api_get_prices(current_user: models.User = Depends(auth.get_current_user), d
     
     positions = db.query(models.ArgentinaPosition).filter(
         models.ArgentinaPosition.user_id == current_user.id,
-        models.ArgentinaPosition.status == "OPEN"
+        models.ArgentinaPosition.status.in_(["OPEN", "Open"])
     ).all()
     
     prices = {}
@@ -695,7 +698,7 @@ def api_trades_list(status: str = None, current_user: models.User = Depends(auth
     query = db.query(models.ArgentinaPosition).filter(models.ArgentinaPosition.user_id == current_user.id)
     
     if status:
-        query = query.filter(models.ArgentinaPosition.status == status.upper())
+        query = query.filter(models.ArgentinaPosition.status.in_([status.upper(), status.capitalize()]))
     
     positions = query.order_by(models.ArgentinaPosition.entry_date.desc()).all()
     
@@ -787,7 +790,7 @@ def api_analytics_open(current_user: models.User = Depends(auth.get_current_user
     # Get open positions
     open_positions = db.query(models.ArgentinaPosition).filter(
         models.ArgentinaPosition.user_id == current_user.id,
-        models.ArgentinaPosition.status == "OPEN"
+        models.ArgentinaPosition.status.in_(["OPEN", "Open"])
     ).all()
     
     total_invested_ars = 0

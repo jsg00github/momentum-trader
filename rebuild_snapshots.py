@@ -192,7 +192,7 @@ def rebuild_snapshots_with_pnl(user_id: int):
                 # Ideally check exit.
                 
                 is_active = p_entry <= current # simplified
-                if p.status == "CLOSED" and p.exit_date:
+                if p.status and p.status.upper() == "CLOSED" and p.exit_date:
                      try: 
                         p_exit = datetime.strptime(p.exit_date, "%Y-%m-%d").date()
                         if current >= p_exit: is_active = False # It's closed

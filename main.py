@@ -110,6 +110,35 @@ class ScanRequest(BaseModel):
     limit: int = 20000 
     strategy: str = "weekly_rsi" # rally_3m, weekly_rsi
 
+@app.get("/api/debug/portfolio-check")
+def debug_portfolio_check(db: Session = Depends(get_db)):
+    """Debug endpoint to inspect raw table counts and statuses."""
+    from sqlalchemy import text
+    try:
+        results = {}
+        
+        # Check Trades (USA)
+        usa_raw = db.execute(text("SELECT status, COUNT(*) FROM trades GROUP BY status")).fetchall()
+        results["usa_statuses"] = {row[0]: row[1] for row in usa_raw}
+        
+        # Check Argentina
+        try:
+            arg_raw = db.execute(text("SELECT status, COUNT(*) FROM argentina_positions GROUP BY status")).fetchall()
+            results["arg_statuses"] = {row[0]: row[1] for row in arg_raw}
+        except Exception as e:
+             results["arg_error"] = str(e)
+
+        # Check Crypto
+        try:
+            crypto_raw = db.execute(text("SELECT status, COUNT(*) FROM crypto_positions GROUP BY status")).fetchall()
+            results["crypto_statuses"] = {row[0]: row[1] for row in crypto_raw}
+        except Exception as e:
+            results["crypto_error"] = str(e)
+            
+        return results
+    except Exception as e:
+        return {"error": str(e)}
+
 class AnalyzeRequest(BaseModel):
     ticker: str
 

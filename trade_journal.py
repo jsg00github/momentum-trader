@@ -960,10 +960,13 @@ def get_unified_metrics(current_user: models.User = Depends(auth.get_current_use
     ccl = rates.get("ccl", 1200)
     
     # 2. USA Metrics (from local Trade table)
+    # Fix: Case-insensitive status check for Postgres
     usa_trades = db.query(models.Trade).filter(
         models.Trade.user_id == current_user.id,
-        models.Trade.status == "OPEN"
+        models.Trade.status.in_(["OPEN", "Open"])
     ).all()
+    
+    print(f"[Unified Metrics] Found {len(usa_trades)} OPEN USA trades")
     
     usa_invested = sum([t.entry_price * t.shares for t in usa_trades])
     usa_pnl = 0
@@ -993,8 +996,10 @@ def get_unified_metrics(current_user: models.User = Depends(auth.get_current_use
     # 3. Argentina Metrics
     arg_pos = db.query(models.ArgentinaPosition).filter(
         models.ArgentinaPosition.user_id == current_user.id,
-        models.ArgentinaPosition.status == "OPEN"
+        models.ArgentinaPosition.status.in_(["OPEN", "Open"])
     ).all()
+    
+    print(f"[Unified Metrics] Found {len(arg_pos)} OPEN ARG positions")
     
     arg_invested_ars = sum([p.entry_price * p.shares for p in arg_pos])
     arg_pnl_ars = 0
