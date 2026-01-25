@@ -159,8 +159,12 @@ def rebuild_snapshots_with_pnl(user_id: int):
                     usa_value += val
                     usa_pnl_val += (val - cost)
                 
-                if is_closed and t.pnl:
-                    usa_pnl_val += t.pnl
+                if is_closed:
+                    if t.pnl is not None:
+                        usa_pnl_val += t.pnl
+                    elif t.exit_price is not None and t.entry_price is not None:
+                        # Fallback: Calculate if missing in DB
+                        usa_pnl_val += (t.exit_price - t.entry_price) * t.shares
 
             # --- Argentina Calc ---
             arg_invested_usd = 0
