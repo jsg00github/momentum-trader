@@ -772,7 +772,14 @@ def debug_status_api():
                 "email": u.email,
                 "trade_count": t_count,
                 "snapshot_count": s_count,
-                "latest_snapshot": latest.date if latest else None
+                "latest_snapshot": latest.date if latest else None,
+                "latest_details": {
+                    "invested": latest.total_invested_usd,
+                    "value": latest.total_value_usd,
+                    "pnl": latest.total_pnl_usd,
+                    "usa_invested": latest.usa_invested_usd,
+                    "arg_invested": latest.argentina_invested_usd
+                } if latest else None
             })
             
         return {
