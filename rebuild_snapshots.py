@@ -267,7 +267,16 @@ def rebuild_snapshots_with_pnl(user_id: int):
             "arg_found": len(arg_positions),
             "crypto_found": len(crypto_positions),
             "snapshots_created": snapshots_created,
-            "latest_ccl": ccl_rate
+            "latest_ccl": ccl_rate,
+            "debug_totals": {
+                "invested": total_invested,
+                "value": total_value,
+                "pnl": total_pnl,
+                "usa_invested": usa_invested,
+                "usa_pnl": usa_pnl_val,
+                "arg_invested": arg_invested_usd,
+                "crypto_invested": crypto_invested
+            }
         }
 
     except Exception as e:
