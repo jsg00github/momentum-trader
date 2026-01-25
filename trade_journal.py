@@ -960,13 +960,23 @@ def get_unified_metrics(current_user: models.User = Depends(auth.get_current_use
     ccl = rates.get("ccl", 1200)
     
     # 2. USA Metrics (from local Trade table)
-    # Fix: Case-insensitive status check for Postgres
-    usa_trades = db.query(models.Trade).filter(
-        models.Trade.user_id == current_user.id,
-        models.Trade.status.in_(["OPEN", "Open"])
+    # Fix: Case-insensitive status check for Postgres - include ALL common variations
+    # Also log ALL trades for the user to diagnose status values
+    all_usa_trades = db.query(models.Trade).filter(
+        models.Trade.user_id == current_user.id
     ).all()
     
-    print(f"[Unified Metrics] Found {len(usa_trades)} OPEN USA trades")
+    # Log status breakdown
+    status_counts = {}
+    for t in all_usa_trades:
+        s = t.status or "NULL"
+        status_counts[s] = status_counts.get(s, 0) + 1
+    print(f"[Unified Metrics] User {current_user.id} ALL USA trades: {len(all_usa_trades)}, Status breakdown: {status_counts}")
+    
+    # Filter for OPEN trades (case-insensitive)
+    usa_trades = [t for t in all_usa_trades if t.status and t.status.upper() == "OPEN"]
+    
+    print(f"[Unified Metrics] Found {len(usa_trades)} OPEN USA trades (after filter)")
     
     usa_invested = sum([t.entry_price * t.shares for t in usa_trades])
     usa_pnl = 0
@@ -994,12 +1004,21 @@ def get_unified_metrics(current_user: models.User = Depends(auth.get_current_use
                 usa_pnl = sum([t.pnl for t in usa_trades if t.pnl is not None])
     
     # 3. Argentina Metrics
-    arg_pos = db.query(models.ArgentinaPosition).filter(
-        models.ArgentinaPosition.user_id == current_user.id,
-        models.ArgentinaPosition.status.in_(["OPEN", "Open"])
+    all_arg_pos = db.query(models.ArgentinaPosition).filter(
+        models.ArgentinaPosition.user_id == current_user.id
     ).all()
     
-    print(f"[Unified Metrics] Found {len(arg_pos)} OPEN ARG positions")
+    # Log status breakdown
+    arg_status_counts = {}
+    for p in all_arg_pos:
+        s = p.status or "NULL"
+        arg_status_counts[s] = arg_status_counts.get(s, 0) + 1
+    print(f"[Unified Metrics] User {current_user.id} ALL ARG positions: {len(all_arg_pos)}, Status breakdown: {arg_status_counts}")
+    
+    # Filter for OPEN (case-insensitive)
+    arg_pos = [p for p in all_arg_pos if p.status and p.status.upper() == "OPEN"]
+    
+    print(f"[Unified Metrics] Found {len(arg_pos)} OPEN ARG positions (after filter)")
     
     arg_invested_ars = sum([p.entry_price * p.shares for p in arg_pos])
     arg_pnl_ars = 0
