@@ -32,9 +32,17 @@ Base.metadata.create_all(bind=engine)
 try:
     from sqlalchemy import text
     with engine.connect() as conn:
+        # Add ALL columns that might be missing from crypto_positions
         conn.execute(text("ALTER TABLE crypto_positions ADD COLUMN IF NOT EXISTS entry_date VARCHAR"))
         conn.execute(text("ALTER TABLE crypto_positions ADD COLUMN IF NOT EXISTS exit_date VARCHAR"))
         conn.execute(text("ALTER TABLE crypto_positions ADD COLUMN IF NOT EXISTS exit_price FLOAT"))
+        conn.execute(text("ALTER TABLE crypto_positions ADD COLUMN IF NOT EXISTS status VARCHAR DEFAULT 'OPEN'"))
+        conn.execute(text("ALTER TABLE crypto_positions ADD COLUMN IF NOT EXISTS strategy VARCHAR"))
+        conn.execute(text("ALTER TABLE crypto_positions ADD COLUMN IF NOT EXISTS stop_loss FLOAT"))
+        conn.execute(text("ALTER TABLE crypto_positions ADD COLUMN IF NOT EXISTS target FLOAT"))
+        conn.execute(text("ALTER TABLE crypto_positions ADD COLUMN IF NOT EXISTS notes TEXT"))
+        conn.execute(text("ALTER TABLE crypto_positions ADD COLUMN IF NOT EXISTS initial_risk FLOAT"))
+        conn.execute(text("ALTER TABLE crypto_positions ADD COLUMN IF NOT EXISTS created_at TIMESTAMP"))
         conn.commit()
         print("[Migration] Checked/Added missing columns to crypto_positions")
 except Exception as e:
