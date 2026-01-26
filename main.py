@@ -125,7 +125,7 @@ def force_refresh_prices(current_user: models.User = Depends(auth.get_current_us
 # API Models
 class ScanRequest(BaseModel):
     limit: int = 20000 
-    strategy: str = "weekly_rsi" # rally_3m, weekly_rsi
+    strategy: str = "weekly_rsi"  # rally_3m, weekly_rsi, vcp
 
 @app.get("/api/debug/portfolio-check")
 def debug_portfolio_check(db: Session = Depends(get_db)):

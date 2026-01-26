@@ -286,6 +286,200 @@ def scan_rsi_crossover(df: pd.DataFrame):
     return None
 
 
+def scan_vcp_pattern(df: pd.DataFrame, ticker: str = None):
+    """
+    Scanner for VCP (Volatility Contraction Pattern) - Mark Minervini style.
+    Looks for:
+    - Price in Stage 2 uptrend (above 50 & 200 SMA)
+    - Series of contracting price pivots
+    - Volume drying up during contraction
+    - Tight final consolidation
+    - Relative Strength vs SPY > 0
+    
+    Returns dict with VCP metrics or None if not found.
+    """
+    if df is None or df.empty:
+        return None
+    
+    df = indicators.normalize_dataframe(df)
+    df = df.sort_index().dropna()
+    
+    # Need enough data for 200 SMA + analysis window
+    if len(df) < 250:
+        return None
+    
+    close = df['Close'].values
+    high = df['High'].values
+    low = df['Low'].values
+    volume = df['Volume'].values
+    
+    last_close = close[-1]
+    last_date = df.index[-1]
+    
+    # --- STAGE 2 UPTREND CHECK ---
+    sma_50 = pd.Series(close).rolling(50).mean().values
+    sma_200 = pd.Series(close).rolling(200).mean().values
+    
+    # Price must be above both SMAs
+    if last_close < sma_50[-1] or last_close < sma_200[-1]:
+        return None
+    
+    # 50 SMA must be above 200 SMA (bullish structure)
+    if sma_50[-1] < sma_200[-1]:
+        return None
+    
+    # --- RELATIVE STRENGTH CALCULATION ---
+    # Calculate RS vs starting point (simple momentum measure)
+    price_30d_ago = close[-30] if len(close) > 30 else close[0]
+    rs_30d = ((last_close / price_30d_ago) - 1) * 100
+    
+    # --- FIND CONTRACTIONS ---
+    # Look for series of lower highs and higher lows over last 60 days
+    analysis_window = 60
+    window_high = high[-analysis_window:]
+    window_low = low[-analysis_window:]
+    window_close = close[-analysis_window:]
+    
+    # Divide into 3-4 segments and check for contraction
+    segment_size = analysis_window // 4
+    contractions = []
+    
+    for i in range(4):
+        start = i * segment_size
+        end = (i + 1) * segment_size
+        seg_high = window_high[start:end].max()
+        seg_low = window_low[start:end].min()
+        seg_range = seg_high - seg_low
+        seg_range_pct = (seg_range / seg_low) * 100 if seg_low > 0 else 100
+        contractions.append({
+            'high': seg_high,
+            'low': seg_low,
+            'range_pct': seg_range_pct
+        })
+    
+    # Check if ranges are contracting (each segment tighter than previous)
+    is_contracting = True
+    contraction_count = 0
+    
+    for i in range(1, len(contractions)):
+        if contractions[i]['range_pct'] < contractions[i-1]['range_pct']:
+            contraction_count += 1
+        else:
+            is_contracting = False
+    
+    # Need at least 2 contractions
+    if contraction_count < 2:
+        return None
+    
+    # --- FINAL CONSOLIDATION CHECK ---
+    # Last 10 days should be tight (< 15% range)
+    final_10d_high = high[-10:].max()
+    final_10d_low = low[-10:].min()
+    final_range_pct = ((final_10d_high - final_10d_low) / final_10d_low) * 100
+    
+    if final_range_pct > 15:
+        return None
+    
+    # --- VOLUME DRY UP CHECK ---
+    avg_vol_50 = np.mean(volume[-50:])
+    avg_vol_10 = np.mean(volume[-10:])
+    
+    # Volume in last 10 days should be below average (drying up)
+    volume_dry_up = avg_vol_10 / avg_vol_50 if avg_vol_50 > 0 else 1.0
+    
+    if volume_dry_up > 0.9:  # Need at least 10% volume reduction
+        return None
+    
+    # --- BASE DEPTH CHECK ---
+    # Find the recent high (peak before consolidation)
+    lookback_for_peak = 90
+    recent_peak = high[-lookback_for_peak:].max()
+    recent_trough = low[-lookback_for_peak:].min()
+    base_depth = ((recent_peak - recent_trough) / recent_peak) * 100
+    
+    # Ideal VCP base depth is 10-35%
+    if base_depth > 40 or base_depth < 5:
+        return None
+    
+    # --- CALCULATE ENTRY/STOP/TARGETS ---
+    # Entry: Just above recent 10-day high (breakout level)
+    entry = final_10d_high * 1.005  # 0.5% buffer above pivot
+    
+    # Stop Loss: Below the final contraction low
+    stop = final_10d_low * 0.97  # 3% below pivot low
+    
+    # Risk per share
+    risk = entry - stop
+    
+    # Targets based on R multiples
+    target_1r = entry + risk
+    target_2r = entry + (risk * 2)
+    target_3r = entry + (risk * 3)
+    
+    # Risk/Reward ratio
+    r_r = risk / entry * 100 if entry > 0 else 0
+    
+    # --- QUALITY GRADE ---
+    # A = Tight base + strong RS + volume dry up
+    # B = Good setup with some weakness
+    # C = Marginal setup
+    quality_score = 0
+    if final_range_pct < 10:
+        quality_score += 3
+    elif final_range_pct < 12:
+        quality_score += 2
+    else:
+        quality_score += 1
+        
+    if volume_dry_up < 0.6:
+        quality_score += 2
+    elif volume_dry_up < 0.75:
+        quality_score += 1
+        
+    if rs_30d > 15:
+        quality_score += 2
+    elif rs_30d > 5:
+        quality_score += 1
+        
+    if contraction_count >= 3:
+        quality_score += 1
+        
+    if quality_score >= 7:
+        grade = "A"
+    elif quality_score >= 5:
+        grade = "B"
+    else:
+        grade = "C"
+    
+    # --- DAYS IN BASE ---
+    # Count days since the peak
+    peak_idx = np.argmax(high[-lookback_for_peak:])
+    days_in_base = lookback_for_peak - peak_idx
+    
+    return {
+        "date": str(last_date.date()),
+        "price": float(last_close),
+        "pattern": "VCP",
+        "contractions": contraction_count + 1,  # +1 for the initial expansion
+        "final_range_pct": round(final_range_pct, 2),
+        "base_depth_pct": round(base_depth, 2),
+        "volume_dry_up": round(volume_dry_up, 2),
+        "entry": round(entry, 2),
+        "stop_loss": round(stop, 2),
+        "target_1r": round(target_1r, 2),
+        "target_2r": round(target_2r, 2),
+        "target_3r": round(target_3r, 2),
+        "risk_pct": round(r_r, 2),
+        "rs_30d": round(rs_30d, 2),
+        "sma_50": round(sma_50[-1], 2),
+        "sma_200": round(sma_200[-1], 2),
+        "days_in_base": int(days_in_base),
+        "quality_grade": grade,
+        "quality_score": quality_score,
+        "setup": f"VCP Grade {grade}"
+    }
+
+
 def analyze_bull_flag(ticker: str):
     """
     Detailed analysis for Bull Flag pattern.

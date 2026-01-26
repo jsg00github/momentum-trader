@@ -71,8 +71,8 @@ def process_ticker(ticker, data_df=None, use_cache=True, strategy="rally_3m"):
             
             if df is None:
                 period = screener.PERIOD
-                if strategy == "weekly_rsi":
-                    period = "2y" 
+                if strategy in ("weekly_rsi", "vcp"):
+                    period = "2y"  # VCP needs 200 SMA, Weekly RSI needs long history
                 df = market_data.safe_yf_download(ticker, period=period, auto_adjust=False)
                 if c and df is not None and not df.empty:
                     c.set(ticker, screener.PERIOD, screener.INTERVAL, df)
@@ -100,6 +100,8 @@ def process_ticker(ticker, data_df=None, use_cache=True, strategy="rally_3m"):
 
         if strategy == "weekly_rsi":
             result = screener.scan_rsi_crossover(df)
+        elif strategy == "vcp":
+            result = screener.scan_vcp_pattern(df, ticker)
         else:
             result = screener.compute_3m_pattern(df)
         
@@ -152,7 +154,7 @@ def run_market_scan(limit=1000, strategy="weekly_rsi"):
 
     # PHASE 1: Check cache for all tickers first
     c = cache.get_cache()
-    period = "2y" if strategy == "weekly_rsi" else screener.PERIOD
+    period = "2y" if strategy in ("weekly_rsi", "vcp") else screener.PERIOD
     cached_data, to_download = c.batch_check(subset, period, "1d", max_age_hours=12)
     
     print(f"[CACHE] Cache: {len(cached_data)} tickers cached, {len(to_download)} need download")
