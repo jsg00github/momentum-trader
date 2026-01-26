@@ -34,6 +34,7 @@ try:
     with engine.connect() as conn:
         conn.execute(text("ALTER TABLE crypto_positions ADD COLUMN IF NOT EXISTS entry_date VARCHAR"))
         conn.execute(text("ALTER TABLE crypto_positions ADD COLUMN IF NOT EXISTS exit_date VARCHAR"))
+        conn.execute(text("ALTER TABLE crypto_positions ADD COLUMN IF NOT EXISTS exit_price FLOAT"))
         conn.commit()
         print("[Migration] Checked/Added missing columns to crypto_positions")
 except Exception as e:
