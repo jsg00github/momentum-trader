@@ -157,9 +157,7 @@ def api_add_position(pos: ArgentinaPositionCreate, current_user: models.User = D
         option_strike=pos.option_strike,
         option_expiry=pos.option_expiry,
         option_type=pos.option_type,
-        option_expiry=pos.option_expiry,
-        option_type=pos.option_type,
-        status="OPEN", # Default consistency
+        status="OPEN",
         underlying_country=underlying_country,
         manual_price=pos.manual_price
     )
