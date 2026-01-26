@@ -20,7 +20,8 @@ import os
 import market_data 
 import ai_advisor # New Import
 import health # Healthcheck module
-from database import engine, Base
+from database import engine, Base, get_db
+from sqlalchemy.orm import Session
 import models
 import auth
 
