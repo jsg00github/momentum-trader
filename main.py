@@ -28,7 +28,7 @@ import auth
 # Create Tables
 Base.metadata.create_all(bind=engine)
 
-    # --- AUTO MIGRATION (Fixes 500 Error on Crypto) ---
+# --- AUTO MIGRATION (Fixes 500 Error on Crypto) ---
 try:
     from sqlalchemy import text
     with engine.connect() as conn:
