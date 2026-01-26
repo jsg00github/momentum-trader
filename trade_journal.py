@@ -859,7 +859,8 @@ def get_portfolio_performance(current_user: models.User = Depends(auth.get_curre
         })
     # Get cumulative equity data from snapshots - LAST 90 DAYS ONLY for meaningful comparison
     from datetime import datetime, timedelta
-    cutoff_date = (datetime.now() - timedelta(days=90)).date()
+    # FIX: Use string format for VARCHAR date column comparison
+    cutoff_date = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
     
     snapshots = db.query(models.PortfolioSnapshot).filter(
         models.PortfolioSnapshot.user_id == current_user.id,
