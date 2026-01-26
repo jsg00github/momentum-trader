@@ -1488,13 +1488,16 @@ function TradeJournal() {
         fetchLivePrices();
     };
 
-    const fetchLivePrices = async () => {
+    const fetchLivePrices = async (forceRefresh = false) => {
         setRefreshing(true);
         try {
+            // If force refresh, clear the backend cache first
+            if (forceRefresh) {
+                await authFetch(`${API_BASE}/prices/refresh`, { method: 'POST' }).catch(() => { });
+            }
             const res = await axios.get(`${API_BASE}/trades/open-prices`);
             setLiveData(res.data);
             setLastUpdated(new Date());
-            // Removed: individual premarket calls per ticker - too slow
         } catch (e) {
             console.error(e);
         } finally {
@@ -1698,7 +1701,7 @@ ${res.data.errors.join("\n")}`);
                                 📸 {cachedSummary.snapshot_date}
                             </span>
                         )}
-                        <button onClick={fetchLivePrices} disabled={refreshing} className="text-sm bg-slate-800 hover:bg-slate-700 border border-slate-700 px-2 py-1 rounded transition text-slate-400">
+                        <button onClick={() => fetchLivePrices(true)} disabled={refreshing} className="text-sm bg-slate-800 hover:bg-slate-700 border border-slate-700 px-2 py-1 rounded transition text-slate-400">
                             {refreshing ? '↻ Syncing...' : `↻ Refresh ${lastUpdated ? `(${lastUpdated.toLocaleTimeString()})` : ''}`}
                         </button>
                     </h2>
@@ -5455,9 +5458,13 @@ function ArgentinaPanel() {
         fetchLivePrices();
     };
 
-    const fetchLivePrices = async () => {
+    const fetchLivePrices = async (forceRefresh = false) => {
         setRefreshing(true);
         try {
+            // If force refresh, clear the backend cache first
+            if (forceRefresh) {
+                await authFetch(`${API_BASE}/prices/refresh`, { method: 'POST' }).catch(() => { });
+            }
             const res = await axios.get(`${API_BASE}/argentina/prices`);
             if (res.data) {
                 setLiveData(res.data);
@@ -5760,7 +5767,7 @@ function ArgentinaPanel() {
                 <div>
                     <h2 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2">
                         🇦🇷 Journal Argentina
-                        <button onClick={fetchLivePrices} disabled={refreshing} className="text-sm bg-slate-800 hover:bg-slate-700 border border-slate-700 px-2 py-1 rounded transition text-slate-400 ml-4">
+                        <button onClick={() => fetchLivePrices(true)} disabled={refreshing} className="text-sm bg-slate-800 hover:bg-slate-700 border border-slate-700 px-2 py-1 rounded transition text-slate-400 ml-4">
                             {refreshing ? '↻ Syncing...' : `↻ Refresh Prices ${lastUpdated ? `(${lastUpdated.toLocaleTimeString()})` : ''}`}
                         </button>
                     </h2>

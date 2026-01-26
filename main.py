@@ -115,6 +115,13 @@ def get_health():
     """System health and diagnostics"""
     return health.get_full_health()
 
+@app.post("/api/prices/refresh")
+def force_refresh_prices(current_user: models.User = Depends(auth.get_current_user)):
+    """Force refresh all prices by clearing the cache."""
+    import price_service
+    price_service.clear_cache()
+    return {"status": "ok", "message": "Price cache cleared. Next request will fetch fresh prices."}
+
 # API Models
 class ScanRequest(BaseModel):
     limit: int = 20000 

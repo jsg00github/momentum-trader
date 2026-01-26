@@ -29,7 +29,7 @@ def get_yfinance():
 FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
 if not FINNHUB_API_KEY:
     print("[WARNING PRICE_SERVICE] FINNHUB_API_KEY not set - using yfinance only mode")
-CACHE_TTL_SECONDS = int(os.getenv("PRICE_CACHE_TTL", "300"))  # 5 minutes for better performance
+CACHE_TTL_SECONDS = int(os.getenv("PRICE_CACHE_TTL", "60"))  # 60 seconds for active trading
 
 # ============================================
 # Cache Implementation
