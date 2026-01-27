@@ -77,8 +77,29 @@ def get_sec_tickers():
         return unique_tickers
     except Exception as e:
         print(f"DEBUG: ERROR fetching SEC tickers: {e}")
-        # Priority 3: Fallback list
-        print("DEBUG: Using fallback ticker list due to SEC error.")
+
+    # Priority 3: Github Raw List (Robust Backup - ~6000 tickers)
+    try:
+        print("DEBUG: Attempting Github Raw fetch...")
+        # Source: https://github.com/rreichel3/US-Stock-Symbols
+        gh_url = "https://raw.githubusercontent.com/rreichel3/US-Stock-Symbols/main/all/all_tickers.txt"
+        resp = requests.get(gh_url, timeout=10)
+        resp.raise_for_status()
+        
+        # Clean up lines
+        gh_tickers = [line.strip().upper() for line in resp.text.splitlines() if line.strip()]
+        
+        # Basic filter (remove symbols with weird chars if needed, though most are fine)
+        gh_tickers = sorted(list(set(gh_tickers)))
+        
+        if len(gh_tickers) > 1000:
+            print(f"DEBUG: SUCCESS - Fetched {len(gh_tickers)} tickers from Github")
+            return gh_tickers
+    except Exception as e:
+        print(f"DEBUG: Github fetch failed: {e}")
+
+    # Priority 4: Fallback list
+    print("DEBUG: Using fallback ticker list (only ~200 items) due to all sources failing.")
         return ["VTYX", "SNDK", "EVAX", "BETR", "GSIT", "EOSE", "IHRT", "CIFR", "AAPL", "MSFT", "NVDA", "TSLA", "GOOGL", "AMZN", "META", "AMD", "NFLX", "INTC", "QCOM", "TXN", "HON", "AMGN", "SBUX", "GILD", "MDLZ", "BKNG", "ADI", "ADP", "LRCX", "VRTX", "CSX", "ISRG", "REGN", "ATVI", "FISV", "KLAC", "MAR", "SNPS", "CDNS", "PANW", "ASML", "NXPI", "FTNT", "KDP", "ORLY", "MNST", "ODFL", "PCAR", "ROST", "PAYX", "CTAS", "MCHP", "AEP", "LULU", "EXC", "IDXX", "BIIB", "AZN", "XEL", "EA", "CSGP", "FAST", "DLTR", "BKR", "GFS", "FANG", "DXCM", "ANSS", "WBD", "ALGN", "ILMN", "SIRI", "EBAY", "ZM", "JD", "LCID", "RIVN", "DDOG", "TEAM", "WDAY", "ZS", "CRWD", "SQ", "COIN", "DKNG", "PLTR", "HOOD", "AFRM", "U", "NET", "SNOW", "MDB", "OKTA", "DOCU", "TWLO", "SPLK", "SPOT", "SNAP", "PINS", "ROKU", "TTD", "SHOP", "SE", "MELI", "TSM", "BABA", "PDD", "BIDU", "NTES", "TCOM", "ZTO", "BEKE", "YUMC", "HTHT", "BZ", "VIPS", "IQ", "WB", "MOMO", "YY", "BILI", "TME", "HUYA", "DOYU", "NIO", "XPEV", "LI", "FUTU", "TIGR", "EH", "KC", "GDS", "DQ", "JKS", "CSIQ", "SOL", "YGE", "JASO", "TSL", "LDK", "STP", "SPY", "QQQ", "IWM", "DIA", "GLD", "SLV", "USO", "UNG", "TLT", "IEF", "SHy", "AGG", "LQD", "HYG", "JNK", "EEM", "EFA", "VWO", "VEA", "IVV", "VTI", "VOO", "XLK", "XLF", "XLV", "XLY", "XLP", "XLE", "XLI", "XLB", "XLRE", "XLU", "XBI", "KRE", "KBE", "SMH", "SOXX", "XOP", "XME", "GDX", "GDXJ", "SIL", "SILJ", "TAN", "ICLN", "PBW", "QCLN", "LIT", "URA", "REMX", "COPX", "PICK", "SLX", "WOOD", "KWEB", "CQQQ", "FXI", "MCHI", "ASHR", "ASHS", "CNYA", "CHXB", "KBA", "CNXT", "CHIQ", "CHIE", "CHIM", "CHIC", "CHII", "CHIS", "CHIU", "CHIR", "CHIH", "CHIK", "CHIL", "CHIB", "CHII", "CHIS"]
 
 
