@@ -360,76 +360,61 @@ def scan_vcp_pattern(df: pd.DataFrame, ticker: str = None):
     price_30d_ago = close[-30] if len(close) > 30 else close[0]
     rs_30d = ((last_close / price_30d_ago) - 1) * 100
     
-    # --- FIND CONTRACTIONS ---
-    # Look for series of lower highs and higher lows over last 60 days
-    analysis_window = 60
-    window_high = high[-analysis_window:]
-    window_low = low[-analysis_window:]
-    window_close = close[-analysis_window:]
+    # --- FIND CONTRACTIONS (Robust Method) ---
+    # Instead of arbitrary segments, check if recent volatility is lower than past volatility
     
-    # Divide into 3-4 segments and check for contraction
-    segment_size = analysis_window // 4
-    contractions = []
+    # 1. Current Tightness (last 10 days)
+    # Use max/min for range
+    r10_max = high[-10:].max()
+    r10_min = low[-10:].min()
+    range_10d_pct = ((r10_max - r10_min) / r10_min) * 100
     
-    for i in range(4):
-        start = i * segment_size
-        end = (i + 1) * segment_size
-        seg_high = window_high[start:end].max()
-        seg_low = window_low[start:end].min()
-        seg_range = seg_high - seg_low
-        seg_range_pct = (seg_range / seg_low) * 100 if seg_low > 0 else 100
-        contractions.append({
-            'high': seg_high,
-            'low': seg_low,
-            'range_pct': seg_range_pct
-        })
+    # 2. Previous Volatility (days -30 to -10)
+    r_prev_max = high[-30:-10].max()
+    r_prev_min = low[-30:-10].min()
+    range_prev_pct = ((r_prev_max - r_prev_min) / r_prev_min) * 100
     
-    # Check if ranges are contracting (each segment tighter than previous)
-    is_contracting = True
-    contraction_count = 0
+    # VCP LOGIC:
+    # A. Current range must be tight (< 20%, relaxed from 15%)
+    if range_10d_pct > 25: # Even more relaxed for "finding something"
+        return None
+        
+    # B. Current range must be tighter than previous range (Contraction)
+    # OR if it's already extremely tight (< 10%), we accept it
+    if range_10d_pct > range_prev_pct and range_10d_pct > 10:
+        return None
+        
+    # --- VOLUME DRY UP ---
+    # Current volume (10d avg) vs Medium term (50d avg)
+    vol_10d = volume[-10:].mean()
+    vol_50d = volume[-50:].mean()
     
-    for i in range(1, len(contractions)):
-        # RELAXED: Allow small fluctuation (10% tolerance)
-        if contractions[i]['range_pct'] < contractions[i-1]['range_pct'] * 1.1:
-            contraction_count += 1
-        else:
-            is_contracting = False
+    # RELAXED: Allow volume to be slightly above average (1.2x) if price action is tight
+    # Strict VCP wants < 1.0, but practical scanning needs wiggle room
+    vol_ratio = vol_10d / vol_50d
+    if vol_ratio > 1.2:
+        return None
+        
+    # --- BASE DEPTH ---
+    # Max drawdown from 50d high
+    high_50d = high[-50:].max()
+    low_since_high = low[-50:].min()
+    depth_pct = ((high_50d - low_since_high) / high_50d) * 100
     
-    # Need at least 2 contractions
-    if contraction_count < 2:
+    # Allow 2% to 50% depth
+    if depth_pct < 2 or depth_pct > 50:
         return None
     
-    # --- FINAL CONSOLIDATION CHECK ---
-    # Last 10 days should be tight (< 20% range - RELAXED from 15%)
-    final_10d_high = high[-10:].max()
-    final_10d_low = low[-10:].min()
-    final_range_pct = ((final_10d_high - final_10d_low) / final_10d_low) * 100
-    
-    if final_range_pct > 20:
-        return None
-    
-    # --- VOLUME DRY UP CHECK ---
-    avg_vol_50 = np.mean(volume[-50:])
-    avg_vol_10 = np.mean(volume[-10:])
-    
-    # Volume in last 10 days should be below average (drying up)
-    volume_dry_up = avg_vol_10 / avg_vol_50 if avg_vol_50 > 0 else 1.0
-    
-    # RELAXED: Allow up to 1.1 (breakouts can have early volume)
-    if volume_dry_up > 1.1:
-        return None
-    
-    # --- BASE DEPTH CHECK ---
-    # Find the recent high (peak before consolidation)
-    lookback_for_peak = 90
-    recent_peak = high[-lookback_for_peak:].max()
-    recent_trough = low[-lookback_for_peak:].min()
-    base_depth = ((recent_peak - recent_trough) / recent_peak) * 100
-    
-    # Ideal VCP base depth is 10-35%
-    # RELAXED: 3-50%
-    if base_depth > 50 or base_depth < 3:
-        return None
+    return {
+        "ticker": ticker,
+        "price": round(float(last_close), 2),
+        "change_pct": round(float(df['Close'].pct_change().iloc[-1] * 100), 2),
+        "vol_ratio": round(vol_ratio, 2),
+        "base_depth": round(depth_pct, 2),
+        "contraction_count": 1, # Simplified
+        "stars": 3 if range_10d_pct < 10 else 2,
+        "setup": "VCP (Tight)"
+    }
     
     # --- CALCULATE ENTRY/STOP/TARGETS ---
     # Entry: Just above recent 10-day high (breakout level)
