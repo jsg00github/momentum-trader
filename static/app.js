@@ -3804,6 +3804,7 @@ function Scanner({ onTickerClick }) {
     const [limit, setLimit] = useState(20000);
     const [progress, setProgress] = useState({ total: 0, current: 0 });
     const [sortConfig, setSortConfig] = useState({ key: 'score', direction: 'desc' });
+    const [strategy, setStrategy] = useState('weekly_rsi');
 
     const [showAboveSMA, setShowAboveSMA] = useState(false);
 
@@ -3844,7 +3845,7 @@ function Scanner({ onTickerClick }) {
         setStats(null);
         setProgress({ total: 0, current: 0 });
         try {
-            const res = await axios.post(`${API_BASE}/scan`, { limit });
+            const res = await axios.post(`${API_BASE}/scan`, { limit, strategy });
             // The scan is now backgrounded, we don't expect results in the POST response
             if (res.data && res.data.status === "scanning") {
                 // Set total immediately so progress bar appears
@@ -4106,6 +4107,15 @@ function Scanner({ onTickerClick }) {
                             Show &gt; SMA200
                         </label>
                     </div>
+
+                    <select
+                        value={strategy}
+                        onChange={(e) => setStrategy(e.target.value)}
+                        className="bg-slate-800 border border-slate-700 text-slate-300 text-sm rounded-lg px-3 py-2"
+                    >
+                        <option value="weekly_rsi">📊 Weekly RSI</option>
+                        <option value="vcp">🔺 VCP (Minervini)</option>
+                    </select>
 
                     <select
                         value={limit}
