@@ -346,13 +346,15 @@ def scan_vcp_pattern(df: pd.DataFrame, ticker: str = None):
     sma_200 = pd.Series(close).rolling(200).mean().values
     
     # Price must be above 200 SMA (Stage 2 Base)
-    if last_close < sma_200[-1]:
+    # Price must be above 200 SMA (Stage 2 Base)
+    # RELAXED: Allow 5% leeway for shakeouts
+    if last_close < sma_200[-1] * 0.95:
         return None
     
     # RELAXED: Price technically should be above 50 SMA, but we allow 
     # it to be slightly below if it's building the right side.
-    # We DO enforce 50 SMA > 200 SMA (Structural Uptrend)
-    if sma_50[-1] < sma_200[-1]:
+    # We DO enforce 50 SMA > 200 SMA (Structural Uptrend), with 3% leeway
+    if sma_50[-1] < sma_200[-1] * 0.97:
         return None
     
     # --- RELATIVE STRENGTH CALCULATION ---
