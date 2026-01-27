@@ -73,8 +73,9 @@ def calculate_weekly_rsi_analytics(daily_df):
     weekly_df['RSI_EMA_3'] = weekly_df['RSI'].ewm(span=3, adjust=False).mean()
     weekly_df['RSI_EMA_14'] = weekly_df['RSI'].ewm(span=14, adjust=False).mean()
     
-    # Calculate Weekly SMI (13, 25, 2)
-    weekly_df['SMI'] = calculate_smi(weekly_df, period=13, smooth1=25, smooth2=2)
+    # Calculate Weekly SMI (User Params: 10, 3, 3)
+    # Mapping screenshot: %K Length=10 (Period), %D Length=3 (Smooth1), EMA Length=3 (Smooth2)
+    weekly_df['SMI'] = calculate_smi(weekly_df, period=10, smooth1=3, smooth2=3)
 
     # Get latest complete values
     last_row = weekly_df.iloc[-1]
