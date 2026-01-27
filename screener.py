@@ -304,6 +304,8 @@ def scan_rsi_crossover(df: pd.DataFrame):
             "stars": stars,
             "macd_d": round(macd_d, 2),
             "is_bullish": bool(is_bullish),
+            "smi": round(rsi_data.get('smi', 0.0), 2),
+            "smi_bullish": rsi_data.get('smi_bullish', False),
             "setup": "Weekly RSI Reversal (w.rsi)"
         }
     

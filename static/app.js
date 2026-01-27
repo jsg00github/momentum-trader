@@ -4015,6 +4015,9 @@ function Scanner({ onTickerClick }) {
                             <th className="p-2 text-right cursor-pointer hover:text-white transition" onClick={() => handleSort('rsi')}>
                                 RSI(W)
                             </th>
+                            <th className="p-2 text-right cursor-pointer hover:text-white transition" onClick={() => handleSort('smi')}>
+                                SMI(W)
+                            </th>
                             <th className="p-2 text-right cursor-pointer hover:text-white transition" onClick={() => handleSort('macd_d')}>
                                 MACD
                             </th>
@@ -4046,6 +4049,9 @@ function Scanner({ onTickerClick }) {
                                 <td className="p-2 text-right font-mono text-white text-xs">${row.price?.toFixed(2)}</td>
                                 <td className={`p-2 text-right font-bold text-xs ${row.rsi < 35 ? 'text-green-400' : 'text-blue-300'}`}>
                                     {row.rsi?.toFixed(1)}
+                                </td>
+                                <td className={`p-2 text-right font-bold text-xs ${row.smi_bullish ? 'text-green-400' : 'text-red-400'}`}>
+                                    {row.smi?.toFixed(1)}
                                 </td>
                                 <td className="p-2 text-right text-xs font-mono">
                                     <span className={row.macd_d > 0 ? 'text-green-400' : 'text-red-400'}>

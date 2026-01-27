@@ -50,15 +50,20 @@ def calculate_weekly_rsi_analytics(daily_df):
     if 'Close' not in df.columns:
         return None
 
-    # Resample to Weekly. We use 'Close' for RSI.
+    # Resample to Weekly. We need High/Low for SMI.
     try:
-        weekly_df = df.resample('W-FRI').agg({'Close': 'last'})
+        weekly_df = df.resample('W-FRI').agg({
+            'Close': 'last',
+            'High': 'max',
+            'Low': 'min'
+        })
     except:
         return None
     
     # Need enough data: 14 weeks for RSI + 8 weeks for EMA(14) warmup = ~22 weeks min
     # 6 months = ~26 weeks, so this should work
-    if len(weekly_df) < 22:
+    # SMI needs 13 + 25 weeks ~ 38 weeks.
+    if len(weekly_df) < 40:
         return None
 
     # Calculate Weekly RSI (14)
@@ -67,6 +72,9 @@ def calculate_weekly_rsi_analytics(daily_df):
     # Calculate EMAs of the RSI (User Custom Indicator: w.rsi)
     weekly_df['RSI_EMA_3'] = weekly_df['RSI'].ewm(span=3, adjust=False).mean()
     weekly_df['RSI_EMA_14'] = weekly_df['RSI'].ewm(span=14, adjust=False).mean()
+    
+    # Calculate Weekly SMI (13, 25, 2)
+    weekly_df['SMI'] = calculate_smi(weekly_df, period=13, smooth1=25, smooth2=2)
 
     # Get latest complete values
     last_row = weekly_df.iloc[-1]
@@ -78,6 +86,10 @@ def calculate_weekly_rsi_analytics(daily_df):
     current_rsi = float(last_row['RSI'])
     current_ema3 = float(last_row['RSI_EMA_3'])
     current_ema14 = float(last_row['RSI_EMA_14'])
+    
+    # SMI
+    current_smi = float(last_row['SMI']) if not pd.isna(last_row['SMI']) else 0.0
+    smi_bullish = current_smi > 0
     
     # Trend
     is_bullish = current_ema3 > current_ema14
@@ -95,6 +107,7 @@ def calculate_weekly_rsi_analytics(daily_df):
     ema14_s = pd.Series(weekly_df['RSI_EMA_14'])
     close_s = pd.Series(weekly_df['Close'])
     rsi_s = pd.Series(weekly_df['RSI'])
+    smi_s = pd.Series(weekly_df['SMI'])
 
     return {
         "rsi": current_rsi,
@@ -102,14 +115,44 @@ def calculate_weekly_rsi_analytics(daily_df):
         "ema14": current_ema14,
         "sma3": current_ema3,  # Compatibility Alias
         "sma14": current_ema14, # Compatibility Alias
+        "smi": current_smi,
+        "smi_bullish": smi_bullish,
         "signal_buy": signal_buy,
         "signal_sell": signal_sell,
         "trend": trend,
         "ema3_hist": ema3_s.tail(5).tolist(),
         "ema14_hist": ema14_s.tail(5).tolist(),
         "weekly_closes": close_s.tolist(), 
-        "weekly_rsi_series": rsi_s.tolist()
+        "weekly_rsi_series": rsi_s.tolist(),
+        "weekly_smi_series": smi_s.tail(5).tolist()
     }
+
+def calculate_smi(df, period=13, smooth1=25, smooth2=2):
+    """
+    Calculates Stochastic Momentum Index (SMI).
+    SMI = 100 * (DoubleSmoothed(Close - Midpoint) / (DoubleSmoothed(High - Low) / 2))
+    """
+    # High/Low over period
+    hh = df['High'].rolling(window=period).max()
+    ll = df['Low'].rolling(window=period).min()
+    midpoint = (hh + ll) / 2
+    
+    diff = df['Close'] - midpoint
+    diff_r = hh - ll
+    
+    # Double Smoothing
+    def double_smooth(src, len1, len2):
+        # EMA of EMA
+        # Note: Some implementations use SMA then EMA, but Blau used EMAs (EWM)
+        e1 = src.ewm(span=len1, adjust=False).mean()
+        e2 = e1.ewm(span=len2, adjust=False).mean()
+        return e2
+
+    tsi = double_smooth(diff, smooth1, smooth2)
+    dsi = double_smooth(diff_r, smooth1, smooth2) / 2
+    
+    smi = 100 * (tsi / dsi)
+    return smi
 
 def calculate_buying_volume_trend(daily_df, window=21):
     """
