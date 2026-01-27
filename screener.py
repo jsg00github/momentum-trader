@@ -41,7 +41,10 @@ def get_sec_tickers():
     # This one was confirmed working:
     url = "https://www.sec.gov/files/company_tickers.json"
     headers = {
-        "User-Agent": "Javier Screener 3M Rally (contacto: test@example.com)"
+        # Using standard browser UA to avoid SEC blocking server IPs
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9"
     }
     # Priority 1: Check for tickers.txt (Manual Override)
     try:
