@@ -305,7 +305,8 @@ def scan_vcp_pattern(df: pd.DataFrame, ticker: str = None):
     df = df.sort_index().dropna()
     
     # Need enough data for 200 SMA + analysis window
-    if len(df) < 250:
+    # Relaxed to 210 to allow 1y data (~252 rows) with gaps
+    if len(df) < 210:
         return None
     
     close = df['Close'].values
@@ -320,11 +321,13 @@ def scan_vcp_pattern(df: pd.DataFrame, ticker: str = None):
     sma_50 = pd.Series(close).rolling(50).mean().values
     sma_200 = pd.Series(close).rolling(200).mean().values
     
-    # Price must be above both SMAs
-    if last_close < sma_50[-1] or last_close < sma_200[-1]:
+    # Price must be above 200 SMA (Stage 2 Base)
+    if last_close < sma_200[-1]:
         return None
     
-    # 50 SMA must be above 200 SMA (bullish structure)
+    # RELAXED: Price technically should be above 50 SMA, but we allow 
+    # it to be slightly below if it's building the right side.
+    # We DO enforce 50 SMA > 200 SMA (Structural Uptrend)
     if sma_50[-1] < sma_200[-1]:
         return None
     
@@ -362,7 +365,8 @@ def scan_vcp_pattern(df: pd.DataFrame, ticker: str = None):
     contraction_count = 0
     
     for i in range(1, len(contractions)):
-        if contractions[i]['range_pct'] < contractions[i-1]['range_pct']:
+        # RELAXED: Allow small fluctuation (10% tolerance)
+        if contractions[i]['range_pct'] < contractions[i-1]['range_pct'] * 1.1:
             contraction_count += 1
         else:
             is_contracting = False
@@ -372,12 +376,12 @@ def scan_vcp_pattern(df: pd.DataFrame, ticker: str = None):
         return None
     
     # --- FINAL CONSOLIDATION CHECK ---
-    # Last 10 days should be tight (< 15% range)
+    # Last 10 days should be tight (< 20% range - RELAXED from 15%)
     final_10d_high = high[-10:].max()
     final_10d_low = low[-10:].min()
     final_range_pct = ((final_10d_high - final_10d_low) / final_10d_low) * 100
     
-    if final_range_pct > 15:
+    if final_range_pct > 20:
         return None
     
     # --- VOLUME DRY UP CHECK ---
@@ -387,7 +391,8 @@ def scan_vcp_pattern(df: pd.DataFrame, ticker: str = None):
     # Volume in last 10 days should be below average (drying up)
     volume_dry_up = avg_vol_10 / avg_vol_50 if avg_vol_50 > 0 else 1.0
     
-    if volume_dry_up > 0.9:  # Need at least 10% volume reduction
+    # RELAXED: Allow up to 1.1 (breakouts can have early volume)
+    if volume_dry_up > 1.1:
         return None
     
     # --- BASE DEPTH CHECK ---
@@ -398,7 +403,8 @@ def scan_vcp_pattern(df: pd.DataFrame, ticker: str = None):
     base_depth = ((recent_peak - recent_trough) / recent_peak) * 100
     
     # Ideal VCP base depth is 10-35%
-    if base_depth > 40 or base_depth < 5:
+    # RELAXED: 3-50%
+    if base_depth > 50 or base_depth < 3:
         return None
     
     # --- CALCULATE ENTRY/STOP/TARGETS ---
