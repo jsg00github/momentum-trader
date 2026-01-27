@@ -71,8 +71,9 @@ def process_ticker(ticker, data_df=None, use_cache=True, strategy="rally_3m"):
             
             if df is None:
                 period = screener.PERIOD
-                if strategy in ("weekly_rsi", "vcp"):
-                    period = "2y"  # VCP needs 200 SMA, Weekly RSI needs long history
+                # OPTIMIZATION: Default to 1y for all strategies
+                # if strategy in ("weekly_rsi", "vcp"):
+                #     period = "2y"
                 df = market_data.safe_yf_download(ticker, period=period, auto_adjust=False)
                 if c and df is not None and not df.empty:
                     c.set(ticker, screener.PERIOD, screener.INTERVAL, df)
@@ -154,7 +155,9 @@ def run_market_scan(limit=1000, strategy="weekly_rsi"):
 
     # PHASE 1: Check cache for all tickers first
     c = cache.get_cache()
-    period = "2y" if strategy in ("weekly_rsi", "vcp") else screener.PERIOD
+    # OPTIMIZATION: Use 1y (screener.PERIOD) for all strategies to maximize cache hits.
+    # 1y (~252 days) is enough for SMA200 and Weekly RSI (52 bars).
+    period = screener.PERIOD 
     cached_data, to_download = c.batch_check(subset, period, "1d", max_age_hours=12)
     
     print(f"[CACHE] Cache: {len(cached_data)} tickers cached, {len(to_download)} need download")
