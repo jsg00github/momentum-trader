@@ -158,7 +158,8 @@ def run_market_scan(limit=1000, strategy="weekly_rsi"):
     # OPTIMIZATION: Use 1y (screener.PERIOD) for all strategies to maximize cache hits.
     # 1y (~252 days) is enough for SMA200 and Weekly RSI (52 bars).
     period = screener.PERIOD 
-    cached_data, to_download = c.batch_check(subset, period, "1d", max_age_hours=12)
+    # Use 4 hours cache for intra-day freshness (user requested updates)
+    cached_data, to_download = c.batch_check(subset, period, "1d", max_age_hours=4)
     
     print(f"[CACHE] Cache: {len(cached_data)} tickers cached, {len(to_download)} need download")
     SCAN_STATUS["last_ticker"] = f"Cache: {len(cached_data)} cached, downloading {len(to_download)}..."
@@ -213,6 +214,12 @@ def run_market_scan(limit=1000, strategy="weekly_rsi"):
                             pass
 
                         if ticker_df is not None:
+                            # CRITIAL: Save to cache!
+                            try:
+                                c.set(ticker, period, "1d", ticker_df)
+                            except Exception as e:
+                                print(f"Cache save failed for {ticker}: {e}")
+
                             res = process_ticker(ticker, ticker_df, True, strategy)
                             if res:
                                 score = scoring.calculate_score(res)
