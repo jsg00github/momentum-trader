@@ -1,0 +1,24 @@
+
+.git
+.gitignore
+.env
+**/.env
+__pycache__
+**/__pycache__
+**.db
+**.sqlite3
+
+# Ignore generic venvs and node_modules anywhere
+venv
+env
+node_modules
+**/node_modules
+**/venv
+**/env
+
+# Backend specific ignores (mapped from backend/.dockerignore)
+backend/backups
+backend/node-v20.11.0-win-x64
+backend/data/cache.db
+backend/scan_reports
+backend/frontend/node_modules
