@@ -16,10 +16,7 @@ load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 try:
     import market_data
 except ImportError:
-    try:
-        from backend import market_data
-    except ImportError:
-        from . import market_data
+    from . import market_data
 
 # Telegram Configuration
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")  # Set via environment variable
@@ -89,7 +86,7 @@ def check_price_alerts():
     try:
         # Import here to avoid circular dependency
         import yfinance as yf
-        from backend import indicators
+        import indicators
         
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()

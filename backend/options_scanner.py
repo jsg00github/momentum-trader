@@ -133,7 +133,7 @@ def scan_unusual_options(tickers=None):
 
         # Add Technical Levels (Target/Stop)
         try:
-            from backend import screener
+            import screener
             levels = screener.get_technical_levels(ticker, advice['sentiment'])
             if levels:
                 advice['entry'] = levels['entry']
