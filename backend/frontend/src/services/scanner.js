@@ -936,3 +936,35 @@ const calculateCustomIndicators = (data) => {
         rsiSma14: rsiSma14
     };
 };
+
+const DEFAULT_TICKERS = ['SPY', 'QQQ', 'IWM', 'NVDA', 'TSLA', 'AAPL', 'MSFT', 'AMD', 'GOOGL', 'AMZN', 'META', 'NFLX', 'COIN', 'MSTR'];
+
+export const scanMarket = async (onProgress) => {
+    const results = [];
+    const tickers = DEFAULT_TICKERS;
+
+    for (const ticker of tickers) {
+        if (onProgress) onProgress(`Scanning ${ticker}...`);
+        try {
+            const data = await fetchRealStockData(ticker, '1D');
+            if (data) {
+                if (!data.signal) {
+                    if (data.score >= 80) data.signal = 'BUY';
+                    else if (data.score <= 30) data.signal = 'SELL';
+                    else data.signal = 'NEUTRAL';
+                }
+                if (!data.setup) data.setup = data.pattern || '-';
+                results.push(data);
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    }
+    return results.sort((a, b) => b.score - a.score);
+};
+
+export const scannerService = {
+    scanMarket,
+    fetchRealStockData
+};
+
