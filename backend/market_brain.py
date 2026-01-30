@@ -1,7 +1,6 @@
 
 import os
-from google import genai
-from google.genai import types
+import google.generativeai as genai
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -16,8 +15,8 @@ def init_gemini():
         return None
     
     try:
-        client = genai.Client(api_key=API_KEY)
-        return client
+        genai.configure(api_key=API_KEY)
+        return True
     except Exception as e:
         print(f"[Market Brain] Error initializing Gemini: {e}")
         return None
@@ -25,15 +24,8 @@ def init_gemini():
 def get_market_insight(context_data):
     """
     Generate a market insight based on provided context data.
-    
-    Args:
-        context_data (dict): Dictionary containing market data (indices, gainers, news).
-        
-    Returns:
-        str: The AI-generated insight text.
     """
-    client = init_gemini()
-    if not client:
+    if not init_gemini():
         return "Error: AI Analyst is offline (Missing API Key)."
 
     try:
@@ -62,10 +54,8 @@ def get_market_insight(context_data):
         **Actionable Insight:** [One clear takeaway]
         """
         
-        response = client.models.generate_content(
-            model='gemini-2.0-flash-exp',
-            contents=prompt
-        )
+        model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        response = model.generate_content(prompt)
         return response.text
         
     except Exception as e:
@@ -78,15 +68,8 @@ def get_market_insight(context_data):
 def get_portfolio_insight(portfolio_data):
     """
     Generate portfolio-specific insights and recommendations.
-    
-    Args:
-        portfolio_data (dict): Dictionary containing portfolio holdings, P&L, etc.
-        
-    Returns:
-        str: The AI-generated portfolio analysis.
     """
-    client = init_gemini()
-    if not client:
+    if not init_gemini():
         return "Error: AI Analyst is offline (Missing API Key)."
 
     try:
@@ -115,10 +98,8 @@ def get_portfolio_insight(portfolio_data):
         **Actionable Insight:** [Specific recommendations with tickers]
         """
         
-        response = client.models.generate_content(
-            model='gemini-2.0-flash-exp',
-            contents=prompt
-        )
+        model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        response = model.generate_content(prompt)
         return response.text
         
     except Exception as e:
@@ -131,17 +112,8 @@ def get_portfolio_insight(portfolio_data):
 def chat_with_portfolio(user_query, conversation_history, portfolio_context):
     """
     Conversational AI assistant for portfolio queries.
-    
-    Args:
-        user_query (str): User's question
-        conversation_history (list): List of previous messages [{"role": "user"|"assistant", "content": str}]
-        portfolio_context (dict): Current portfolio data (trades, metrics, prices)
-        
-    Returns:
-        str: AI-generated conversational response
     """
-    client = init_gemini()
-    if not client:
+    if not init_gemini():
         return "Sorry, I'm currently offline. Please check the API key configuration."
 
     try:
@@ -199,10 +171,8 @@ USER QUESTION: {user_query}
 
 Provide a helpful, data-driven response:"""
 
-        response = client.models.generate_content(
-            model='gemini-2.0-flash-exp',
-            contents=system_prompt
-        )
+        model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        response = model.generate_content(system_prompt)
         
         return response.text
         

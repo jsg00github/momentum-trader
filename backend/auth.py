@@ -38,7 +38,7 @@ class UserResponse(BaseModel):
     full_name: Optional[str] = None
     
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # --- Utils ---
 def verify_password(plain_password, hashed_password):
