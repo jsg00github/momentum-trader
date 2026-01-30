@@ -1,0 +1,16 @@
+
+.git
+.gitignore
+.env
+__pycache__
+venv
+env
+node_modules
+backups
+backend/backups
+node-v20.11.0-win-x64
+*.db
+*.sqlite3
+data/cache.db
+scan_reports
+frontend/node_modules

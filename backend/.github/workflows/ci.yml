@@ -1,0 +1,39 @@
+name: Momentum Trader CI
+
+on:
+  push:
+    branches: [ "dev", "desarrollo", "prod" ]
+  pull_request:
+    branches: [ "dev", "desarrollo", "prod" ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+        
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        
+    - name: Syntax Check
+      run: |
+        # Check for syntax errors only (no style enforcement yet)
+        pip install flake8
+        # select=E9,F63,F7,F82 checks for syntax errors / undefined names
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --exclude=backend/frontend,backend/node-v*,backups,backend/backups
+        
+    # - name: Run Status Test
+    #   run: |
+    #     # Run the standalone status check script to ensure modules load and basic logic works
+    #     # Setting PYTHONPATH to connect modules if needed, though they are in root of repo in this context?
+    #     # Note: In the repo, 'backend' seems to be the root of the fastAPI app. 
+    #     # If the repo root IS 'backend', then we are good.
+    #     # python test_status.py

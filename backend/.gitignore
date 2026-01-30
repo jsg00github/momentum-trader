@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment variables
+.env
+env/
+venv/
+.venv/
+
+# Database (Large Files)
+*.db
+*.sqlite
+*.sqlite3
+data/cache.db
+trades.db
+
+# Logs
+*.log
+
+# Node & Vite
+node_modules/
+frontend/node_modules/
+frontend/dist/
+.node_bin/
+node-v20*/
+node.zip
+npm-debug.log
+yarn-error.log
+package-lock.json
+frontend/package-lock.json

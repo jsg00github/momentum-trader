@@ -1,0 +1,17 @@
+============================================================
+SCAN RESULTS - Cache Fallback Test
+Date: 2026-01-04T23:55:11.320699
+Total Scanned: 100 tickers
+Results Found: 7
+============================================================
+
+TOP 20 RESULTS (Sorted by Score):
+------------------------------------------------------------
+ 1. ACCL   | Grade: A  | Score:  99.6 | RS_SPY:  -2.08%
+ 2. ABM    | Grade: A  | Score:  87.4 | RS_SPY:  -2.08%
+ 3. ABG    | Grade: B  | Score:  71.5 | RS_SPY:  -2.08%
+ 4. ACI    | Grade: C  | Score:  70.0 | RS_SPY:  -2.08%
+ 5. ACDC   | Grade: C  | Score:  65.3 | RS_SPY:  -2.08%
+ 6. ACCO   | Grade: C  | Score:  62.9 | RS_SPY:  -2.08%
+ 7. ABEO   | Grade: C  | Score:  61.6 | RS_SPY:  -2.08%
+------------------------------------------------------------
