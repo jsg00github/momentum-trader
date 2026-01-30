@@ -211,12 +211,28 @@ async def scheduled_reports_loop():
         "SCAN": None
     }
     
+    # Run initial price update on startup/restart (async after 10s)
+    import asyncio
+    try:
+        if asyncio.get_event_loop().is_running():
+            asyncio.create_task(initial_price_warmup())
+    except: pass
+
     while True:
         try:
             now = datetime.now()
             current_date = now.date()
             h, m = now.hour, now.minute
             
+            # --- Periodic Tasks (every 5 mins) ---
+            if m % 5 == 0:
+                # Update price cache for open positions
+                try:
+                    import price_service
+                    price_service.background_price_update()
+                except Exception as e:
+                    print(f"Error in background price update: {e}")
+
             # 08:30 AM - PRE_MARKET
             if h == 8 and m == 30:
                 if last_sent["PRE_MARKET"] != current_date:
@@ -264,6 +280,16 @@ async def scheduled_reports_loop():
             print(f"Error in scheduler: {e}")
             
         await asyncio.sleep(60) # Check every minute
+
+async def initial_price_warmup():
+    """Wait 10s then run initial price update"""
+    await asyncio.sleep(10)
+    print("Running initial price warmup...")
+    try:
+        import price_service
+        price_service.background_price_update()
+    except Exception as e:
+        print(f"Warmup failed: {e}")
 
 def get_options_sentiment(ticker_symbol):
     try:
@@ -613,6 +639,18 @@ def build_sharpe_portfolio(max_positions: int = 10, min_sharpe: float = 1.5, str
 # AI ANALYST (MARKET BRAIN)
 # -----------------------------------------------------
 import market_brain
+
+@app.get("/api/market/price/{ticker}")
+def get_ticker_price(ticker: str):
+    """
+    Proxy endpoint to get price for a ticker.
+    Replaces client-side calls to Yahoo Finance/CorsProxy.
+    """
+    import price_service
+    data = price_service.get_price(ticker)
+    if not data or data.get('price') is None:
+        raise HTTPException(status_code=404, detail="Ticker not found")
+    return data
 
 @app.get("/api/ai/insight")
 def get_ai_insight():
