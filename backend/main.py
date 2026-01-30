@@ -120,7 +120,7 @@ def process_ticker(ticker, use_cache=True, strategy="rally_3m"):
 @app.get("/", include_in_schema=False)
 def serve_root():
     """Serve the frontend index.html at root URL"""
-    return FileResponse(r"C:\Users\micro\.gemini\antigravity\playground\ancient-glenn\backend\static\index.html")
+    return FileResponse(os.path.join(os.path.dirname(__file__), "static", "index.html"))
 
 @app.get("/api/health")
 def health_check():
@@ -606,7 +606,8 @@ def restore_backup_endpoint(filename: str):
 
 
 # Mount Static Files (use absolute path to ensure it works regardless of CWD)
-static_dir = r"C:\Users\micro\.gemini\antigravity\playground\ancient-glenn\backend\static"
+# Mount Static Files (use relative path for deployment)
+static_dir = os.path.join(os.path.dirname(__file__), "static")
 if os.path.exists(static_dir):
     # Mount at /static for backwards compatibility
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
