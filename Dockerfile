@@ -10,7 +10,10 @@ COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copiar el contenido de backend a /app
-COPY backend/ .
+COPY backend/ /app/
+
+# DEBUG: Verificar contenido copiado
+RUN ls -la /app
 
 # Las rutas copiadas ahora estan en /app
 # E.g. /app/run.py, /app/main.py
