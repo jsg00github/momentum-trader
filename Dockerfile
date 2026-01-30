@@ -5,20 +5,21 @@ WORKDIR /app
 # Instalar dependencias del sistema
 RUN apt-get update && apt-get install -y gcc g++ curl && rm -rf /var/lib/apt/lists/*
 
-# Copiar requirements desde backend
-COPY backend/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Copiar TODO el contexto (respetando .dockerignore)
+COPY . .
 
-# Copiar el contenido de backend a /app
-COPY backend/ /app/
+# DEBUG: Verificar estructura
+RUN echo "--- Listing /app ---" && ls -la /app
+RUN echo "--- Listing /app/backend ---" && ls -la /app/backend
 
-# DEBUG: Verificar contenido copiado
-RUN ls -la /app
+# Instalar dependencias
+RUN pip install --no-cache-dir -r backend/requirements.txt
 
-# Las rutas copiadas ahora estan en /app
-# E.g. /app/run.py, /app/main.py
+# Cambiar al directorio backend para ejecutar
+WORKDIR /app/backend
 
 ENV PORT=8000
 EXPOSE $PORT
 
+# run.py busca 'main:app', y main.py usa imports relativos (corregidos en el paso anterior)
 CMD ["python", "run.py"]
