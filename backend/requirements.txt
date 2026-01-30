@@ -18,3 +18,4 @@ ta
 binance-connector
 psutil
 google-generativeai
+finnhub-python
