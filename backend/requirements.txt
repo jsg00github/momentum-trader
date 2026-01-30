@@ -16,3 +16,5 @@ python-jose[cryptography]
 scipy
 ta
 binance-connector
+psutil
+google-generativeai
