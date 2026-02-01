@@ -85,7 +85,9 @@ class PriceCache:
             }
 
 # Global cache instance (shared across all requests/users)
+# Global cache instance (shared across all requests/users)
 _price_cache = PriceCache(ttl=CACHE_TTL_SECONDS)
+_history_cache = PriceCache(ttl=300) # 5 minutes TTL for heavy history DataFrames
 
 # ============================================
 # Finnhub Client
@@ -104,6 +106,62 @@ def get_finnhub_client():
 # ============================================
 # Price Fetching Functions
 # ============================================
+
+# ============================================
+# Price Fetching Functions
+# ============================================
+
+def get_price_history(ticker: str) -> Optional[pd.DataFrame]:
+    """
+    Get 2-year historical data for a ticker.
+    Cached for 5 minutes.
+    Returns: pd.DataFrame or None
+    """
+    ticker = ticker.upper().strip()
+    
+    # 1. Check Cache
+    cached = _history_cache.get(ticker)
+    if cached is not None:
+        return cached
+
+    # 2. Fetch from yfinance
+    try:
+        yf = get_yfinance()
+        # Fetch 2y history for technicals
+        # Threads=False to avoid issues if needed, or True for speed
+        df = yf.download(ticker, period="2y", progress=False, threads=False)
+        
+        if df is None or df.empty:
+            return None
+            
+        # Handle MultiIndex columns if present (common in recent yfinance)
+        if isinstance(df.columns, pd.MultiIndex):
+            # Check if ticker is in level 1
+            try:
+                if ticker in df.columns.get_level_values(1):
+                     df = df.xs(ticker, axis=1, level=1)
+                else:
+                    # sometimes it returns (Price, Ticker) or (Ticker, Price)
+                    # if level 0 has the ticker?
+                    pass 
+            except: pass
+            
+            # If still MultiIndex, try to flatten or extract 'Close'
+            if isinstance(df.columns, pd.MultiIndex):
+                # Fallback: Just drop levels if possible or ensuring we have OHLC
+                df.columns = df.columns.get_level_values(0)
+
+        # Basic Validation
+        if 'Close' not in df.columns:
+            return None
+
+        # Cache it
+        _history_cache.set(ticker, df)
+        return df
+
+    except Exception as e:
+        print(f"[PriceService] History fetch error for {ticker}: {e}")
+        return None
 
 def get_price(ticker: str, use_cache: bool = True) -> dict:
     """
@@ -610,8 +668,19 @@ def background_price_update():
         if usa_tickers:
             print(f"[PriceService] Fetching {len(usa_tickers)} USA tickers...")
             try:
+                # 1. Warm Basic Price Cache (Finnhub/Fast)
                 get_prices(list(usa_tickers))
-                print(f"[PriceService] ✅ USA prices cached")
+                
+                # 2. Warm History Cache (yfinance/Slow)
+                # This ensures the Trade Journal calculations (EMA/RSI) are instant.
+                print(f"[PriceService] Warming history cache for {len(usa_tickers)} tickers...")
+                for ticker in usa_tickers:
+                    try:
+                        get_price_history(ticker)
+                    except Exception as he:
+                        print(f"[PriceService] History warm error for {ticker}: {he}")
+                        
+                print(f"[PriceService] ✅ USA prices & history cached")
             except Exception as e:
                 print(f"[PriceService] ⚠️ USA prices error: {e}")
         

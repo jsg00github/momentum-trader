@@ -393,39 +393,85 @@ def get_open_prices(current_user: models.User = Depends(auth.get_current_user), 
     tickets_list = list(ticker_dates.keys())
     if not tickets_list: return {}
         
+    print(f"[TradeJournal] Fetching live data for {len(tickets_list)} tickers...")
     results = {}
+    
+    # Import price service (now with history cache)
+    import price_service
+    
     try:
-        # Optimization: Use centralized price_service (Finnhub + Cache)
-        import price_service
-        prices_data = price_service.get_prices(tickets_list)
-        
-        for ticker, data in prices_data.items():
+        # We assume background worker warms the cache, so this loop should be fast.
+        for ticker in tickets_list:
             try:
-                if not data or data.get('price') is None: continue
+                # 1. Get History (2y) for Technicals
+                df = price_service.get_price_history(ticker)
                 
-                last_price = data.get('price', 0)
-                change = data.get('change_pct', 0)
+                if df is None or df.empty:
+                    # Fallback: Try basic price only (better than nothing)
+                    basic = price_service.get_price(ticker)
+                    if basic and basic.get('price'):
+                         results[ticker] = {
+                             "price": basic['price'],
+                             "change_pct": basic['change_pct'],
+                             "ema_8": 0, "ema_21": 0, "ema_35": 0, "ema_200": 0,
+                             "rsi_weekly": None,
+                             "violations_map": {}
+                         }
+                    continue
                 
-                # Fetch EMAs and RSI only if needed (optional optimization)
-                # For now, we can omit them or fetch purely technicals via yfinance roughly if expensive
-                # Or verify if frontend NEEDS ema/rsi in this specific view.
-                # Assuming this view focuses on P&L, Price, Change.
+                # 2. Calculate Technicals
+                close = df['Close']
+                ema_8 = close.ewm(span=8, adjust=False).mean()
+                ema_21 = close.ewm(span=21, adjust=False).mean()
+                ema_35 = close.ewm(span=35, adjust=False).mean()
+                ema_200 = close.ewm(span=200, adjust=False).mean()
                 
-                # If we really need EMAs, we might still need history.
-                # But let's prioritize speed first as requested.
+                last_price = float(close.iloc[-1])
+                prev_price = float(close.iloc[-2]) if len(close) > 1 else last_price
+                change = ((last_price - prev_price)/prev_price)*100
                 
+                # 3. Calculate VIOLATIONS (M.PATH)
+                violation_map = {}
+                if ticker in ticker_dates:
+                    for d_str in ticker_dates[ticker]:
+                        try:
+                            v8 = indicators.count_crossunders(df, ema_8, d_str)
+                            v21 = indicators.count_crossunders(df, ema_21, d_str)
+                            v35 = indicators.count_crossunders(df, ema_35, d_str)
+                            v200 = indicators.count_crossunders(df, ema_200, d_str)
+                            
+                            violation_map[d_str] = {
+                                'ema_8': v8, 'ema_21': v21, 'ema_35': v35, 'ema_200': v200
+                            }
+                        except:
+                            violation_map[d_str] = {}
+                            
+                # 4. Weekly RSI
+                rsi_summary = None
+                try:
+                    r = indicators.calculate_weekly_rsi_analytics(df)
+                    if r: rsi_summary = {"val": round(r['rsi'],2), "bullish": r['sma3']>r['sma14']}
+                except: pass
+
                 results[ticker] = {
                     "price": round(last_price, 2),
                     "change_pct": round(change, 2),
-                    "ema_8": 0, # Placeholder for speed
-                    "ema_21": 0, # Placeholder
-                    "ema_200": 0, # Placeholder
-                    "rsi_weekly": None,
-                    "violations_map": {},
-                    "source": data.get('source', 'unknown')
+                    "ema_8": round(float(ema_8.iloc[-1]), 2),
+                    "ema_21": round(float(ema_21.iloc[-1]), 2),
+                    "ema_35": round(float(ema_35.iloc[-1]), 2),
+                    "ema_200": round(float(ema_200.iloc[-1]), 2),
+                    "rsi_weekly": rsi_summary,
+                    "violations_map": violation_map,
+                    "source": "history_cache"
                 }
-            except: continue
-    except: pass
+
+            except Exception as e:
+                print(f"[TradeJournal] Error processing {ticker}: {e}")
+                continue
+                
+    except Exception as e:
+        print(f"[TradeJournal] Critical error: {e}")
+        pass
     return results
 
 

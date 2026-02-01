@@ -98,3 +98,47 @@ def calculate_weekly_rsi_analytics(daily_df):
         "weekly_closes": weekly_df['Close'].tolist(), # Debug / Charting help
         "weekly_rsi_series": weekly_df['RSI'].tolist()
     }
+
+def count_crossunders(df, ema_series, entry_date):
+    """
+    Count how many times the price (Close) crossed BELOW the EMA 
+    since the entry_date.
+    
+    Logic: Close < EMA AND Prev_Close >= Prev_EMA
+    """
+    if df.empty or ema_series.empty:
+        return 0
+        
+    try:
+        # Align series
+        close = df['Close']
+        
+        # Ensure timestamp comparison
+        entry_ts = pd.Timestamp(entry_date)
+        mask = df.index >= entry_ts
+        
+        if not mask.any():
+            return 0
+            
+        # 1. Boolean Series: Is price below EMA?
+        is_below = close < ema_series
+        
+        # 2. Shift to find "Previous Day" status
+        # We fillna(False) so if the first day is below, it counts as a crossunder?
+        # Or fillna with current state?
+        # Standard: Crossunder implies change. 
+        # But if we enter and it immediately drops below on day 1 (or is below), 
+        # let's assume valid entry was ABOVE or ON.
+        prev_is_below = is_below.shift(1).fillna(False) 
+        
+        # 3. Crossunder: Currently Below AND Previously NOT Below
+        crossunders = is_below & (~prev_is_below)
+        
+        # 4. Filter by date (since entry)
+        valid_crossunders = crossunders[mask]
+        
+        return int(valid_crossunders.sum())
+        
+    except Exception as e:
+        print(f"Error in count_crossunders: {e}")
+        return 0
