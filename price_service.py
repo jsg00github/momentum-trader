@@ -2,6 +2,7 @@
 Unified Price Service with Caching
 - Finnhub as primary source (fast, <500ms)
 - yfinance as fallback (slower but reliable)
+- Extended hours/premarket data from yfinance
 - In-memory cache with TTL to reduce API calls
 - Thread-safe for multi-user/multi-tenant
 """
@@ -9,9 +10,11 @@ Unified Price Service with Caching
 import os
 import time
 import threading
+from datetime import datetime
 from typing import Dict, List, Optional
 import finnhub
 import pandas as pd
+import pytz
 
 # Lazy import yfinance to avoid slowing startup
 _yfinance = None
@@ -102,6 +105,45 @@ def get_finnhub_client():
     return _finnhub_client
 
 # ============================================
+# Market Hours Helper
+# ============================================
+
+def is_market_open() -> dict:
+    """
+    Check if US stock market is currently open.
+    Returns: {'is_open': bool, 'session': 'premarket'|'regular'|'postmarket'|'closed'}
+    """
+    try:
+        et = pytz.timezone('US/Eastern')
+        now = datetime.now(et)
+        hour = now.hour
+        minute = now.minute
+        weekday = now.weekday()  # 0=Monday, 6=Sunday
+        
+        # Weekend
+        if weekday >= 5:
+            return {'is_open': False, 'session': 'closed'}
+        
+        # Time in minutes from midnight
+        time_mins = hour * 60 + minute
+        
+        # Premarket: 4:00 AM - 9:30 AM ET
+        if 4 * 60 <= time_mins < 9 * 60 + 30:
+            return {'is_open': False, 'session': 'premarket'}
+        
+        # Regular: 9:30 AM - 4:00 PM ET
+        if 9 * 60 + 30 <= time_mins < 16 * 60:
+            return {'is_open': True, 'session': 'regular'}
+        
+        # Postmarket: 4:00 PM - 8:00 PM ET
+        if 16 * 60 <= time_mins < 20 * 60:
+            return {'is_open': False, 'session': 'postmarket'}
+        
+        return {'is_open': False, 'session': 'closed'}
+    except:
+        return {'is_open': True, 'session': 'regular'}  # Default to open if error
+
+# ============================================
 # Price Fetching Functions
 # ============================================
 
@@ -179,12 +221,13 @@ def get_prices(tickers: List[str], use_cache: bool = True) -> Dict[str, dict]:
     
     # 3. Fetch missing from Finnhub (one by one - no batch API in free tier)
     finnhub_failures = []
+    finnhub_success = []
     for ticker in missing:
         try:
             data = _fetch_finnhub(ticker)
             if data and data.get('price'):
-                _price_cache.set(ticker, data)
                 result[ticker] = data
+                finnhub_success.append(ticker)
             else:
                 finnhub_failures.append(ticker)
         except Exception as e:
@@ -197,10 +240,31 @@ def get_prices(tickers: List[str], use_cache: bool = True) -> Dict[str, dict]:
             yf_data = _fetch_yfinance_batch(finnhub_failures)
             for ticker, data in yf_data.items():
                 if data and data.get('price'):
-                    _price_cache.set(ticker, data)
                     result[ticker] = data
         except Exception as e:
             print(f"[PriceService] yfinance batch error: {e}")
+    
+    # 5. Enrich Finnhub results with extended hours data from yfinance
+    #    (Finnhub free tier doesn't provide premarket/postmarket)
+    market_status = is_market_open()
+    if market_status['session'] in ('premarket', 'postmarket') and finnhub_success:
+        try:
+            # Batch fetch extended data for tickers that got Finnhub prices
+            extended_data = _fetch_yfinance_batch(finnhub_success)
+            for ticker in finnhub_success:
+                if ticker in extended_data:
+                    ext = extended_data[ticker]
+                    if ext.get('extended_price'):
+                        result[ticker]['extended_price'] = ext['extended_price']
+                        result[ticker]['extended_change_pct'] = ext.get('extended_change_pct', 0)
+                        result[ticker]['is_premarket'] = market_status['session'] == 'premarket'
+                        result[ticker]['is_postmarket'] = market_status['session'] == 'postmarket'
+        except Exception as e:
+            print(f"[PriceService] Extended hours enrichment error: {e}")
+    
+    # 6. Cache all results
+    for ticker, data in result.items():
+        _price_cache.set(ticker, data)
     
     return result
 
