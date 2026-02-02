@@ -585,6 +585,23 @@ def get_open_prices(current_user: models.User = Depends(auth.get_current_user), 
                             momentum_path = round(path[-1]["projected"], 2)
                     except:
                         pass
+                    
+                    # Volume Trend (compare current volume to 14-day average)
+                    volume_trend = None
+                    try:
+                        if 'Volume' in df.columns and len(df) >= 14:
+                            vol_avg_14 = df['Volume'].tail(14).mean()
+                            current_vol = df['Volume'].iloc[-1]
+                            if vol_avg_14 > 0:
+                                vol_ratio = current_vol / vol_avg_14
+                                if vol_ratio > 1.10:  # 10% above avg
+                                    volume_trend = "up"
+                                elif vol_ratio < 0.90:  # 10% below avg
+                                    volume_trend = "down"
+                                else:
+                                    volume_trend = "neutral"
+                    except:
+                        pass
                 
                 # Skip ticker if we have no price at all
                 if live_price is None:
@@ -600,6 +617,7 @@ def get_open_prices(current_user: models.User = Depends(auth.get_current_user), 
                     "ema_200": ema_200,
                     "rsi_weekly": rsi_summary,
                     "momentum_path": momentum_path,
+                    "volume_trend": volume_trend,
                     "extended_price": round(price_data.get('extended_price'), 2) if price_data.get('extended_price') else None,
                     "extended_change_pct": round(price_data.get('extended_change_pct'), 2) if price_data.get('extended_change_pct') else None,
                     "is_premarket": False,

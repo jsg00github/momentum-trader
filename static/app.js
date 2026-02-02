@@ -2198,6 +2198,12 @@ ${res.data.errors.join("\n")}`);
                                     <span className="font-bold text-cyan-400">M.Path:</span>
                                     <span className="text-slate-400">Projected price (linear regression from last 20 closes)</span>
                                 </div>
+                                <div className="flex items-center gap-2 border-l border-slate-600 pl-4">
+                                    <span className="font-bold text-amber-400">Vol:</span>
+                                    <span className="text-green-400">▲</span><span className="text-slate-400">&gt;14d avg</span>
+                                    <span className="text-red-400">▼</span><span className="text-slate-400">&lt;14d avg</span>
+                                    <span className="text-slate-500">▬</span><span className="text-slate-400">≈avg</span>
+                                </div>
                             </div>
                         </div>
                         <div className="bg-slate-900 border border-slate-700 overflow-x-auto overflow-y-auto max-h-[80vh] rounded-lg shadow-xl">
@@ -2246,6 +2252,7 @@ ${res.data.errors.join("\n")}`);
                                         <th className="p-2 text-center border-r border-slate-800">EMA 35</th>
                                         <th className="p-2 text-center">EMA 200</th>
                                         <th className="p-2 text-center text-cyan-400 border-l border-slate-700">M.Path</th>
+                                        <th className="p-2 text-center text-amber-400 border-l border-slate-700" title="Volume vs 14-day avg">Vol</th>
                                         <th className="p-2"></th>
                                     </tr>
                                 </thead>
@@ -2400,6 +2407,16 @@ ${res.data.errors.join("\n")}`);
                                                             else if (mPath < price) colorClass = 'text-red-400';
 
                                                             return <span className={colorClass}>${mPath.toFixed(2)}</span>;
+                                                        })()}
+                                                    </td>
+                                                    {/* Volume Trend */}
+                                                    <td className="p-2 text-center border-l border-slate-700 font-bold text-lg">
+                                                        {(() => {
+                                                            const volTrend = row.live?.volume_trend;
+                                                            if (!volTrend) return <span className="text-slate-600">-</span>;
+                                                            if (volTrend === 'up') return <span className="text-green-400" title="Vol > 14d avg">▲</span>;
+                                                            if (volTrend === 'down') return <span className="text-red-400" title="Vol < 14d avg">▼</span>;
+                                                            return <span className="text-slate-500" title="Vol ≈ 14d avg">▬</span>;
                                                         })()}
                                                     </td>
                                                     <td className="p-2 border-l border-slate-800 flex justify-center gap-1 bg-slate-900">
