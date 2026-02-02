@@ -290,6 +290,7 @@ def scan_rsi_crossover(df: pd.DataFrame):
             "date": str(df.index[-1].date()),
             "price": float(last_close),
             "rsi": round(rsi_data['rsi'], 2),
+            "rsi_color": rsi_data.get('color', 'gray'),  # NEW: 6-tier phase color
             "ema3": round(rsi_data['ema3'], 2),
             "ema14": round(rsi_data['ema14'], 2),
             "ema60_d": round(ema60_d, 2),

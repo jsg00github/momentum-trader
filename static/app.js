@@ -4088,6 +4088,9 @@ function Scanner({ onTickerClick }) {
                             <th className="p-2 text-right cursor-pointer hover:text-white transition" onClick={() => handleSort('rsi')}>
                                 RSI(W)
                             </th>
+                            <th className="p-2 text-center" title="W.RSI Phase (6-tier)">
+                                Phase
+                            </th>
                             <th className="p-2 text-right cursor-pointer hover:text-white transition" onClick={() => handleSort('smi')}>
                                 SMI(W)
                             </th>
@@ -4122,6 +4125,35 @@ function Scanner({ onTickerClick }) {
                                 <td className="p-2 text-right font-mono text-white text-xs">${row.price?.toFixed(2)}</td>
                                 <td className={`p-2 text-right font-bold text-xs ${row.rsi < 35 ? 'text-green-400' : 'text-blue-300'}`}>
                                     {row.rsi?.toFixed(1)}
+                                </td>
+                                {/* W.RSI Phase */}
+                                <td className="p-2 text-center">
+                                    {(() => {
+                                        const colorMap = {
+                                            green: 'bg-green-500',
+                                            blue: 'bg-blue-500',
+                                            yellow: 'bg-yellow-500',
+                                            orange: 'bg-orange-500',
+                                            pink: 'bg-pink-400',
+                                            red: 'bg-red-500',
+                                            gray: 'bg-slate-600'
+                                        };
+                                        const labelMap = {
+                                            green: 'Strong',
+                                            blue: 'Accum',
+                                            yellow: 'Pull↑',
+                                            orange: 'Pull↓',
+                                            pink: 'Corr',
+                                            red: 'Bear',
+                                            gray: '-'
+                                        };
+                                        const c = row.rsi_color || 'gray';
+                                        return (
+                                            <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold text-white ${colorMap[c]}`}>
+                                                {labelMap[c]}
+                                            </span>
+                                        );
+                                    })()}
                                 </td>
                                 <td className={`p-2 text-right font-bold text-xs ${row.smi_bullish ? 'text-green-400' : 'text-red-400'}`}>
                                     {row.smi?.toFixed(1)}
