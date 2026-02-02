@@ -28,7 +28,7 @@ jobs:
         # Check for syntax errors only (no style enforcement yet)
         pip install flake8
         # select=E9,F63,F7,F82 checks for syntax errors / undefined names
-        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --exclude=backend/frontend,backend/node-v*,backups,backend/backups
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --exclude=backend/frontend,backend/node-v*,backups,backend/backups,venv,Historial_Backups,app_hub,.pytest_cache
         
     # - name: Run Status Test
     #   run: |
