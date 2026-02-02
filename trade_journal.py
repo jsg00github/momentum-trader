@@ -566,11 +566,14 @@ def get_open_prices(current_user: models.User = Depends(auth.get_current_user), 
                     ema_35 = round(float(ema_35_series.iloc[-1]), 2) if len(ema_35_series) > 0 else None
                     ema_200 = round(float(ema_200_series.iloc[-1]), 2) if len(ema_200_series) >= 200 else None
                     
-                    # Weekly RSI
                     try:
                         r = indicators.calculate_weekly_rsi_analytics(df)
                         if r:
-                            rsi_summary = {"val": round(r['rsi'], 2), "bullish": r['sma3'] > r['sma14']}
+                            rsi_summary = {
+                                "val": round(r['rsi'], 2),
+                                "bullish": r['sma3'] > r['sma14'],
+                                "color": r.get('color', 'red')  # 6-tier color logic
+                            }
                     except:
                         pass
                     
