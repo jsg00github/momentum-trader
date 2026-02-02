@@ -2182,6 +2182,24 @@ ${res.data.errors.join("\n")}`);
                                 TRADE HISTORY
                             </button>
                         </div>
+                        {/* Color Legend for W.RSI and M.Path */}
+                        <div className="mb-4 p-3 bg-slate-800/50 border border-slate-700 rounded-lg text-xs">
+                            <div className="flex flex-wrap gap-x-6 gap-y-2">
+                                <div className="flex items-center gap-2">
+                                    <span className="font-bold text-slate-300">W.RSI:</span>
+                                    <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-500"></span> Strong Bullish</span>
+                                    <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-blue-500"></span> Accumulation</span>
+                                    <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-yellow-500"></span> Pullback ↑50</span>
+                                    <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-orange-500"></span> Pullback ↓50</span>
+                                    <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-pink-400"></span> Correction</span>
+                                    <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-500"></span> Bearish</span>
+                                </div>
+                                <div className="flex items-center gap-2 border-l border-slate-600 pl-4">
+                                    <span className="font-bold text-cyan-400">M.Path:</span>
+                                    <span className="text-slate-400">Projected price (linear regression from last 20 closes)</span>
+                                </div>
+                            </div>
+                        </div>
                         <div className="bg-slate-900 border border-slate-700 overflow-x-auto overflow-y-auto max-h-[80vh] rounded-lg shadow-xl">
                             <table className="w-full text-left text-[11px] whitespace-nowrap">
                                 <thead className="bg-[#0f172a] text-slate-400 uppercase font-bold border-b border-slate-600 select-none">
