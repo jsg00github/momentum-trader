@@ -2343,6 +2343,7 @@ ${res.data.errors.join("\n")}`);
                                                                 blue: { text: "text-blue-400", bg: "bg-blue-900/30", arrow: "▲" },
                                                                 pink: { text: "text-pink-400", bg: "bg-pink-900/30", arrow: "▼" },
                                                                 yellow: { text: "text-yellow-400", bg: "bg-yellow-900/30", arrow: "▼" },
+                                                                orange: { text: "text-orange-400", bg: "bg-orange-900/30", arrow: "▼" },
                                                                 red: { text: "text-red-400", bg: "bg-red-900/30", arrow: "▼" }
                                                             };
                                                             const color = rsi.color || (rsi.bullish ? 'green' : 'red');
@@ -3233,6 +3234,7 @@ function TradingViewChart({ ticker, chartData, elliottWave, metrics, tradeHistor
                 blue: '#3b82f6',  // Blue 500
                 pink: '#f472b6',  // Pink 400
                 yellow: '#f59e0b', // Amber 500
+                orange: '#f97316', // Orange 500
                 red: '#ef4444'     // Red 500
             };
 

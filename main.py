@@ -603,7 +603,7 @@ def analyze_ticker(req: AnalyzeRequest):
                     if field in row and not pd.isna(row[field]):
                         data_point[field] = float(row[field])
 
-                # Calculate RSI color for this point (5-tier logic)
+                # Calculate RSI color for this point (6-tier logic)
                 rsi_val = row.get('rsi_weekly')
                 ema3 = row.get('rsi_sma_3')
                 ema14 = row.get('rsi_sma_14')
@@ -623,7 +623,7 @@ def analyze_ticker(req: AnalyzeRequest):
                         elif rsi_val < ema14:
                             rsi_color = "red"
                         else:
-                            rsi_color = "yellow"
+                            rsi_color = "orange"
                 
                 data_point["rsi_color"] = rsi_color
                 chart_data.append(data_point)
