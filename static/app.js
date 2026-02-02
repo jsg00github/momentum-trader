@@ -2341,6 +2341,7 @@ ${res.data.errors.join("\n")}`);
                                                             const colorMap = {
                                                                 green: { text: "text-green-400", bg: "bg-green-900/30", arrow: "▲" },
                                                                 blue: { text: "text-blue-400", bg: "bg-blue-900/30", arrow: "▲" },
+                                                                pink: { text: "text-pink-400", bg: "bg-pink-900/30", arrow: "▼" },
                                                                 yellow: { text: "text-yellow-400", bg: "bg-yellow-900/30", arrow: "▼" },
                                                                 red: { text: "text-red-400", bg: "bg-red-900/30", arrow: "▼" }
                                                             };
@@ -3230,6 +3231,7 @@ function TradingViewChart({ ticker, chartData, elliottWave, metrics, tradeHistor
             const colorMap = {
                 green: '#10b981', // Emerald 500
                 blue: '#3b82f6',  // Blue 500
+                pink: '#f472b6',  // Pink 400
                 yellow: '#f59e0b', // Amber 500
                 red: '#ef4444'     // Red 500
             };
@@ -3240,6 +3242,16 @@ function TradingViewChart({ ticker, chartData, elliottWave, metrics, tradeHistor
                 color: colorMap[d.rsi_color] || '#ffffff'
             }));
             rsiSeries.setData(rsiData);
+
+            // Add a white line on top of the histogram for better readability
+            const rsiLineSeries = rsiChart.addLineSeries({
+                color: 'rgba(255, 255, 255, 0.8)',
+                lineWidth: 1,
+                lastValueVisible: false,
+                priceLineVisible: false,
+                crosshairMarkerVisible: true
+            });
+            rsiLineSeries.setData(rsiData.map(d => ({ time: d.time, value: d.value })));
 
             // Add RSI Levels (70, 30, 50) - Only show axis labels for 70 and 30 to avoid clutter
             const rsiLevels = [
