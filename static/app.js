@@ -3220,16 +3220,24 @@ function TradingViewChart({ ticker, chartData, elliottWave, metrics, tradeHistor
 
         // NO llamar fitContent() aquí para prevenir auto-scroll
 
-        // RSI Chart (Solid White for main RSI)
+        // RSI Chart - Color Coded Histogram
         if (chartData.some(d => d.rsi_weekly)) {
-            const rsiSeries = rsiChart.addLineSeries({
-                color: '#ffffff',
-                lineWidth: 2,
+            const rsiSeries = rsiChart.addHistogramSeries({
                 title: 'Weekly RSI',
+                priceFormat: { type: 'price', precision: 1 },
             });
+
+            const colorMap = {
+                green: '#10b981', // Emerald 500
+                blue: '#3b82f6',  // Blue 500
+                yellow: '#f59e0b', // Amber 500
+                red: '#ef4444'     // Red 500
+            };
+
             const rsiData = chartData.filter(d => d.rsi_weekly).map(d => ({
                 time: new Date(d.date).getTime() / 1000,
                 value: d.rsi_weekly,
+                color: colorMap[d.rsi_color] || '#ffffff'
             }));
             rsiSeries.setData(rsiData);
 
