@@ -92,7 +92,23 @@ def calculate_weekly_rsi_analytics(daily_df):
     current_smi = float(last_row['SMI']) if not pd.isna(last_row['SMI']) else 0.0
     smi_bullish = current_smi > 0
     
-    # Trend
+    # === NEW 4-TIER COLOR LOGIC ===
+    # Priority order: Red (worst) > Yellow > Blue > Green (best)
+    # Red:    RSI < EMA14 (bearish, below long-term average)
+    # Yellow: RSI < EMA3 but >= EMA14 (caution, losing momentum)
+    # Blue:   RSI > EMA3 and > EMA14 but <= 50 (accumulation zone, bullish EMAs)
+    # Green:  RSI > EMA3 and > EMA14 and > 50 (strong bullish)
+    
+    if current_rsi < current_ema14:
+        rsi_color = "red"
+    elif current_rsi < current_ema3:
+        rsi_color = "yellow"
+    elif current_rsi > 50:
+        rsi_color = "green"
+    else:
+        rsi_color = "blue"
+    
+    # Legacy bullish flag (for backward compatibility)
     is_bullish = current_ema3 > current_ema14
     trend = "BULLISH" if is_bullish else "BEARISH"
 
@@ -116,6 +132,7 @@ def calculate_weekly_rsi_analytics(daily_df):
         "ema14": current_ema14,
         "sma3": current_ema3,  # Compatibility Alias
         "sma14": current_ema14, # Compatibility Alias
+        "color": rsi_color,  # NEW: 4-tier color (green/blue/yellow/red)
         "smi": current_smi,
         "smi_bullish": smi_bullish,
         "signal_buy": signal_buy,

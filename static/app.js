@@ -712,6 +712,7 @@ function TradeForm({ onSave, onCancel }) {
         target: '',
         target2: '',
         target3: '',
+        strategy: '', // NEW: Strategy field
         status: 'OPEN',
         exit_date: '',
         exit_price: '',
@@ -733,6 +734,7 @@ function TradeForm({ onSave, onCancel }) {
             target: formData.target ? parseFloat(formData.target) : null,
             target2: formData.target2 ? parseFloat(formData.target2) : null,
             target3: formData.target3 ? parseFloat(formData.target3) : null,
+            strategy: formData.strategy || null, // NEW: Strategy field
             exit_price: formData.exit_price ? parseFloat(formData.exit_price) : null,
         };
 
@@ -793,6 +795,10 @@ function TradeForm({ onSave, onCancel }) {
                         <div>
                             <label className="block text-xs text-slate-400 mb-1">Target 3 ($)</label>
                             <input type="number" step="0.01" name="target3" value={formData.target3} onChange={handleChange} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white" />
+                        </div>
+                        <div>
+                            <label className="block text-xs text-slate-400 mb-1">Strategy</label>
+                            <input type="text" name="strategy" value={formData.strategy} onChange={handleChange} placeholder="e.g. Color Bull Flag" className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white" />
                         </div>
                     </>
                 )}
@@ -2325,16 +2331,26 @@ ${res.data.errors.join("\n")}`);
                                                         <EditableCell value={groupTrades[0]?.strategy} onSave={(val) => handleUpdateGroup(groupTrades, 'strategy', val)} width="w-24" />
                                                     </td>
 
-                                                    {/* Weekly RSI */}
+                                                    {/* Weekly RSI - 4-TIER COLOR SCHEME */}
                                                     <td className="p-2 text-center border-r border-slate-800 font-bold font-mono">
                                                         {(() => {
                                                             const rsi = row.live?.rsi_weekly;
                                                             if (!rsi) return <span className="text-slate-600">-</span>;
-                                                            const colorClass = rsi.bullish ? "text-green-400" : "text-red-400";
+
+                                                            // 4-tier color logic from backend
+                                                            const colorMap = {
+                                                                green: { text: "text-green-400", bg: "bg-green-900/30", arrow: "▲" },
+                                                                blue: { text: "text-blue-400", bg: "bg-blue-900/30", arrow: "▲" },
+                                                                yellow: { text: "text-yellow-400", bg: "bg-yellow-900/30", arrow: "▼" },
+                                                                red: { text: "text-red-400", bg: "bg-red-900/30", arrow: "▼" }
+                                                            };
+                                                            const color = rsi.color || (rsi.bullish ? 'green' : 'red');
+                                                            const styles = colorMap[color] || colorMap.red;
+
                                                             return (
-                                                                <div className="flex flex-col items-center leading-none">
-                                                                    <span className={colorClass}>{rsi.val.toFixed(1)}</span>
-                                                                    <span className={`text-[9px] ${colorClass}`}>{rsi.bullish ? '▲' : '▼'}</span>
+                                                                <div className={`flex flex-col items-center leading-none px-1 py-0.5 rounded ${styles.bg}`}>
+                                                                    <span className={styles.text}>{rsi.val.toFixed(1)}</span>
+                                                                    <span className={`text-[9px] ${styles.text}`}>{styles.arrow}</span>
                                                                 </div>
                                                             );
                                                         })()}
