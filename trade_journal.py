@@ -521,10 +521,10 @@ def get_open_prices(current_user: models.User = Depends(auth.get_current_user), 
         print(f"[open-prices] price_service error: {e}")
         live_prices = {}
     
-    # === STEP 2: Get historical data for EMAs (slower, but needed for technical analysis) ===
+    # === STEP 2: Get historical data for EMAs (optimized: 1y is enough for EMA200) ===
     try:
-        # Batch download historical data for EMAs (threads=False for production stability)
-        data = market_data.safe_yf_download(tickers, period="2y", threads=False)
+        # Batch download with threads for speed (1y = ~250 days, enough for EMA200)
+        data = market_data.safe_yf_download(tickers, period="1y", threads=True)
         
         for ticker in tickers:
             try:
