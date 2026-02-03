@@ -816,8 +816,30 @@ def get_open_trades_analytics(current_user: models.User = Depends(auth.get_curre
         
         # Sort by expected payment descending
         upcoming_dividends.sort(key=lambda x: x['expected'], reverse=True)
+        
+        # Merge dividend yield into holdings data for Portfolio Dividends display
+        for h in holdings_data:
+            div_match = next((d for d in upcoming_dividends if d['ticker'] == h['ticker']), None)
+            if div_match:
+                h['yield'] = div_match['yield']
+            else:
+                h['yield'] = 0
     except Exception as e:
         print(f"[Dividends] Error fetching: {e}")
+        # Ensure holdings have yield field even on error
+        for h in holdings_data:
+            h['yield'] = 0
+    
+    # Calculate portfolio-level dividend totals
+    total_div_yield = 0
+    total_div_payment = 0
+    if total_invested > 0 and upcoming_dividends:
+        for d in upcoming_dividends:
+            holding_match = next((h for h in holdings_data if h['ticker'] == d['ticker']), None)
+            if holding_match:
+                weight = holding_match['value'] / total_invested
+                total_div_yield += d['yield'] * weight
+                total_div_payment += d['expected'] * 4  # Annual = quarterly * 4
     
     return {
         "exposure": {
@@ -826,7 +848,9 @@ def get_open_trades_analytics(current_user: models.User = Depends(auth.get_curre
             "unrealized_pnl": round(unrealized_pnl, 2),
             "active_count": active_count,
             "portfolio_beta": round(weighted_beta, 2),
-            "portfolio_pe": round(weighted_pe, 1)
+            "portfolio_pe": round(weighted_pe, 1),
+            "portfolio_div_yield": round(total_div_yield, 2),
+            "total_div_payment": round(total_div_payment, 2)
         },
         "asset_allocation": asset_allocation,
         "sector_allocation": sector_allocation,

@@ -1191,9 +1191,6 @@ function PerformanceDashboard({ data, performanceData, snapshotData }) {
                             <div className="text-[10px] text-slate-500 max-w-[180px]">AI advisor is currently analyzing your open positions for risks or add-on opportunities...</div>
                         </div>
                     )}
-
-                    {/* Portfolio News */}
-                    <PortfolioNewsWidget tickers={holdings?.map(h => h.ticker) || []} />
                 </div>
             </div>
         </div>
@@ -1229,6 +1226,8 @@ function TradeJournal() {
         notify_rsi_sell: true,
         sl_warning_pct: 2.0
     });
+    const [showBuyModal, setShowBuyModal] = useState(false);
+    const [buyData, setBuyData] = useState({ ticker: '', currentPrice: 0, sharesToBuy: '', buyPrice: '' });
     const [performanceData, setPerformanceData] = useState(null);
     const [marketFilter, setMarketFilter] = useState('all'); // 'all', 'usa', 'argentina'
     const [argentinaTrades, setArgentinaTrades] = useState([]); // Argentina positions (for Portfolio Dashboard)
@@ -2195,6 +2194,73 @@ ${res.data.errors.join("\n")}`);
                 </div>
             )}
 
+            {/* Buy More Modal (USA) */}
+            {showBuyModal && (
+                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 backdrop-blur-sm animate-fade-in">
+                    <div className="bg-slate-900 border border-slate-700 rounded-xl p-6 w-full max-w-sm shadow-2xl">
+                        <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                            📈 Comprar más: {buyData.ticker}
+                        </h3>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="text-slate-400 text-xs uppercase font-bold block mb-1">Cantidad de Acciones</label>
+                                <input
+                                    type="number"
+                                    value={buyData.sharesToBuy || ''}
+                                    onChange={(e) => setBuyData({ ...buyData, sharesToBuy: e.target.value })}
+                                    className="w-full bg-slate-800 border border-slate-600 rounded p-3 text-white font-mono text-lg focus:ring-2 focus:ring-green-500 outline-none"
+                                    placeholder="Ej: 10"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-slate-400 text-xs uppercase font-bold block mb-1">Precio de Compra</label>
+                                <input
+                                    type="number"
+                                    step="0.01"
+                                    value={buyData.buyPrice || ''}
+                                    onChange={(e) => setBuyData({ ...buyData, buyPrice: e.target.value })}
+                                    className="w-full bg-slate-800 border border-slate-600 rounded p-3 text-white font-mono text-lg focus:ring-2 focus:ring-green-500 outline-none"
+                                    placeholder={`Actual: $${buyData.currentPrice?.toFixed(2)}`}
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3 mt-6">
+                                <button
+                                    onClick={() => setShowBuyModal(false)}
+                                    className="bg-slate-700 hover:bg-slate-600 text-white py-3 rounded-lg font-bold transition"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    onClick={async () => {
+                                        if (!buyData.sharesToBuy || !buyData.buyPrice) return alert("Completa todos los campos");
+
+                                        try {
+                                            await axios.post(`${API_BASE}/trades/add`, {
+                                                ticker: buyData.ticker,
+                                                entry_date: new Date().toISOString().split('T')[0],
+                                                entry_price: parseFloat(buyData.buyPrice),
+                                                shares: parseInt(buyData.sharesToBuy),
+                                                direction: 'BUY',
+                                                status: 'OPEN'
+                                            });
+                                            setShowBuyModal(false);
+                                            fetchEssentialData(); // Refresh
+                                        } catch (err) {
+                                            alert("Error agregando compra: " + (err.response?.data?.detail || err.message));
+                                        }
+                                    }}
+                                    className="bg-green-600 hover:bg-green-500 text-white py-3 rounded-lg font-bold transition shadow-lg shadow-green-900/20"
+                                >
+                                    📈 COMPRAR
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* CONTENT AREA */}
             {
                 activeSubTab === 'analytics' ? (
@@ -2461,11 +2527,17 @@ ${res.data.errors.join("\n")}`);
                                                         <button
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
-                                                                // Open Add Trade Modal pre-filled for BUY (Not implemented fully yet, just simple adder)
-                                                                // Ideally we reuse TradeForm but let's stick to Sell for now as requested
+                                                                // Open Buy More Modal pre-filled for this ticker
+                                                                setBuyData({
+                                                                    ticker: ticker,
+                                                                    currentPrice: currentPrice || avgPpc,
+                                                                    sharesToBuy: '',
+                                                                    buyPrice: currentPrice || avgPpc
+                                                                });
+                                                                setShowBuyModal(true);
                                                             }}
-                                                            className="bg-green-600/20 hover:bg-green-600 text-green-400 hover:text-white px-2 py-0.5 rounded text-[10px] transition border border-green-600/30 opacity-50 cursor-not-allowed"
-                                                            title="Comprar más (coming soon)"
+                                                            className="bg-green-600/20 hover:bg-green-600 text-green-400 hover:text-white px-2 py-0.5 rounded text-[10px] transition border border-green-600/30"
+                                                            title="Comprar más"
                                                         >
                                                             +
                                                         </button>
@@ -4223,8 +4295,8 @@ function Scanner({ onTickerClick }) {
                                 </td>
                                 {/* Vol Week vs Month */}
                                 <td className={`p-2 text-right font-bold text-xs ${row.vol_week_vs_month > 1.1 ? 'text-green-400' :
-                                        row.vol_week_vs_month > 1.0 ? 'text-yellow-400' :
-                                            row.vol_week_vs_month < 0.9 ? 'text-red-400' : 'text-slate-500'
+                                    row.vol_week_vs_month > 1.0 ? 'text-yellow-400' :
+                                        row.vol_week_vs_month < 0.9 ? 'text-red-400' : 'text-slate-500'
                                     }`}>
                                     {row.vol_week_vs_month ? `${row.vol_week_vs_month.toFixed(2)}x` : '-'}
                                 </td>
