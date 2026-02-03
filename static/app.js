@@ -2110,8 +2110,8 @@ ${res.data.errors.join("\n")}`);
                             key={filter.value}
                             onClick={() => setRsiColorFilter(filter.value)}
                             className={`px-3 py-1 rounded-full text-xs font-bold transition ${rsiColorFilter === filter.value
-                                    ? `${filter.bg} ${filter.text} ring-2 ring-white/30`
-                                    : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                                ? `${filter.bg} ${filter.text} ring-2 ring-white/30`
+                                : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
                                 }`}
                         >
                             {filter.label}
@@ -4126,7 +4126,7 @@ function Scanner({ onTickerClick }) {
                             <th className="p-2 text-right cursor-pointer hover:text-white transition" onClick={() => handleSort('rsi')}>
                                 RSI(W)
                             </th>
-                            <th className="p-2 text-center" title="W.RSI Phase (6-tier)">
+                            <th className="p-2 text-center cursor-pointer hover:text-white transition" title="W.RSI Phase (6-tier)" onClick={() => handleSort('rsi_color')}>
                                 Phase
                             </th>
                             <th className="p-2 text-right cursor-pointer hover:text-white transition" onClick={() => handleSort('smi')}>
