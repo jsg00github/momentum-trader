@@ -1211,6 +1211,7 @@ function TradeJournal() {
     const [expandedGroups, setExpandedGroups] = useState({});
     const [activeTab, setActiveTab] = useState('active');
     const [activeSubTab, setActiveSubTab] = useState('log'); // 'log' or 'analytics'
+    const [rsiColorFilter, setRsiColorFilter] = useState('all'); // 'all', 'green', 'blue', 'yellow', 'orange', 'pink', 'red'
     const [calendarData, setCalendarData] = useState([]);
     const [lastUpdated, setLastUpdated] = useState(null); // Timestamp for live data
     const [premarket, setPremarket] = useState({}); // Pre-market data per ticker
@@ -1393,6 +1394,16 @@ function TradeJournal() {
 
     const sortedRows = useMemo(() => {
         let sortableItems = [...rowStats];
+
+        // Apply W.RSI color filter
+        if (rsiColorFilter !== 'all') {
+            sortableItems = sortableItems.filter(row => {
+                const rsiColor = row.live?.rsi_weekly?.color;
+                return rsiColor === rsiColorFilter;
+            });
+        }
+
+        // Apply sorting
         if (sortConfig.key !== null) {
             sortableItems.sort((a, b) => {
                 let aValue = a[sortConfig.key];
@@ -1412,7 +1423,7 @@ function TradeJournal() {
             });
         }
         return sortableItems;
-    }, [rowStats, sortConfig]);
+    }, [rowStats, sortConfig, rsiColorFilter]);
 
     const requestSort = (key) => {
         let direction = 'asc';
@@ -2081,6 +2092,33 @@ ${res.data.errors.join("\n")}`);
                     ⚖️ Portfolio Analytics
                 </button>
             </div>
+
+            {/* W.RSI COLOR FILTER (Only show in log view) */}
+            {activeSubTab === 'log' && (
+                <div className="mb-4 flex items-center gap-2 flex-wrap">
+                    <span className="text-xs text-slate-500 font-medium">Filter by W.RSI Phase:</span>
+                    {[
+                        { value: 'all', label: 'All', bg: 'bg-slate-700', text: 'text-slate-300' },
+                        { value: 'green', label: 'Strong', bg: 'bg-green-500', text: 'text-white' },
+                        { value: 'blue', label: 'Accum', bg: 'bg-blue-500', text: 'text-white' },
+                        { value: 'yellow', label: 'Pull↑', bg: 'bg-yellow-500', text: 'text-slate-900' },
+                        { value: 'orange', label: 'Pull↓', bg: 'bg-orange-500', text: 'text-white' },
+                        { value: 'pink', label: 'Corr', bg: 'bg-pink-400', text: 'text-white' },
+                        { value: 'red', label: 'Bear', bg: 'bg-red-500', text: 'text-white' }
+                    ].map(filter => (
+                        <button
+                            key={filter.value}
+                            onClick={() => setRsiColorFilter(filter.value)}
+                            className={`px-3 py-1 rounded-full text-xs font-bold transition ${rsiColorFilter === filter.value
+                                    ? `${filter.bg} ${filter.text} ring-2 ring-white/30`
+                                    : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                                }`}
+                        >
+                            {filter.label}
+                        </button>
+                    ))}
+                </div>
+            )}
 
             {/* Sell Modal (USA) */}
             {showSellModal && (
