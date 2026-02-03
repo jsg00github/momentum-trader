@@ -286,6 +286,17 @@ def scan_rsi_crossover(df: pd.DataFrame):
             # But we pass the is_bullish flag so the frontend can filter the Watchlist.
             pass
 
+        # Volume Week vs Month (last 5 days avg vs last 21 days avg)
+        vol_week_ratio = 1.0
+        try:
+            if 'Volume' in df.columns and len(df) >= 21:
+                vol_week_avg = df['Volume'].tail(5).mean()
+                vol_month_avg = df['Volume'].tail(21).mean()
+                if vol_month_avg > 0:
+                    vol_week_ratio = vol_week_avg / vol_month_avg
+        except:
+            pass
+
         return {
             "date": str(df.index[-1].date()),
             "price": float(last_close),
@@ -302,6 +313,7 @@ def scan_rsi_crossover(df: pd.DataFrame):
             "di_plus_above_adx": di_plus > adx,
             "vol_ratio": round(vol_data['ratio'], 2),
             "is_vol_growing": vol_data['is_growing'],
+            "vol_week_vs_month": round(vol_week_ratio, 2),  # NEW: Weekly vs Monthly volume
             "stars": stars,
             "macd_d": round(macd_d, 2),
             "is_bullish": bool(is_bullish),

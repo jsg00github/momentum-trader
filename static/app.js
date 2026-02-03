@@ -4147,6 +4147,9 @@ function Scanner({ onTickerClick }) {
                             <th className="p-2 text-right cursor-pointer hover:text-white transition" onClick={() => handleSort('vol_ratio')}>
                                 Vol
                             </th>
+                            <th className="p-2 text-right cursor-pointer hover:text-white transition" onClick={() => handleSort('vol_week_vs_month')} title="Volume: Weekly (5d) vs Monthly (21d) Avg">
+                                Vol W/M
+                            </th>
                             <th className="p-2 text-center">Chart</th>
                         </tr>
                     </thead>
@@ -4217,6 +4220,13 @@ function Scanner({ onTickerClick }) {
                                 </td>
                                 <td className={`p-2 text-right font-bold text-xs ${row.is_vol_growing ? 'text-orange-400' : 'text-slate-500'}`}>
                                     {row.vol_ratio?.toFixed(1)}x
+                                </td>
+                                {/* Vol Week vs Month */}
+                                <td className={`p-2 text-right font-bold text-xs ${row.vol_week_vs_month > 1.1 ? 'text-green-400' :
+                                        row.vol_week_vs_month > 1.0 ? 'text-yellow-400' :
+                                            row.vol_week_vs_month < 0.9 ? 'text-red-400' : 'text-slate-500'
+                                    }`}>
+                                    {row.vol_week_vs_month ? `${row.vol_week_vs_month.toFixed(2)}x` : '-'}
                                 </td>
                                 <td className="p-2 text-center">
                                     <button
