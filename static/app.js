@@ -2312,56 +2312,78 @@ ${res.data.errors.join("\n")}`);
                         </div>
                         <div className="bg-slate-900 border border-slate-700 overflow-x-auto overflow-y-auto max-h-[80vh] rounded-lg shadow-xl">
                             <table className="w-full text-left text-[11px] whitespace-nowrap">
-                                <thead className="bg-[#0f172a] text-slate-400 uppercase font-bold border-b border-slate-600 select-none">
+                                <thead className="bg-[#0f172a] text-slate-400 uppercase font-bold border-b border-slate-600 select-none text-[10px]">
                                     <tr>
-                                        <th onClick={() => requestSort('ticker')} className="p-2 border-r border-slate-800 sticky left-0 bg-[#0f172a] z-10 cursor-pointer hover:text-white transition">
-                                            Ticker <span className="text-[9px] ml-1">{getSortIcon('ticker')}</span>
+                                        <th onClick={() => requestSort('ticker')} className="p-1.5 border-r border-slate-800 sticky left-0 bg-[#0f172a] z-10 cursor-pointer hover:text-white transition">
+                                            Ticker {getSortIcon('ticker')}
                                         </th>
-                                        <th className="p-2 border-r border-slate-800">Fecha</th>
-                                        <th onClick={() => requestSort('avgPpc')} className="p-2 text-right border-r border-slate-800 text-yellow-300 cursor-pointer hover:text-white transition">
-                                            PPC <span className="text-[9px] ml-1">{getSortIcon('avgPpc')}</span>
+                                        <th className="p-1.5 border-r border-slate-800">Fecha</th>
+                                        <th onClick={() => requestSort('avgPpc')} className="p-1.5 text-right border-r border-slate-800 text-yellow-300 cursor-pointer hover:text-white transition">
+                                            PPC {getSortIcon('avgPpc')}
                                         </th>
-                                        <th onClick={() => requestSort('displayShares')} className="p-2 text-right border-r border-slate-800 cursor-pointer hover:text-white transition">
-                                            Qty <span className="text-[9px] ml-1">{getSortIcon('displayShares')}</span>
+                                        <th onClick={() => requestSort('displayShares')} className="p-1.5 text-right border-r border-slate-800 cursor-pointer hover:text-white transition">
+                                            Qty {getSortIcon('displayShares')}
                                         </th>
-                                        <th onClick={() => requestSort('displayCost')} className="p-2 text-right border-r border-slate-800 cursor-pointer hover:text-white transition">
-                                            Cost <span className="text-[9px] ml-1">{getSortIcon('displayCost')}</span>
+                                        <th onClick={() => requestSort('displayCost')} className="p-1.5 text-right border-r border-slate-800 cursor-pointer hover:text-white transition">
+                                            Cost {getSortIcon('displayCost')}
                                         </th>
-                                        <th onClick={() => requestSort('totalPnl')} className="p-2 text-right border-r border-slate-800 text-blue-300 font-bold cursor-pointer hover:text-white transition">
-                                            P/L $ <span className="text-[9px] ml-1">{getSortIcon('totalPnl')}</span>
+                                        <th onClick={() => requestSort('totalPnl')} className="p-1.5 text-right border-r border-slate-800 text-blue-300 font-bold cursor-pointer hover:text-white transition">
+                                            P/L {getSortIcon('totalPnl')}
                                         </th>
-                                        <th onClick={() => requestSort('displayPrice')} className="p-2 text-right border-r border-slate-800 text-blue-300 font-bold cursor-pointer hover:text-white transition">
-                                            {activeTab === 'history' ? 'Avg Exit' : '$ Last'} <span className="text-[9px] ml-1">{getSortIcon('displayPrice')}</span>
+                                        <th onClick={() => requestSort('displayPrice')} className="p-1.5 text-right border-r border-slate-800 text-blue-300 cursor-pointer hover:text-white transition">
+                                            Last {getSortIcon('displayPrice')}
                                         </th>
-                                        <th onClick={() => requestSort('preMktChange')} className="p-2 text-center border-r border-slate-800 text-purple-300 cursor-pointer hover:text-white transition">
-                                            PreMkt % <span className="text-[9px] ml-1">{getSortIcon('preMktChange')}</span>
+                                        <th onClick={() => requestSort('preMktChange')} className="p-1.5 text-center border-r border-slate-800 text-purple-300 cursor-pointer hover:text-white transition" title="Pre-Market %">
+                                            PM {getSortIcon('preMktChange')}
                                         </th>
-                                        <th onClick={() => requestSort('dayChange')} className="p-2 text-center border-r border-slate-800 cursor-pointer hover:text-white transition">
-                                            {activeTab === 'history' ? 'Exit Date' : '% Day'} <span className="text-[9px] ml-1">{getSortIcon('dayChange')}</span>
+                                        <th onClick={() => requestSort('dayChange')} className="p-1.5 text-center border-r border-slate-800 cursor-pointer hover:text-white transition">
+                                            Day {getSortIcon('dayChange')}
                                         </th>
-                                        <th onClick={() => requestSort('totalPnlPct')} className="p-2 border-r border-slate-800 text-right font-bold text-white cursor-pointer hover:text-blue-400 transition">
-                                            % Trade <span className="text-[9px] ml-1">{getSortIcon('totalPnlPct')}</span>
+                                        <th onClick={() => requestSort('totalPnlPct')} className="p-1.5 border-r border-slate-800 text-right font-bold text-white cursor-pointer hover:text-blue-400 transition">
+                                            %Tr {getSortIcon('totalPnlPct')}
                                         </th>
-                                        <th className="p-2 border-r border-slate-800 text-center">SL</th>
-                                        <th className="p-2 border-r border-slate-800 text-center">TP1</th>
-                                        <th className="p-2 border-r border-slate-800 text-center">TP2</th>
-                                        <th className="p-2 border-r border-slate-800 text-center">TP3</th>
-                                        <th onClick={() => requestSort('daysHeld')} className="p-2 border-r border-slate-800 text-center cursor-pointer hover:text-white transition">
-                                            Days <span className="text-[9px] ml-1">{getSortIcon('daysHeld')}</span>
+                                        <th className="p-1.5 border-r border-slate-800 text-center">SL</th>
+                                        <th className="p-1.5 border-r border-slate-800 text-center">T1</th>
+                                        <th className="p-1.5 border-r border-slate-800 text-center">T2</th>
+                                        <th className="p-1.5 border-r border-slate-800 text-center">T3</th>
+                                        <th onClick={() => requestSort('daysHeld')} className="p-1.5 border-r border-slate-800 text-center cursor-pointer hover:text-white transition">
+                                            D {getSortIcon('daysHeld')}
                                         </th>
-                                        <th className="p-2 border-r border-slate-800">Strategy</th>
-                                        <th className="p-2 text-center border-r border-slate-800">W. RSI</th>
-                                        <th className="p-2 text-center border-r border-slate-800">EMA 8</th>
-                                        <th className="p-2 text-center border-r border-slate-800">EMA 21</th>
-                                        <th className="p-2 text-center border-r border-slate-800">EMA 35</th>
-                                        <th className="p-2 text-center">EMA 200</th>
-                                        <th className="p-2 text-center text-cyan-400 border-l border-slate-700">M.Path</th>
-                                        <th className="p-2 text-center text-amber-400 border-l border-slate-700" title="Volume vs 14-day avg">Vol</th>
-                                        <th className="p-2 text-center text-purple-400 border-l border-slate-700" title="Weinstein Stage (1-4)">Stage</th>
-                                        <th className="p-2 text-center text-slate-400 border-l border-slate-700" title="52-Week Range Position">52w</th>
-                                        <th className="p-2 text-center text-blue-400 border-l border-slate-700" title="DI+ > DI- Alignment (D/W)">DI</th>
-                                        <th className="p-2 text-center text-green-400 border-l border-slate-700" title="Momentum Score (0-100)">Score</th>
-                                        <th className="p-2"></th>
+                                        <th className="p-1.5 border-r border-slate-800">Strat</th>
+                                        <th onClick={() => requestSort('rsiWeekly')} className="p-1.5 text-center border-r border-slate-800 cursor-pointer hover:text-white transition" title="Weekly RSI">
+                                            RSI {getSortIcon('rsiWeekly')}
+                                        </th>
+                                        <th onClick={() => requestSort('ema8')} className="p-1.5 text-center border-r border-slate-800 cursor-pointer hover:text-white transition">
+                                            E8 {getSortIcon('ema8')}
+                                        </th>
+                                        <th onClick={() => requestSort('ema21')} className="p-1.5 text-center border-r border-slate-800 cursor-pointer hover:text-white transition">
+                                            E21 {getSortIcon('ema21')}
+                                        </th>
+                                        <th onClick={() => requestSort('ema35')} className="p-1.5 text-center border-r border-slate-800 cursor-pointer hover:text-white transition">
+                                            E35 {getSortIcon('ema35')}
+                                        </th>
+                                        <th onClick={() => requestSort('ema200')} className="p-1.5 text-center cursor-pointer hover:text-white transition">
+                                            E200 {getSortIcon('ema200')}
+                                        </th>
+                                        <th onClick={() => requestSort('momentumPath')} className="p-1.5 text-center text-cyan-400 border-l border-slate-700 cursor-pointer hover:text-white transition" title="Momentum Path">
+                                            MP {getSortIcon('momentumPath')}
+                                        </th>
+                                        <th onClick={() => requestSort('volumeTrend')} className="p-1.5 text-center text-amber-400 border-l border-slate-700 cursor-pointer hover:text-white transition" title="Volume vs 14d avg">
+                                            V {getSortIcon('volumeTrend')}
+                                        </th>
+                                        <th onClick={() => requestSort('stage')} className="p-1.5 text-center text-purple-400 border-l border-slate-700 cursor-pointer hover:text-white transition" title="Weinstein Stage">
+                                            St {getSortIcon('stage')}
+                                        </th>
+                                        <th onClick={() => requestSort('range52w')} className="p-1.5 text-center text-slate-400 border-l border-slate-700 cursor-pointer hover:text-white transition" title="52-Week Range">
+                                            52w {getSortIcon('range52w')}
+                                        </th>
+                                        <th onClick={() => requestSort('diAlignment')} className="p-1.5 text-center text-blue-400 border-l border-slate-700 cursor-pointer hover:text-white transition" title="DI Alignment">
+                                            DI {getSortIcon('diAlignment')}
+                                        </th>
+                                        <th onClick={() => requestSort('momentumScore')} className="p-1.5 text-center text-green-400 border-l border-slate-700 cursor-pointer hover:text-white transition" title="Momentum Score">
+                                            Sc {getSortIcon('momentumScore')}
+                                        </th>
+                                        <th className="p-1.5"></th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-800">
