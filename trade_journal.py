@@ -602,6 +602,63 @@ def get_open_prices(current_user: models.User = Depends(auth.get_current_user), 
                                     volume_trend = "neutral"
                     except:
                         pass
+                    
+                    # === NEW INDICATORS ===
+                    
+                    # Weinstein Stage (1-4)
+                    stage_data = {"stage": 0, "label": "N/A", "color": "gray"}
+                    try:
+                        stage_data = indicators.calculate_weinstein_stage(df, live_price)
+                    except:
+                        pass
+                    
+                    # 52-Week Range
+                    range_52w = {"low": 0, "high": 0, "position_pct": 50}
+                    try:
+                        range_52w = indicators.calculate_52w_range(df, live_price)
+                    except:
+                        pass
+                    
+                    # DI Alignment (Daily only for speed, Weekly from W.RSI data)
+                    di_alignment = {"h1": None, "h4": None, "d1": None, "w1": None}
+                    try:
+                        # Daily DI
+                        di_plus_d, di_minus_d, _ = indicators.calculate_adx_di(df, period=14)
+                        di_alignment["d1"] = di_plus_d > di_minus_d
+                        
+                        # Weekly DI (resample to weekly)
+                        if len(df) >= 40:
+                            try:
+                                weekly_df = df.resample('W-FRI').agg({
+                                    'Close': 'last',
+                                    'High': 'max',
+                                    'Low': 'min'
+                                }).dropna()
+                                if len(weekly_df) >= 15:
+                                    di_plus_w, di_minus_w, _ = indicators.calculate_adx_di(weekly_df, period=14)
+                                    di_alignment["w1"] = di_plus_w > di_minus_w
+                            except:
+                                pass
+                    except:
+                        pass
+                    
+                    # Momentum Score (0-100)
+                    momentum_score = 0
+                    try:
+                        emas_dict = {
+                            'ema_8': ema_8,
+                            'ema_21': ema_21,
+                            'ema_35': ema_35,
+                            'ema_200': ema_200
+                        }
+                        momentum_score = indicators.calculate_momentum_score(
+                            live_price, 
+                            emas_dict, 
+                            rsi_summary, 
+                            di_alignment
+                        )
+                    except:
+                        pass
                 
                 # Skip ticker if we have no price at all
                 if live_price is None:
@@ -618,6 +675,10 @@ def get_open_prices(current_user: models.User = Depends(auth.get_current_user), 
                     "rsi_weekly": rsi_summary,
                     "momentum_path": momentum_path,
                     "volume_trend": volume_trend,
+                    "stage": stage_data,
+                    "range_52w": range_52w,
+                    "di_alignment": di_alignment,
+                    "momentum_score": momentum_score,
                     "extended_price": round(price_data.get('extended_price'), 2) if price_data.get('extended_price') else None,
                     "extended_change_pct": round(price_data.get('extended_change_pct'), 2) if price_data.get('extended_change_pct') else None,
                     "is_premarket": False,

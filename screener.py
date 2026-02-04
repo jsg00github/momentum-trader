@@ -297,6 +297,66 @@ def scan_rsi_crossover(df: pd.DataFrame):
         except:
             pass
 
+        # === NEW INDICATORS ===
+        
+        # Weinstein Stage (1-4)
+        stage_data = {"stage": 0, "label": "N/A", "color": "gray"}
+        try:
+            stage_data = indicators.calculate_weinstein_stage(df, last_close)
+        except:
+            pass
+        
+        # 52-Week Range
+        range_52w = {"low": 0, "high": 0, "position_pct": 50}
+        try:
+            range_52w = indicators.calculate_52w_range(df, last_close)
+        except:
+            pass
+        
+        # DI Alignment (Daily + Weekly)
+        di_alignment = {"h1": None, "h4": None, "d1": None, "w1": None}
+        try:
+            # Daily DI - already have di_plus, di_minus from earlier
+            di_alignment["d1"] = di_plus > di_minus
+            
+            # Weekly DI (resample to weekly)
+            if len(df) >= 40:
+                try:
+                    weekly_df = df.resample('W-FRI').agg({
+                        'Close': 'last',
+                        'High': 'max',
+                        'Low': 'min'
+                    }).dropna()
+                    if len(weekly_df) >= 15:
+                        di_plus_w, di_minus_w, _ = indicators.calculate_adx_di(weekly_df, period=14)
+                        di_alignment["w1"] = di_plus_w > di_minus_w
+                except:
+                    pass
+        except:
+            pass
+        
+        # Momentum Score (0-100)
+        momentum_score = 0
+        try:
+            emas_dict = {
+                'ema_8': indicators.calculate_ema(df, 8),
+                'ema_21': indicators.calculate_ema(df, 21),
+                'ema_35': indicators.calculate_ema(df, 35),
+                'ema_200': indicators.calculate_ema(df, 200) if len(df) >= 200 else None
+            }
+            rsi_summary = {
+                'bullish': rsi_data['ema3'] > rsi_data['ema14'],
+                'color': rsi_data.get('color', 'red')
+            }
+            momentum_score = indicators.calculate_momentum_score(
+                last_close, 
+                emas_dict, 
+                rsi_summary, 
+                di_alignment
+            )
+        except:
+            pass
+
         return {
             "date": str(df.index[-1].date()),
             "price": float(last_close),
@@ -319,6 +379,10 @@ def scan_rsi_crossover(df: pd.DataFrame):
             "is_bullish": bool(is_bullish),
             "smi": round(rsi_data.get('smi', 0.0), 2),
             "smi_bullish": rsi_data.get('smi_bullish', False),
+            "stage": stage_data,
+            "range_52w": range_52w,
+            "di_alignment": di_alignment,
+            "momentum_score": momentum_score,
             "setup": "Weekly RSI Reversal (w.rsi)"
         }
     

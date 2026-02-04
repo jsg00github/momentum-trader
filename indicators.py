@@ -307,3 +307,173 @@ def calculate_adx_di(df: pd.DataFrame, period=14):
         return float(di_plus.iloc[-1]), float(di_minus.iloc[-1]), float(adx.iloc[-1])
     except:
         return 0.0, 0.0, 0.0
+
+
+def calculate_weinstein_stage(df: pd.DataFrame, current_price: float = None):
+    """
+    Calculates Weinstein Stage (1-4) based on price vs 30-week SMA (or 150-day EMA).
+    Stage 1: Base - Price near flat/declining MA
+    Stage 2: Uptrend - Price > rising MA
+    Stage 3: Top - Price near flat MA after uptrend
+    Stage 4: Downtrend - Price < declining MA
+    """
+    df = normalize_dataframe(df)
+    if df is None or len(df) < 150:
+        return {"stage": 0, "label": "N/A", "color": "gray"}
+    
+    try:
+        close = df['Close']
+        if isinstance(close, pd.DataFrame):
+            close = close.iloc[:, 0]
+        
+        if current_price is None:
+            current_price = float(close.iloc[-1])
+        
+        # Use 150-day EMA as proxy for 30-week MA
+        ma_150 = close.ewm(span=150, adjust=False).mean()
+        current_ma = float(ma_150.iloc[-1])
+        
+        # Calculate MA slope (compare to 10 days ago)
+        if len(ma_150) >= 10:
+            ma_10_ago = float(ma_150.iloc[-10])
+            slope_pct = ((current_ma - ma_10_ago) / ma_10_ago) * 100
+        else:
+            slope_pct = 0
+        
+        # Position relative to MA
+        price_vs_ma_pct = ((current_price - current_ma) / current_ma) * 100
+        
+        # Determine Stage
+        if price_vs_ma_pct > 5 and slope_pct > 0.5:
+            # Price clearly above rising MA = Stage 2 (Uptrend)
+            return {"stage": 2, "label": "Stage 2", "color": "green"}
+        elif price_vs_ma_pct < -5 and slope_pct < -0.5:
+            # Price clearly below declining MA = Stage 4 (Downtrend)
+            return {"stage": 4, "label": "Stage 4", "color": "red"}
+        elif abs(slope_pct) < 0.5 and price_vs_ma_pct > 0:
+            # MA flat, price above = Stage 3 (Top/Distribution)
+            return {"stage": 3, "label": "Stage 3", "color": "yellow"}
+        elif abs(slope_pct) < 0.5 and price_vs_ma_pct <= 0:
+            # MA flat, price below = Stage 1 (Base)
+            return {"stage": 1, "label": "Stage 1", "color": "blue"}
+        elif price_vs_ma_pct > 0:
+            # Ambiguous but above MA = Stage 2-ish
+            return {"stage": 2, "label": "Stage 2", "color": "green"}
+        else:
+            # Ambiguous but below MA = Stage 4-ish
+            return {"stage": 4, "label": "Stage 4", "color": "red"}
+    except Exception as e:
+        print(f"[Weinstein Stage] Error: {e}")
+        return {"stage": 0, "label": "N/A", "color": "gray"}
+
+
+def calculate_52w_range(df: pd.DataFrame, current_price: float = None):
+    """
+    Calculates the position of current price within 52-week (252 trading days) range.
+    Returns low, high, and position percentage (0-100).
+    """
+    df = normalize_dataframe(df)
+    if df is None or len(df) < 50:  # Minimum 50 days
+        return {"low": 0, "high": 0, "position_pct": 50}
+    
+    try:
+        # Get last 252 trading days (or available)
+        lookback = min(252, len(df))
+        df_52w = df.tail(lookback)
+        
+        high = df_52w['High']
+        low = df_52w['Low']
+        close = df_52w['Close']
+        
+        if isinstance(high, pd.DataFrame): high = high.iloc[:, 0]
+        if isinstance(low, pd.DataFrame): low = low.iloc[:, 0]
+        if isinstance(close, pd.DataFrame): close = close.iloc[:, 0]
+        
+        week_52_high = float(high.max())
+        week_52_low = float(low.min())
+        
+        if current_price is None:
+            current_price = float(close.iloc[-1])
+        
+        # Calculate position percentage
+        range_size = week_52_high - week_52_low
+        if range_size > 0:
+            position_pct = ((current_price - week_52_low) / range_size) * 100
+            position_pct = max(0, min(100, position_pct))  # Clamp to 0-100
+        else:
+            position_pct = 50
+        
+        return {
+            "low": round(week_52_low, 2),
+            "high": round(week_52_high, 2),
+            "position_pct": round(position_pct, 1)
+        }
+    except Exception as e:
+        print(f"[52w Range] Error: {e}")
+        return {"low": 0, "high": 0, "position_pct": 50}
+
+
+def calculate_multi_tf_di(df_dict: dict):
+    """
+    Calculates DI+ > DI- alignment across multiple timeframes.
+    df_dict should contain: {'h1': df, 'h4': df, 'd1': df, 'w1': df}
+    Returns dict of True/False for each timeframe.
+    """
+    result = {"h1": None, "h4": None, "d1": None, "w1": None}
+    
+    for tf, df in df_dict.items():
+        if df is None or len(df) < 15:
+            result[tf] = None
+            continue
+        try:
+            di_plus, di_minus, _ = calculate_adx_di(df, period=14)
+            result[tf] = di_plus > di_minus
+        except:
+            result[tf] = None
+    
+    return result
+
+
+def calculate_momentum_score(price: float, emas: dict, rsi_data: dict, di_alignment: dict):
+    """
+    Calculates a 0-100 momentum score based on multiple factors:
+    - EMAs (55 pts max): Price vs EMA8, EMA21, EMA35, EMA200
+    - W.RSI (25 pts max): Bullish cross + color
+    - DI Alignment (20 pts max): 5 pts each for H1, H4, D1, W
+    """
+    score = 0
+    
+    # EMA Points (55 max)
+    if emas:
+        if emas.get('ema_8') and price > emas['ema_8']:
+            score += 20
+        if emas.get('ema_21') and price > emas['ema_21']:
+            score += 15
+        if emas.get('ema_35') and price > emas['ema_35']:
+            score += 10
+        if emas.get('ema_200') and price > emas['ema_200']:
+            score += 10
+    
+    # W.RSI Points (25 max)
+    if rsi_data:
+        # Bullish crossover: EMA3 > EMA14
+        if rsi_data.get('bullish'):
+            score += 15
+        # Color bonus
+        color = rsi_data.get('color', 'red')
+        if color == 'green':
+            score += 10
+        elif color == 'blue':
+            score += 8
+        elif color == 'yellow':
+            score += 5
+        elif color == 'orange':
+            score += 3
+    
+    # DI Alignment Points (20 max, 5 each)
+    if di_alignment:
+        for tf in ['h1', 'h4', 'd1', 'w1']:
+            if di_alignment.get(tf) is True:
+                score += 5
+    
+    return min(100, max(0, score))

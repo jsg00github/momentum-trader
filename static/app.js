@@ -2357,6 +2357,10 @@ ${res.data.errors.join("\n")}`);
                                         <th className="p-2 text-center">EMA 200</th>
                                         <th className="p-2 text-center text-cyan-400 border-l border-slate-700">M.Path</th>
                                         <th className="p-2 text-center text-amber-400 border-l border-slate-700" title="Volume vs 14-day avg">Vol</th>
+                                        <th className="p-2 text-center text-purple-400 border-l border-slate-700" title="Weinstein Stage (1-4)">Stage</th>
+                                        <th className="p-2 text-center text-slate-400 border-l border-slate-700" title="52-Week Range Position">52w</th>
+                                        <th className="p-2 text-center text-blue-400 border-l border-slate-700" title="DI+ > DI- Alignment (D/W)">DI</th>
+                                        <th className="p-2 text-center text-green-400 border-l border-slate-700" title="Momentum Score (0-100)">Score</th>
                                         <th className="p-2"></th>
                                     </tr>
                                 </thead>
@@ -2521,6 +2525,64 @@ ${res.data.errors.join("\n")}`);
                                                             if (volTrend === 'up') return <span className="text-green-400" title="Vol > 14d avg">▲</span>;
                                                             if (volTrend === 'down') return <span className="text-red-400" title="Vol < 14d avg">▼</span>;
                                                             return <span className="text-slate-500" title="Vol ≈ 14d avg">▬</span>;
+                                                        })()}
+                                                    </td>
+                                                    {/* Stage (Weinstein) */}
+                                                    <td className="p-2 text-center border-l border-slate-700">
+                                                        {(() => {
+                                                            const stage = row.live?.stage;
+                                                            if (!stage || stage.stage === 0) return <span className="text-slate-600">-</span>;
+                                                            const colors = {
+                                                                blue: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+                                                                green: 'bg-green-500/20 text-green-400 border-green-500/30',
+                                                                yellow: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
+                                                                red: 'bg-red-500/20 text-red-400 border-red-500/30',
+                                                                gray: 'bg-slate-500/20 text-slate-400 border-slate-500/30'
+                                                            };
+                                                            return (
+                                                                <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold border ${colors[stage.color] || colors.gray}`} title={stage.label}>
+                                                                    S{stage.stage}
+                                                                </span>
+                                                            );
+                                                        })()}
+                                                    </td>
+                                                    {/* 52w Range */}
+                                                    <td className="p-2 text-center border-l border-slate-700" style={{ minWidth: '60px' }}>
+                                                        {(() => {
+                                                            const range = row.live?.range_52w;
+                                                            if (!range || range.high === 0) return <span className="text-slate-600">-</span>;
+                                                            const pct = range.position_pct;
+                                                            const color = pct > 70 ? 'bg-green-500' : pct > 30 ? 'bg-yellow-500' : 'bg-red-500';
+                                                            return (
+                                                                <div className="relative w-full h-2 bg-slate-700 rounded-full overflow-hidden" title={`$${range.low} - $${range.high} (${pct.toFixed(0)}%)`}>
+                                                                    <div className="absolute left-0 h-full bg-slate-600" style={{ width: '100%' }}></div>
+                                                                    <div className={`absolute h-3 w-1 ${color} rounded-full -top-0.5`} style={{ left: `${Math.min(95, Math.max(5, pct))}%` }}></div>
+                                                                </div>
+                                                            );
+                                                        })()}
+                                                    </td>
+                                                    {/* DI Alignment (D/W) */}
+                                                    <td className="p-2 text-center border-l border-slate-700">
+                                                        {(() => {
+                                                            const di = row.live?.di_alignment;
+                                                            if (!di) return <span className="text-slate-600">-</span>;
+                                                            return (
+                                                                <div className="flex gap-0.5 justify-center">
+                                                                    <span className={`px-1 py-0.5 rounded text-[8px] font-bold ${di.d1 === true ? 'bg-green-500/20 text-green-400' : di.d1 === false ? 'bg-red-500/20 text-red-400' : 'bg-slate-500/20 text-slate-500'}`}>D</span>
+                                                                    <span className={`px-1 py-0.5 rounded text-[8px] font-bold ${di.w1 === true ? 'bg-green-500/20 text-green-400' : di.w1 === false ? 'bg-red-500/20 text-red-400' : 'bg-slate-500/20 text-slate-500'}`}>W</span>
+                                                                </div>
+                                                            );
+                                                        })()}
+                                                    </td>
+                                                    {/* Momentum Score */}
+                                                    <td className="p-2 text-center border-l border-slate-700">
+                                                        {(() => {
+                                                            const score = row.live?.momentum_score;
+                                                            if (score === undefined || score === null) return <span className="text-slate-600">-</span>;
+                                                            let colorClass = 'text-red-400';
+                                                            if (score >= 70) colorClass = 'text-green-400';
+                                                            else if (score >= 40) colorClass = 'text-yellow-400';
+                                                            return <span className={`font-bold ${colorClass}`}>{score}</span>;
                                                         })()}
                                                     </td>
                                                     <td className="p-2 border-l border-slate-800 flex justify-center gap-1 bg-slate-900">
@@ -4222,6 +4284,18 @@ function Scanner({ onTickerClick }) {
                             <th className="p-2 text-right cursor-pointer hover:text-white transition" onClick={() => handleSort('vol_week_vs_month')} title="Volume: Weekly (5d) vs Monthly (21d) Avg">
                                 Vol W/M
                             </th>
+                            <th className="p-2 text-center cursor-pointer hover:text-white transition text-purple-400" onClick={() => handleSort('stage')} title="Weinstein Stage (1-4)">
+                                Stage
+                            </th>
+                            <th className="p-2 text-center" title="52-Week Range Position">
+                                52w
+                            </th>
+                            <th className="p-2 text-center text-blue-400" title="DI+ > DI- Alignment (D/W)">
+                                DI
+                            </th>
+                            <th className="p-2 text-center cursor-pointer hover:text-white transition text-green-400" onClick={() => handleSort('momentum_score')} title="Momentum Score (0-100)">
+                                Score
+                            </th>
                             <th className="p-2 text-center">Chart</th>
                         </tr>
                     </thead>
@@ -4299,6 +4373,63 @@ function Scanner({ onTickerClick }) {
                                         row.vol_week_vs_month < 0.9 ? 'text-red-400' : 'text-slate-500'
                                     }`}>
                                     {row.vol_week_vs_month ? `${row.vol_week_vs_month.toFixed(2)}x` : '-'}
+                                </td>
+                                {/* Stage */}
+                                <td className="p-2 text-center">
+                                    {(() => {
+                                        const stage = row.stage;
+                                        if (!stage || stage.stage === 0) return <span className="text-slate-600">-</span>;
+                                        const colors = {
+                                            blue: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+                                            green: 'bg-green-500/20 text-green-400 border-green-500/30',
+                                            yellow: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
+                                            red: 'bg-red-500/20 text-red-400 border-red-500/30',
+                                            gray: 'bg-slate-500/20 text-slate-400 border-slate-500/30'
+                                        };
+                                        return (
+                                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold border ${colors[stage.color] || colors.gray}`} title={stage.label}>
+                                                S{stage.stage}
+                                            </span>
+                                        );
+                                    })()}
+                                </td>
+                                {/* 52w Range */}
+                                <td className="p-2 text-center" style={{ minWidth: '50px' }}>
+                                    {(() => {
+                                        const range = row.range_52w;
+                                        if (!range || range.high === 0) return <span className="text-slate-600">-</span>;
+                                        const pct = range.position_pct;
+                                        const color = pct > 70 ? 'bg-green-500' : pct > 30 ? 'bg-yellow-500' : 'bg-red-500';
+                                        return (
+                                            <div className="relative w-full h-2 bg-slate-700 rounded-full overflow-hidden" title={`$${range.low} - $${range.high} (${pct.toFixed(0)}%)`}>
+                                                <div className={`absolute h-3 w-1 ${color} rounded-full -top-0.5`} style={{ left: `${Math.min(95, Math.max(5, pct))}%` }}></div>
+                                            </div>
+                                        );
+                                    })()}
+                                </td>
+                                {/* DI Alignment (D/W) */}
+                                <td className="p-2 text-center">
+                                    {(() => {
+                                        const di = row.di_alignment;
+                                        if (!di) return <span className="text-slate-600">-</span>;
+                                        return (
+                                            <div className="flex gap-0.5 justify-center">
+                                                <span className={`px-1 py-0.5 rounded text-[8px] font-bold ${di.d1 === true ? 'bg-green-500/20 text-green-400' : di.d1 === false ? 'bg-red-500/20 text-red-400' : 'bg-slate-500/20 text-slate-500'}`}>D</span>
+                                                <span className={`px-1 py-0.5 rounded text-[8px] font-bold ${di.w1 === true ? 'bg-green-500/20 text-green-400' : di.w1 === false ? 'bg-red-500/20 text-red-400' : 'bg-slate-500/20 text-slate-500'}`}>W</span>
+                                            </div>
+                                        );
+                                    })()}
+                                </td>
+                                {/* Momentum Score */}
+                                <td className="p-2 text-center">
+                                    {(() => {
+                                        const score = row.momentum_score;
+                                        if (score === undefined || score === null) return <span className="text-slate-600">-</span>;
+                                        let colorClass = 'text-red-400';
+                                        if (score >= 70) colorClass = 'text-green-400';
+                                        else if (score >= 40) colorClass = 'text-yellow-400';
+                                        return <span className={`font-bold ${colorClass}`}>{score}</span>;
+                                    })()}
                                 </td>
                                 <td className="p-2 text-center">
                                     <button
