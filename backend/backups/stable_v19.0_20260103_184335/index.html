@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Momentum Trader</title>
+
+    <!-- PWA Meta Tags -->
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#6366f1">
+    <meta name="description" content="Market Command Center - Track, Scan & Trade Smarter">
+
+    <!-- iOS PWA Support -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Momentum">
+    <link rel="apple-touch-icon" href="/static/icon-192.png">
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/icon-192.png">
+    <!-- Error Handler for Debugging -->
+    <script>
+        window.onerror = function (msg, url, line, col, error) {
+            const div = document.createElement("div");
+            div.style.position = "fixed";
+            div.style.top = "0";
+            div.style.left = "0";
+            div.style.width = "100%";
+            div.style.backgroundColor = "#990000";
+            div.style.color = "white";
+            div.style.zIndex = "9999";
+            div.style.padding = "20px";
+            div.style.fontFamily = "monospace";
+            div.style.fontSize = "16px";
+            div.innerText = "JS Error: " + msg + "\nLine: " + line;
+            document.body.appendChild(div);
+            return false;
+        };
+    </script>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        dark: {
+                            900: '#0f172a',
+                            800: '#1e293b',
+                            700: '#334155',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- React Dependencies -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+
+    <!-- Prop Types (Often needed for Recharts UMD) -->
+    <script src="https://unpkg.com/prop-types/prop-types.min.js"></script>
+
+    <!-- Recharts -->
+    <!-- Using jsdelivr and a specific version known to work well with UMD -->
+    <script src="https://cdn.jsdelivr.net/npm/recharts@2.12.3/umd/Recharts.js"></script>
+
+    <!-- TradingView Lightweight Charts -->
+    <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Axios -->
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+
+    <link href="/static/style.css" rel="stylesheet">
+
+    <script>
+        // Debug check
+        window.onload = function () {
+            if (!window.Recharts) {
+                console.error("Recharts failed to load!");
+                document.body.innerHTML += '<div style="color:red; font-size:20px; padding:20px;">CRITICAL: Recharts library failed to load. Check internet connection or CDN availability.</div>';
+            } else {
+                console.log("Recharts loaded successfully.");
+            }
+        }
+    </script>
+</head>
+
+<body class="bg-gray-900 text-white font-sans antialiased min-h-screen overflow-auto">
+    <div id="root"></div>
+
+    <!-- App Logic -->
+    <script type="text/babel" src="app.js?v=19.0"></script>
+
+    <!-- Service Worker Registration -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/service-worker.js')
+                    .then(registration => {
+                        console.log('[PWA] Service Worker registered:', registration.scope);
+                    })
+                    .catch(error => {
+                        console.error('[PWA] Service Worker registration failed:', error);
+                    });
+            });
+        }
+    </script>
+</body>
+
+</html>

@@ -313,23 +313,27 @@ def scan_rsi_crossover(df: pd.DataFrame):
         except:
             pass
         
-        # DI Alignment (Daily + Weekly)
-        di_alignment = {"h1": None, "h4": None, "d1": None, "w1": None}
+        # DI Alignment (H1/H4/D - approximated from daily data)
+        di_alignment = {"h1": None, "h4": None, "d1": None}
         try:
-            # Daily DI - already have di_plus, di_minus from earlier
+            # D1: Daily DI - already have di_plus, di_minus from earlier
             di_alignment["d1"] = di_plus > di_minus
             
-            # Weekly DI (resample to weekly)
+            # H4: Use last 40 bars (approx 8 weeks) for more recent trend
             if len(df) >= 40:
                 try:
-                    weekly_df = df.resample('W-FRI').agg({
-                        'Close': 'last',
-                        'High': 'max',
-                        'Low': 'min'
-                    }).dropna()
-                    if len(weekly_df) >= 15:
-                        di_plus_w, di_minus_w, _ = indicators.calculate_adx_di(weekly_df, period=14)
-                        di_alignment["w1"] = di_plus_w > di_minus_w
+                    h4_df = df.tail(40)
+                    di_plus_h4, di_minus_h4, _ = indicators.calculate_adx_di(h4_df, period=14)
+                    di_alignment["h4"] = di_plus_h4 > di_minus_h4
+                except:
+                    pass
+            
+            # H1: Use last 20 bars (approx 4 weeks) for short-term trend
+            if len(df) >= 20:
+                try:
+                    h1_df = df.tail(20)
+                    di_plus_h1, di_minus_h1, _ = indicators.calculate_adx_di(h1_df, period=14)
+                    di_alignment["h1"] = di_plus_h1 > di_minus_h1
                 except:
                     pass
         except:

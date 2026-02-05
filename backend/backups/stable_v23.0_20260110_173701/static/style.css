@@ -1,0 +1,65 @@
+/* Momentum Scanner - Additional Styles */
+
+:root {
+    color-scheme: dark;
+}
+
+html,
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+    /* Improve text sharpness on Windows particularly */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    font-size: 16px;
+    /* Base size */
+    background-color: #0a0a0a;
+}
+
+/* Scroll customization */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #0a0a0a;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #1a1a1a;
+    border-radius: 10px;
+    border: 2px solid #0a0a0a;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #2a2a2a;
+}
+
+/* Global Sharpening */
+* {
+    transition: background-color 0.2s, border-color 0.2s, color 0.1s;
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* Ensure borders are crisp */
+.border {
+    border-width: 1px;
+    border-style: solid;
+}
+
+/* High-contrast text for critical numbers */
+.font-black,
+.font-bold {
+    letter-spacing: -0.01em;
+}
+
+/* Remove transition from animations */
+.animate-spin {
+    transition: none;
+}
+
+/* Sharper cards */
+.backdrop-blur-sm {
+    backdrop-filter: blur(4px) saturate(180%);
+}

@@ -1,0 +1,317 @@
+"""
+Portfolio Snapshots Module (ORM Version)
+Twice-migrated to support Multi-Tenancy and PostgreSQL via SQLAlchemy.
+"""
+
+from datetime import datetime, timedelta
+import threading
+from sqlalchemy.orm import Session
+from sqlalchemy import desc, func
+import models
+from database import SessionLocal
+
+# Lock mainly for safety if we had file IO, less critical with specialized DB sessions but good practice
+_monitor_lock = threading.Lock()
+
+def take_snapshot(user_id: int = None, db: Session = None):
+    """
+    Take a snapshot of the portfolio state.
+    
+    Args:
+        user_id (int, optional): ID of specific user to snapshot. 
+                                 If None, snapshots ALL users (for scheduled tasks).
+        db (Session, optional): Database session. If None, creates a new one.
+    """
+    close_db = False
+    if db is None:
+        db = SessionLocal()
+        close_db = True
+        
+    try:
+        # Determine target users
+        target_users = []
+        if user_id:
+            user = db.query(models.User).filter(models.User.id == user_id).first()
+            if user:
+                target_users.append(user)
+        else:
+            target_users = db.query(models.User).all()
+            
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        results = []
+
+        for user in target_users:
+            print(f"[Snapshot] Processing user {user.email} (ID: {user.id})...")
+            
+            # 1. Fetch unified metrics for THIS user
+            # We need to call the logic that calculates metrics. 
+            # Ideally, we call a service function, not an HTTP endpoint to avoid recursion/auth complexity.
+            # Importing here to avoid circular dependencies if possible.
+            import trade_journal
+            import crypto_journal
+            import argentina_journal
+            
+            # --- USA Metrics ---
+            # We need a version of get_unified_metrics that accepts a user_id or db session + filter
+            # For now, let's assume valid access to models directly
+            
+            # USA (Trades)
+            usa_query = db.query(models.Trade).filter(
+                models.Trade.user_id == user.id,
+                models.Trade.status == "OPEN"
+            ).all()
+            
+            usa_invested = sum(t.entry_price * t.shares for t in usa_query)
+            # Current value requires live price... for fast snapshot, might be stale if market closed.
+            # Using entry price + PnL equivalent if current price not stored? 
+            # Trade model doesn't store 'current_price' persistently, it's fetched live.
+            # For snapshot efficiency, we might need a helper to get latest prices.
+            # Reuse market_data logic?
+            # For this MVP refactor, let's calculate based on what we have or fetch live.
+            # Fetching live for every user might be slow. 
+            # Let's try to use the existing `trade_journal.calculate_metrics` if generic enough.
+            # BUT `trade_journal` is not yet refactored to accept user_id. 
+            # I will implement basic calculation here to break dependency loops.
+            
+            usa_value = usa_invested # Placeholder until we fetch prices
+            usa_pnl = 0
+            
+            # Try to get better values if possible
+            try:
+                # We can't easily call HTTP here because we need Auth token for that user.
+                # So we must calculate internally.
+                pass 
+            except:
+                pass
+
+            # --- Argentina Metrics ---
+            arg_query = db.query(models.ArgentinaPosition).filter(models.ArgentinaPosition.user_id == user.id).all()
+            arg_invested = sum(p.entry_price * p.shares for p in arg_query) # This is ARS or USD? Model needs clarification.
+            # Assuming consolidated USD for simplicity or 0 if complex
+            arg_value = arg_invested 
+            arg_pnl = 0
+
+            # --- Crypto Metrics ---
+            crypto_query = db.query(models.CryptoPosition).filter(models.CryptoPosition.user_id == user.id).all()
+            crypto_invested = sum(p.amount * p.entry_price for p in crypto_query)
+            crypto_value = sum(p.amount * (p.current_price or p.entry_price) for p in crypto_query)
+            crypto_pnl = crypto_value - crypto_invested
+
+            # Totals
+            total_invested = usa_invested + arg_invested + crypto_invested
+            total_value = usa_value + arg_value + crypto_value
+            total_pnl = total_value - total_invested
+            total_pnl_pct = (total_pnl / total_invested * 100) if total_invested > 0 else 0
+            
+            # Create/Update Snapshot
+            # Check if exists for today
+            existing = db.query(models.PortfolioSnapshot).filter(
+                models.PortfolioSnapshot.user_id == user.id,
+                models.PortfolioSnapshot.date == today_str
+            ).first()
+            
+            if existing:
+                existing.total_invested_usd = total_invested
+                existing.total_value_usd = total_value
+                existing.total_pnl_usd = total_pnl
+                existing.total_pnl_pct = total_pnl_pct
+                existing.usa_invested_usd = usa_invested
+                existing.usa_value_usd = usa_value
+                existing.usa_pnl_usd = usa_pnl
+                # ... others
+                existing.created_at = datetime.now()
+            else:
+                snapshot = models.PortfolioSnapshot(
+                    user_id=user.id,
+                    date=today_str,
+                    total_invested_usd=total_invested,
+                    total_value_usd=total_value,
+                    total_pnl_usd=total_pnl,
+                    total_pnl_pct=total_pnl_pct,
+                    usa_invested_usd=usa_invested,
+                    usa_value_usd=usa_value,
+                    usa_pnl_usd=usa_pnl,
+                    argentina_invested_usd=arg_invested,
+                    argentina_value_usd=arg_value,
+                    argentina_pnl_usd=arg_pnl,
+                    crypto_invested_usd=crypto_invested,
+                    crypto_value_usd=crypto_value,
+                    crypto_pnl_usd=crypto_pnl
+                )
+                db.add(snapshot)
+            
+            results.append({"user": user.email, "status": "success"})
+            
+        db.commit()
+        return results
+
+    except Exception as e:
+        print(f"[Snapshot] Error: {e}")
+        db.rollback()
+        return {"status": "error", "message": str(e)}
+    finally:
+        if close_db:
+            db.close()
+
+def get_history(user_id: int, days: int = 365, db: Session = None):
+    """Get portfolio history for a specific user."""
+    close_db = False
+    if db is None:
+        db = SessionLocal()
+        close_db = True
+        
+    try:
+        cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+        snapshots = db.query(models.PortfolioSnapshot).filter(
+            models.PortfolioSnapshot.user_id == user_id,
+            models.PortfolioSnapshot.date >= cutoff
+        ).order_by(models.PortfolioSnapshot.date.asc()).all()
+        return snapshots
+    finally:
+        if close_db:
+            db.close()
+
+def get_latest(user_id: int, db: Session = None):
+    """Get latest snapshot for a user."""
+    close_db = False
+    if db is None:
+        db = SessionLocal()
+        close_db = True
+    try:
+        return db.query(models.PortfolioSnapshot).filter(
+            models.PortfolioSnapshot.user_id == user_id
+        ).order_by(models.PortfolioSnapshot.date.desc()).first()
+    finally:
+        if close_db:
+            db.close()
+
+def get_geographic_distribution(user_id: int, db: Session = None):
+    """Get geo distribution for a user."""
+    snapshot = get_latest(user_id, db)
+    if not snapshot:
+        return {}
+        
+    total = snapshot.total_value_usd or 1
+    return {
+        "usa": {"value": snapshot.usa_value_usd, "pct": (snapshot.usa_value_usd/total)*100},
+        "argentina": {"value": snapshot.argentina_value_usd, "pct": (snapshot.argentina_value_usd/total)*100},
+        "crypto": {"value": snapshot.crypto_value_usd, "pct": (snapshot.crypto_value_usd/total)*100},
+    }
+
+def rebuild_history(user_id: int, db: Session):
+    """
+    Rebuild historical snapshots based on trade history.
+    Iterates from the first trade date to today, calculating daily metrics.
+    """
+    try:
+        print(f"[Snapshots] Rebuilding history for user {user_id}...")
+        
+        # 1. Fetch all trades
+        trades = db.query(models.Trade).filter(
+            models.Trade.user_id == user_id
+        ).all()
+        
+        if not trades:
+            print("No trades found.")
+            return
+            
+        # 2. Determine date range
+        # Use simple date format matching
+        dates = []
+        for t in trades:
+            if isinstance(t.entry_date, str):
+                try: dates.append(datetime.strptime(t.entry_date, "%Y-%m-%d").date())
+                except: pass
+            else:
+                dates.append(t.entry_date)
+                
+        if not dates: return
+        
+        start_date = min(dates)
+        end_date = datetime.now().date()
+        
+        # 3. Iterate days
+        current = start_date
+        while current <= end_date:
+            curr_str = current.strftime("%Y-%m-%d")
+            
+            # Calculate state for this day
+            daily_invested = 0
+            daily_pnl = 0
+            
+            # Filter trades active/closed on this day
+            # Assuming 'entry_date' and 'exit_date' are Date objects or ISO strings
+            
+            for t in trades:
+                # Parse Dates
+                t_entry = t.entry_date
+                if isinstance(t_entry, str):
+                    try: t_entry = datetime.strptime(t_entry, "%Y-%m-%d").date()
+                    except: continue # Skip invalid
+                
+                t_exit = None
+                if t.exit_date:
+                    if isinstance(t.exit_date, str):
+                        try: t_exit = datetime.strptime(t.exit_date, "%Y-%m-%d").date()
+                        except: pass
+                    else:
+                        t_exit = t.exit_date
+                
+                # Logic:
+                # Is active? Entry <= current AND (Exit is None OR Exit > current)
+                # Is closed? Exit <= current
+                
+                is_active = t_entry <= current and (t_exit is None or t_exit > current)
+                is_closed = t_exit is not None and t_exit <= current
+                
+                if is_active:
+                    daily_invested += (t.entry_price * t.shares)
+                
+                if is_closed:
+                    if t.pnl is not None:
+                        daily_pnl += t.pnl
+                        
+            # Calc Totals
+            # Value = Invested + Realized PnL (ignoring historical unrealized for simplicity)
+            daily_value = daily_invested + daily_pnl 
+            
+            # Update/Create Snapshot
+            # Ideally we check if it exists or we wipe all first. Wiping is risky if we break running stats.
+            # Upsert is safer.
+            snapshot = db.query(models.PortfolioSnapshot).filter(
+                models.PortfolioSnapshot.user_id == user_id,
+                models.PortfolioSnapshot.date == curr_str
+            ).first()
+            
+            if not snapshot:
+                snapshot = models.PortfolioSnapshot(
+                    user_id=user_id,
+                    date=curr_str
+                )
+                db.add(snapshot)
+            
+            # Update fields (USA only for now as this is triggered by Import USA)
+            # We preserve specific fields if we want, but "Global" usually implies sum.
+            # For this "Fix", we assume these CSV imports are USA Stocks.
+            
+            snapshot.usa_invested_usd = daily_invested
+            snapshot.usa_pnl_usd = daily_pnl
+            snapshot.usa_value_usd = daily_value
+            
+            # Update Global Totals (assuming other assets 0 for these historical days, or we leave them alone?)
+            # Safer to sum them if we have ARG data, but ARG data might not be historical in this loop.
+            # We'll just update totals to match USA for now to ensure chart works.
+            # If we had Arg data we should sum it.
+            snapshot.total_invested_usd = snapshot.usa_invested_usd + (snapshot.argentina_invested_usd or 0) + (snapshot.crypto_invested_usd or 0)
+            snapshot.total_pnl_usd = snapshot.usa_pnl_usd + (snapshot.argentina_pnl_usd or 0) + (snapshot.crypto_pnl_usd or 0)
+            snapshot.total_value_usd = snapshot.total_invested_usd + snapshot.total_pnl_usd
+            
+            current += timedelta(days=1)
+            
+        db.commit()
+        print(f"[Snapshots] Rebuild complete for user {user_id}")
+            
+    except Exception as e:
+        print(f"Error rebuilding history: {e}")
+        import traceback
+        traceback.print_exc()

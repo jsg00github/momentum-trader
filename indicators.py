@@ -416,10 +416,10 @@ def calculate_52w_range(df: pd.DataFrame, current_price: float = None):
 def calculate_multi_tf_di(df_dict: dict):
     """
     Calculates DI+ > DI- alignment across multiple timeframes.
-    df_dict should contain: {'h1': df, 'h4': df, 'd1': df, 'w1': df}
+    df_dict should contain: {'h1': df, 'h4': df, 'd1': df}
     Returns dict of True/False for each timeframe.
     """
-    result = {"h1": None, "h4": None, "d1": None, "w1": None}
+    result = {"h1": None, "h4": None, "d1": None}
     
     for tf, df in df_dict.items():
         if df is None or len(df) < 15:
@@ -439,7 +439,7 @@ def calculate_momentum_score(price: float, emas: dict, rsi_data: dict, di_alignm
     Calculates a 0-100 momentum score based on multiple factors:
     - EMAs (55 pts max): Price vs EMA8, EMA21, EMA35, EMA200
     - W.RSI (25 pts max): Bullish cross + color
-    - DI Alignment (20 pts max): 5 pts each for H1, H4, D1, W
+    - DI Alignment (20 pts max): ~7 pts each for H1, H4, D1
     """
     score = 0
     
@@ -470,10 +470,10 @@ def calculate_momentum_score(price: float, emas: dict, rsi_data: dict, di_alignm
         elif color == 'orange':
             score += 3
     
-    # DI Alignment Points (20 max, 5 each)
+    # DI Alignment Points (20 max, ~7 pts each for H1, H4, D1)
     if di_alignment:
-        for tf in ['h1', 'h4', 'd1', 'w1']:
+        for tf in ['h1', 'h4', 'd1']:
             if di_alignment.get(tf) is True:
-                score += 5
+                score += 7
     
     return min(100, max(0, score))

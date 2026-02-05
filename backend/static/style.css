@@ -1,0 +1,292 @@
+/* Momentum Scanner - Additional Styles */
+
+:root {
+    color-scheme: dark;
+}
+
+html,
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+    /* Improve text sharpness on Windows particularly */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    font-size: 16px;
+    /* Base size */
+    background-color: #0a0a0a;
+}
+
+/* Scroll customization */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #0a0a0a;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #1a1a1a;
+    border-radius: 10px;
+    border: 2px solid #0a0a0a;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #2a2a2a;
+}
+
+/* Global Sharpening */
+* {
+    transition: background-color 0.2s, border-color 0.2s, color 0.1s;
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* Ensure borders are crisp */
+.border {
+    border-width: 1px;
+    border-style: solid;
+}
+
+/* High-contrast text for critical numbers */
+.font-black,
+.font-bold {
+    letter-spacing: -0.01em;
+}
+
+/* Remove transition from animations */
+.animate-spin {
+    transition: none;
+}
+
+/* Sharper cards */
+.backdrop-blur-sm {
+    backdrop-filter: blur(4px) saturate(180%);
+}
+
+/* ============================================
+   DENSITY MODES
+   ============================================ */
+
+/* Compact Density - Reduces padding and spacing globally */
+body.density-compact .p-4 {
+    padding: 0.5rem !important;
+}
+
+body.density-compact .p-6 {
+    padding: 0.75rem !important;
+}
+
+body.density-compact .p-8 {
+    padding: 1rem !important;
+}
+
+body.density-compact .px-4 {
+    padding-left: 0.5rem !important;
+    padding-right: 0.5rem !important;
+}
+
+body.density-compact .px-6 {
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
+}
+
+body.density-compact .py-2 {
+    padding-top: 0.25rem !important;
+    padding-bottom: 0.25rem !important;
+}
+
+body.density-compact .py-3 {
+    padding-top: 0.375rem !important;
+    padding-bottom: 0.375rem !important;
+}
+
+body.density-compact .py-4 {
+    padding-top: 0.5rem !important;
+    padding-bottom: 0.5rem !important;
+}
+
+body.density-compact .gap-4 {
+    gap: 0.5rem !important;
+}
+
+body.density-compact .gap-6 {
+    gap: 0.75rem !important;
+}
+
+body.density-compact .mb-4 {
+    margin-bottom: 0.5rem !important;
+}
+
+body.density-compact .mb-6 {
+    margin-bottom: 0.75rem !important;
+}
+
+body.density-compact .mb-8 {
+    margin-bottom: 1rem !important;
+}
+
+body.density-compact .text-sm {
+    font-size: 0.75rem !important;
+}
+
+body.density-compact .text-lg {
+    font-size: 1rem !important;
+}
+
+body.density-compact .text-xl {
+    font-size: 1.125rem !important;
+}
+
+body.density-compact .text-2xl {
+    font-size: 1.25rem !important;
+}
+
+body.density-compact .rounded-xl {
+    border-radius: 0.5rem !important;
+}
+
+/* ============================================
+   LIGHT THEME - Warm Professional Palette
+   ============================================ */
+
+body.theme-light {
+    background-color: #faf9f7 !important;
+    /* Warm cream instead of cold white */
+    color: #1e293b !important;
+    color-scheme: light;
+}
+
+body.theme-light ::-webkit-scrollbar-track {
+    background: #f1efe9;
+}
+
+body.theme-light ::-webkit-scrollbar-thumb {
+    background: #c9c4b8;
+    border-color: #f1efe9;
+}
+
+/* Cards: Warm white with subtle shadow */
+body.theme-light .bg-\[#0a0a0a\],
+body.theme-light .bg-\[#0f0f0f\],
+body.theme-light .bg-\[#1a1a1a\] {
+    background-color: #fffffe !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08) !important;
+}
+
+body.theme-light .bg-\[#141414\],
+body.theme-light .bg-\[#0a0a0a\]\/50 {
+    background-color: #f5f4f0 !important;
+}
+
+/* Borders: Subtle warm gray */
+body.theme-light .border-\[#1a1a1a\],
+body.theme-light .border-\[#2a2a2a\] {
+    border-color: #e8e5de !important;
+}
+
+/* Text colors */
+body.theme-light .text-white {
+    color: #1e293b !important;
+}
+
+body.theme-light .text-slate-400 {
+    color: #6b7280 !important;
+}
+
+body.theme-light .text-slate-300 {
+    color: #4b5563 !important;
+}
+
+body.theme-light .text-slate-500 {
+    color: #9ca3af !important;
+}
+
+/* Accent colors - Deeper, richer tones for light mode */
+body.theme-light .text-blue-400 {
+    color: #1d4ed8 !important;
+}
+
+/* Deeper blue */
+body.theme-light .text-green-400 {
+    color: #059669 !important;
+}
+
+/* Emerald */
+body.theme-light .text-red-400 {
+    color: #dc2626 !important;
+}
+
+/* Keep red vibrant */
+body.theme-light .text-cyan-400 {
+    color: #0891b2 !important;
+}
+
+/* Teal */
+body.theme-light .text-orange-400 {
+    color: #d97706 !important;
+}
+
+/* Amber */
+body.theme-light .text-purple-400 {
+    color: #7c3aed !important;
+}
+
+/* Violet */
+
+/* Market card borders */
+body.theme-light .border-blue-700\/30 {
+    border-color: rgba(29, 78, 216, 0.25) !important;
+}
+
+body.theme-light .border-cyan-700\/30 {
+    border-color: rgba(8, 145, 178, 0.25) !important;
+}
+
+body.theme-light .border-orange-700\/30 {
+    border-color: rgba(217, 119, 6, 0.25) !important;
+}
+
+/* Input fields */
+body.theme-light input,
+body.theme-light select,
+body.theme-light textarea {
+    background-color: #fffffe !important;
+    border-color: #e8e5de !important;
+    color: #1e293b !important;
+}
+
+body.theme-light input::placeholder {
+    color: #9ca3af !important;
+}
+
+/* Buttons in light mode */
+body.theme-light .bg-blue-600 {
+    background-color: #2563eb !important;
+}
+
+body.theme-light .bg-\[#1a1a1a\] {
+    background-color: #f3f2ee !important;
+}
+
+/* ============================================
+   CYBER THEME (Bonus: Fix neon green)  
+   ============================================ */
+
+body.theme-cyber {
+    background-color: #0d0221 !important;
+    color: #00ff88 !important;
+}
+
+body.theme-cyber .bg-\[#0a0a0a\],
+body.theme-cyber .bg-\[#0f0f0f\] {
+    background-color: #0d0221 !important;
+}
+
+body.theme-cyber .text-white {
+    color: #00ff88 !important;
+}
+
+body.theme-cyber .border-\[#1a1a1a\] {
+    border-color: #1a0433 !important;
+}
