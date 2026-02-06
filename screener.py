@@ -360,6 +360,13 @@ def scan_rsi_crossover(df: pd.DataFrame):
             )
         except:
             pass
+        
+        # Pressure Gauge (UDVR only - no benchmark available in screener)
+        pressure_gauge = {"udvr_normalized": 50, "udvr_trend": "neutral", "composite": 50, "signal": "neutral"}
+        try:
+            pressure_gauge = indicators.calculate_pressure_gauge(df, None)  # No benchmark
+        except:
+            pass
 
         return {
             "date": str(df.index[-1].date()),
@@ -387,6 +394,7 @@ def scan_rsi_crossover(df: pd.DataFrame):
             "range_52w": range_52w,
             "di_alignment": di_alignment,
             "momentum_score": momentum_score,
+            "pressure_gauge": pressure_gauge,
             "setup": "Weekly RSI Reversal (w.rsi)"
         }
     

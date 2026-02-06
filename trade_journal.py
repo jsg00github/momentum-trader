@@ -526,6 +526,15 @@ def get_open_prices(current_user: models.User = Depends(auth.get_current_user), 
         # Batch download with threads for speed (1y = ~250 days, enough for EMA200)
         data = market_data.safe_yf_download(tickers, period="1y", threads=True)
         
+        # Fetch SPY benchmark data once for RS Score calculation
+        spy_df = None
+        try:
+            spy_df = market_data.safe_yf_download("SPY", period="1y", threads=False)
+            if spy_df is not None and not spy_df.empty:
+                print(f"[open-prices] SPY benchmark loaded: {len(spy_df)} bars")
+        except Exception as e:
+            print(f"[open-prices] SPY benchmark fetch failed: {e}")
+        
         for ticker in tickers:
             try:
                 # Get live price from Finnhub/cache (fast)
@@ -664,6 +673,14 @@ def get_open_prices(current_user: models.User = Depends(auth.get_current_user), 
                     except:
                         pass
                 
+                # === PRESSURE GAUGE ===
+                pressure_gauge = {"udvr_normalized": 50, "rs_score": 50, "composite": 50, "signal": "neutral"}
+                if df is not None and len(df) > 50:
+                    try:
+                        pressure_gauge = indicators.calculate_pressure_gauge(df, spy_df)
+                    except Exception as e:
+                        print(f"[open-prices] Pressure Gauge error for {ticker}: {e}")
+                
                 # Skip ticker if we have no price at all
                 if live_price is None:
                     print(f"[open-prices] No price for {ticker}, skipping")
@@ -683,6 +700,7 @@ def get_open_prices(current_user: models.User = Depends(auth.get_current_user), 
                     "range_52w": range_52w,
                     "di_alignment": di_alignment,
                     "momentum_score": momentum_score,
+                    "pressure_gauge": pressure_gauge,
                     "extended_price": round(price_data.get('extended_price'), 2) if price_data.get('extended_price') else None,
                     "extended_change_pct": round(price_data.get('extended_change_pct'), 2) if price_data.get('extended_change_pct') else None,
                     "is_premarket": False,

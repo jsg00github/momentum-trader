@@ -2383,6 +2383,12 @@ ${res.data.errors.join("\n")}`);
                                         <th onClick={() => requestSort('momentumScore')} className="p-1.5 text-center text-green-400 border-l border-slate-700 cursor-pointer hover:text-white transition" title="Momentum Score">
                                             Sc {getSortIcon('momentumScore')}
                                         </th>
+                                        <th onClick={() => requestSort('udvr')} className="p-1.5 text-center text-cyan-400 border-l border-slate-700 cursor-pointer hover:text-white transition" title="Up/Down Volume Ratio (Pressure Gauge)">
+                                            UV {getSortIcon('udvr')}
+                                        </th>
+                                        <th onClick={() => requestSort('rsScore')} className="p-1.5 text-center text-orange-400 border-l border-slate-700 cursor-pointer hover:text-white transition" title="Relative Strength Score">
+                                            RS {getSortIcon('rsScore')}
+                                        </th>
                                         <th className="p-1.5"></th>
                                     </tr>
                                 </thead>
@@ -2606,6 +2612,48 @@ ${res.data.errors.join("\n")}`);
                                                             if (score >= 70) colorClass = 'text-green-400';
                                                             else if (score >= 40) colorClass = 'text-yellow-400';
                                                             return <span className={`font-bold ${colorClass}`}>{score}</span>;
+                                                        })()}
+                                                    </td>
+                                                    {/* UV (Up/Down Volume Ratio) */}
+                                                    <td className="p-2 text-center border-l border-slate-700">
+                                                        {(() => {
+                                                            const pg = row.live?.pressure_gauge;
+                                                            if (!pg) return <span className="text-slate-600">-</span>;
+                                                            const uv = pg.udvr_normalized;
+                                                            let colorClass = 'text-slate-400';
+                                                            let bgClass = '';
+                                                            if (uv >= 60) { colorClass = 'text-green-400'; bgClass = 'bg-green-500/20'; }
+                                                            else if (uv >= 55) { colorClass = 'text-lime-400'; bgClass = 'bg-lime-500/10'; }
+                                                            else if (uv <= 40) { colorClass = 'text-red-400'; bgClass = 'bg-red-500/20'; }
+                                                            else if (uv <= 45) { colorClass = 'text-orange-400'; bgClass = 'bg-orange-500/10'; }
+                                                            const trend = pg.udvr_trend === 'rising' ? '▲' : pg.udvr_trend === 'falling' ? '▼' : '';
+                                                            return (
+                                                                <div className={`flex flex-col items-center px-1 py-0.5 rounded ${bgClass}`}>
+                                                                    <span className={`font-bold text-[10px] ${colorClass}`}>{uv?.toFixed(0)}</span>
+                                                                    {trend && <span className={`text-[8px] ${colorClass}`}>{trend}</span>}
+                                                                </div>
+                                                            );
+                                                        })()}
+                                                    </td>
+                                                    {/* RS (Relative Strength Score) */}
+                                                    <td className="p-2 text-center border-l border-slate-700">
+                                                        {(() => {
+                                                            const pg = row.live?.pressure_gauge;
+                                                            if (!pg) return <span className="text-slate-600">-</span>;
+                                                            const rs = pg.rs_score;
+                                                            let colorClass = 'text-slate-400';
+                                                            let bgClass = '';
+                                                            if (rs >= 70) { colorClass = 'text-green-400'; bgClass = 'bg-green-500/20'; }
+                                                            else if (rs >= 50) { colorClass = 'text-lime-400'; bgClass = 'bg-lime-500/10'; }
+                                                            else if (rs <= 30) { colorClass = 'text-red-400'; bgClass = 'bg-red-500/20'; }
+                                                            else if (rs <= 50) { colorClass = 'text-orange-400'; bgClass = 'bg-orange-500/10'; }
+                                                            const trend = pg.rs_trend === 'rising' ? '▲' : pg.rs_trend === 'falling' ? '▼' : '';
+                                                            return (
+                                                                <div className={`flex flex-col items-center px-1 py-0.5 rounded ${bgClass}`}>
+                                                                    <span className={`font-bold text-[10px] ${colorClass}`}>{rs?.toFixed(0)}</span>
+                                                                    {trend && <span className={`text-[8px] ${colorClass}`}>{trend}</span>}
+                                                                </div>
+                                                            );
                                                         })()}
                                                     </td>
                                                     <td className="p-2 border-l border-slate-800 flex justify-center gap-1 bg-slate-900">
@@ -4319,6 +4367,9 @@ function Scanner({ onTickerClick }) {
                             <th className="p-2 text-center cursor-pointer hover:text-white transition text-green-400" onClick={() => handleSort('momentum_score')} title="Momentum Score (0-100)">
                                 Score
                             </th>
+                            <th className="p-2 text-center cursor-pointer hover:text-white transition text-cyan-400" onClick={() => handleSort('udvr')} title="Up/Down Volume Ratio (Pressure Gauge)">
+                                UV
+                            </th>
                             <th className="p-2 text-center">Chart</th>
                         </tr>
                     </thead>
@@ -4453,6 +4504,27 @@ function Scanner({ onTickerClick }) {
                                         if (score >= 70) colorClass = 'text-green-400';
                                         else if (score >= 40) colorClass = 'text-yellow-400';
                                         return <span className={`font-bold ${colorClass}`}>{score}</span>;
+                                    })()}
+                                </td>
+                                {/* UV (Up/Down Volume Ratio from Pressure Gauge) */}
+                                <td className="p-2 text-center">
+                                    {(() => {
+                                        const pg = row.pressure_gauge;
+                                        if (!pg) return <span className="text-slate-600">-</span>;
+                                        const uv = pg.udvr_normalized;
+                                        let colorClass = 'text-slate-400';
+                                        let bgClass = '';
+                                        if (uv >= 60) { colorClass = 'text-green-400'; bgClass = 'bg-green-500/20'; }
+                                        else if (uv >= 55) { colorClass = 'text-lime-400'; }
+                                        else if (uv <= 40) { colorClass = 'text-red-400'; bgClass = 'bg-red-500/20'; }
+                                        else if (uv <= 45) { colorClass = 'text-orange-400'; }
+                                        const trend = pg.udvr_trend === 'rising' ? '▲' : pg.udvr_trend === 'falling' ? '▼' : '';
+                                        return (
+                                            <div className={`inline-flex flex-col items-center px-1 py-0.5 rounded ${bgClass}`}>
+                                                <span className={`font-bold text-[10px] ${colorClass}`}>{uv?.toFixed(0)}</span>
+                                                {trend && <span className={`text-[8px] ${colorClass}`}>{trend}</span>}
+                                            </div>
+                                        );
                                     })()}
                                 </td>
                                 <td className="p-2 text-center">

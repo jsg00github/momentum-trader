@@ -477,3 +477,211 @@ def calculate_momentum_score(price: float, emas: dict, rsi_data: dict, di_alignm
                 score += 7
     
     return min(100, max(0, score))
+
+
+# ============================================
+# PRESSURE GAUGE INDICATOR
+# ============================================
+
+def calculate_udvr(df: pd.DataFrame, period: int = 50):
+    """
+    Up/Down Volume Ratio (UDVR) Indicator.
+    
+    Measures the ratio of buying volume to selling volume over a rolling window.
+    - If close > prev_close: volume is classified as "up volume" (buying)
+    - If close < prev_close: volume is classified as "down volume" (selling)
+    
+    Returns:
+        dict with udvr_raw (ratio), udvr_normalized (0-100), udvr_trend
+    """
+    df = normalize_dataframe(df)
+    if df is None or len(df) < period:
+        return {"udvr_raw": 1.0, "udvr_normalized": 50, "udvr_trend": "neutral"}
+    
+    try:
+        close = df['Close']
+        volume = df['Volume']
+        
+        if isinstance(close, pd.DataFrame):
+            close = close.iloc[:, 0]
+        if isinstance(volume, pd.DataFrame):
+            volume = volume.iloc[:, 0]
+        
+        # Classify volume as up or down
+        price_change = close.diff()
+        up_volume = volume.where(price_change > 0, 0)
+        down_volume = volume.where(price_change < 0, 0)
+        
+        # Rolling sums over period
+        up_sum = up_volume.rolling(window=period, min_periods=1).sum()
+        down_sum = down_volume.rolling(window=period, min_periods=1).sum()
+        
+        # Calculate UDVR (avoid division by zero)
+        udvr = up_sum / down_sum.replace(0, np.nan)
+        udvr = udvr.fillna(1.0)
+        
+        current_udvr = float(udvr.iloc[-1])
+        prev_udvr = float(udvr.iloc[-2]) if len(udvr) > 1 else current_udvr
+        
+        # Normalize to 0-100 scale (1.0 = 50, 2.0 = 75, 0.5 = 25)
+        # Using log scale for better distribution
+        if current_udvr > 0:
+            normalized = 50 + (np.log(current_udvr) * 25)
+            normalized = max(0, min(100, normalized))
+        else:
+            normalized = 50
+        
+        # Determine trend
+        if current_udvr > prev_udvr:
+            trend = "rising"
+        elif current_udvr < prev_udvr:
+            trend = "falling"
+        else:
+            trend = "neutral"
+        
+        return {
+            "udvr_raw": round(current_udvr, 3),
+            "udvr_normalized": round(normalized, 1),
+            "udvr_trend": trend
+        }
+    except Exception as e:
+        print(f"[UDVR] Error: {e}")
+        return {"udvr_raw": 1.0, "udvr_normalized": 50, "udvr_trend": "neutral"}
+
+
+def calculate_rs_score(df: pd.DataFrame, benchmark_df: pd.DataFrame, lookback: int = 63):
+    """
+    Relative Strength Score vs Benchmark (e.g., SPY).
+    
+    Calculates how well the asset is performing compared to the benchmark.
+    - RS = asset_close / benchmark_close
+    - Normalized to 1-99 scale over lookback period
+    
+    Lookback options:
+    - 63 bars = ~3 months
+    - 126 bars = ~6 months  
+    - 251 bars = ~12 months
+    
+    Returns:
+        dict with rs_score (1-99), rs_trend
+    """
+    df = normalize_dataframe(df)
+    benchmark_df = normalize_dataframe(benchmark_df)
+    
+    if df is None or benchmark_df is None:
+        return {"rs_score": 50, "rs_trend": "neutral"}
+    
+    if len(df) < lookback or len(benchmark_df) < lookback:
+        return {"rs_score": 50, "rs_trend": "neutral"}
+    
+    try:
+        asset_close = df['Close']
+        bench_close = benchmark_df['Close']
+        
+        if isinstance(asset_close, pd.DataFrame):
+            asset_close = asset_close.iloc[:, 0]
+        if isinstance(bench_close, pd.DataFrame):
+            bench_close = bench_close.iloc[:, 0]
+        
+        # Align dataframes by index (date)
+        # Take the last 'lookback' rows from each
+        asset_close = asset_close.tail(lookback)
+        bench_close = bench_close.tail(lookback)
+        
+        # Calculate relative strength ratio
+        # Use percentage change to normalize different price scales
+        asset_return = (asset_close.iloc[-1] / asset_close.iloc[0] - 1) * 100
+        bench_return = (bench_close.iloc[-1] / bench_close.iloc[0] - 1) * 100
+        
+        # RS = asset return - benchmark return (outperformance)
+        outperformance = asset_return - bench_return
+        
+        # Normalize to 1-99 scale
+        # Assume typical range is -50% to +50% outperformance
+        rs_score = 50 + outperformance
+        rs_score = max(1, min(99, rs_score))
+        
+        # Calculate trend (compare recent RS to older RS)
+        if len(asset_close) > 5:
+            recent_asset = asset_close.iloc[-5:].mean() / asset_close.iloc[-1]
+            older_asset = asset_close.iloc[-10:-5].mean() / asset_close.iloc[-6] if len(asset_close) > 10 else recent_asset
+            
+            if recent_asset > older_asset * 1.01:
+                trend = "rising"
+            elif recent_asset < older_asset * 0.99:
+                trend = "falling"
+            else:
+                trend = "neutral"
+        else:
+            trend = "neutral"
+        
+        return {
+            "rs_score": round(rs_score, 1),
+            "rs_trend": trend
+        }
+    except Exception as e:
+        print(f"[RS Score] Error: {e}")
+        return {"rs_score": 50, "rs_trend": "neutral"}
+
+
+def calculate_pressure_gauge(df: pd.DataFrame, benchmark_df: pd.DataFrame = None, 
+                              udvr_period: int = 50, rs_lookback: int = 63):
+    """
+    Combined Pressure Gauge Indicator.
+    
+    Combines UDVR (volume pressure) and RS Score (relative strength) for 
+    a comprehensive view of momentum and institutional activity.
+    
+    Signal interpretation:
+    - UDVR > 60 + RS > 70 = Strong Buy (institutional accumulation)
+    - UDVR > 55 + RS > 50 = Buy
+    - UDVR 45-55 + RS 40-60 = Neutral
+    - UDVR < 45 + RS < 50 = Sell
+    - UDVR < 40 + RS < 30 = Strong Sell (distribution)
+    
+    Returns:
+        dict with all pressure gauge metrics
+    """
+    # Calculate UDVR
+    udvr_data = calculate_udvr(df, udvr_period)
+    
+    # Calculate RS Score (if benchmark provided)
+    if benchmark_df is not None:
+        rs_data = calculate_rs_score(df, benchmark_df, rs_lookback)
+    else:
+        rs_data = {"rs_score": 50, "rs_trend": "neutral"}
+    
+    udvr_norm = udvr_data["udvr_normalized"]
+    rs_score = rs_data["rs_score"]
+    
+    # Determine composite signal
+    if udvr_norm >= 60 and rs_score >= 70:
+        signal = "strong_buy"
+        signal_color = "green"
+    elif udvr_norm >= 55 and rs_score >= 50:
+        signal = "buy"
+        signal_color = "lime"
+    elif udvr_norm <= 40 and rs_score <= 30:
+        signal = "strong_sell"
+        signal_color = "red"
+    elif udvr_norm <= 45 and rs_score <= 50:
+        signal = "sell"
+        signal_color = "orange"
+    else:
+        signal = "neutral"
+        signal_color = "gray"
+    
+    # Composite score (weighted average)
+    composite = (udvr_norm * 0.5) + (rs_score * 0.5)
+    
+    return {
+        "udvr_raw": udvr_data["udvr_raw"],
+        "udvr_normalized": udvr_norm,
+        "udvr_trend": udvr_data["udvr_trend"],
+        "rs_score": rs_score,
+        "rs_trend": rs_data["rs_trend"],
+        "composite": round(composite, 1),
+        "signal": signal,
+        "signal_color": signal_color
+    }
+
