@@ -62,6 +62,7 @@ import socket
 
 # Define Base Directory for relative paths (Crucial for Cloud Deployment)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+static_dir = os.path.join(BASE_DIR, "static")
 
 app = FastAPI(title="Momentum Screener API")
 
@@ -294,11 +295,6 @@ def process_ticker(ticker, use_cache=True, strategy="rally_3m"):
     return None
 
 # API Routes
-@app.get("/", include_in_schema=False)
-def serve_root():
-    """Serve the frontend index.html at root URL"""
-    return FileResponse(os.path.join(static_dir, "index.html"))
-
 @app.get("/api/health")
 @app.get("/health")  # Also at root for container health probes
 def health_check():
@@ -1546,7 +1542,6 @@ def restore_backup_endpoint(filename: str):
 
 
 # Mount Static Files (use absolute path to ensure it works regardless of CWD)
-static_dir = os.path.join(BASE_DIR, "static")
 if os.path.exists(static_dir):
     # Mount at /static for backwards compatibility
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
