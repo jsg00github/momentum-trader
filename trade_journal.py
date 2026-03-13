@@ -16,6 +16,23 @@ from database import get_db
 import models
 import auth
 
+import numpy as np
+
+def clean_for_json(obj):
+    """Recursively converts numpy floats/NaN/Infinity to JSON serializable Python types."""
+    import math
+    if isinstance(obj, dict):
+        return {k: clean_for_json(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [clean_for_json(v) for v in obj]
+    elif isinstance(obj, np.floating) or isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return None
+        return float(obj)
+    elif isinstance(obj, np.integer):
+        return int(obj)
+    return obj
+
 # Force deploy trigger after CI workaround
 # Router
 router = APIRouter()
