@@ -403,12 +403,12 @@ def get_equity_curve(current_user: models.User = Depends(auth.get_current_user),
         except:
            pass
            
-        return {"dates": dates, "equity": equity, "benchmarks": benchmarks}
+        return clean_for_json({"dates": dates, "equity": equity, "benchmarks": benchmarks})
     except Exception as e:
         print(f"[equity-curve] Error: {e}")
         import traceback
         traceback.print_exc()
-        return {"dates": [], "equity": [], "benchmarks": {"SPY": [], "QQQ": []}}
+        return clean_for_json({"dates": [], "equity": [], "benchmarks": {"SPY": [], "QQQ": []}})
 
 
 @router.get("/api/trades/calendar")
@@ -726,7 +726,7 @@ def get_open_prices(current_user: models.User = Depends(auth.get_current_user), 
         traceback.print_exc()
         return {}  # Return empty dict on crash to avoid 500
     
-    return results
+    return clean_for_json(results)
 
 
 # --- Cross-Module Calls (Proxies) ---

@@ -65,7 +65,7 @@ class DataCache:
                 df = pickle.loads(row[0])
                 return df
             except Exception as e:
-                print(f"Cache error for {ticker}: {e}")
+                pass # Silent fail to avoid charmap crash
                 return None
         
         return None
@@ -92,7 +92,7 @@ class DataCache:
                 cached_time = datetime.fromisoformat(row[1]) if isinstance(row[1], str) else row[1]
                 return df, cached_time
             except Exception as e:
-                print(f"Cache error for {ticker}: {e}")
+                pass # Silent fail to avoid charmap crash on console
                 return None
         
         return None
