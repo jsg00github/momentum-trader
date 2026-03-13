@@ -2098,8 +2098,8 @@ ${res.data.errors.join("\n")}`);
                                 TRADE HISTORY
                             </button>
                         </div>
-                        <div className="bg-slate-900 border border-slate-700 overflow-x-auto overflow-y-auto max-h-[80vh] rounded-lg shadow-xl">
-                            <table className="w-full text-left text-[11px] whitespace-nowrap">
+                        <div className="bg-slate-900 border border-slate-700 overflow-y-auto max-h-[80vh] rounded-lg shadow-xl w-full">
+                            <table className="w-full text-left text-[10px] break-words">
                                 <thead className="bg-[#0f172a] text-slate-400 uppercase font-bold border-b border-slate-600 select-none">
                                     <tr>
                                         <th onClick={() => requestSort('ticker')} className="p-2 border-r border-slate-800 sticky left-0 bg-[#0f172a] z-10 cursor-pointer hover:text-white transition">
@@ -5759,8 +5759,8 @@ function ArgentinaPanel() {
                         </button>
                     </div>
 
-                    <div className="bg-slate-900 border border-slate-700 overflow-x-auto overflow-y-auto max-h-[80vh] rounded-lg shadow-xl">
-                        <table className="w-full text-left text-[11px] whitespace-nowrap">
+                    <div className="bg-slate-900 border border-slate-700 overflow-y-auto max-h-[80vh] rounded-lg shadow-xl w-full">
+                        <table className="w-full text-left text-[10px] break-words">
                             <thead className="bg-[#0f172a] text-slate-400 uppercase font-bold border-b border-slate-600 select-none">
                                 <tr>
                                     <th onClick={() => requestSort('ticker')} className="p-2 border-r border-slate-800 sticky left-0 bg-[#0f172a] z-10 cursor-pointer hover:text-white transition">

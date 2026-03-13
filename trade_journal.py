@@ -571,10 +571,20 @@ def get_open_prices(current_user: models.User = Depends(auth.get_current_user), 
                     ema_35_series = close.ewm(span=35, adjust=False).mean()
                     ema_200_series = close.ewm(span=200, adjust=False).mean()
                     
-                    ema_8 = round(float(ema_8_series.iloc[-1]), 2)
-                    ema_21 = round(float(ema_21_series.iloc[-1]), 2)
-                    ema_35 = round(float(ema_35_series.iloc[-1]), 2) if len(ema_35_series) > 0 else None
-                    ema_200 = round(float(ema_200_series.iloc[-1]), 2) if len(ema_200_series) >= 200 else None
+                    import math
+                    def safe_round(val, decimals=2):
+                        if val is None: return None
+                        try:
+                            f = float(val)
+                            if math.isnan(f) or math.isinf(f): return None
+                            return round(f, decimals)
+                        except:
+                            return None
+
+                    ema_8 = safe_round(ema_8_series.iloc[-1])
+                    ema_21 = safe_round(ema_21_series.iloc[-1])
+                    ema_35 = safe_round(ema_35_series.iloc[-1]) if len(ema_35_series) > 0 else None
+                    ema_200 = safe_round(ema_200_series.iloc[-1]) if len(ema_200_series) >= 200 else None
                     
                     try:
                         r = indicators.calculate_weekly_rsi_analytics(df)
