@@ -5197,7 +5197,7 @@ ${res.data.errors.join("\n")}`);
                     <button onClick={handleDownloadTemplate} className="bg-slate-800 hover:bg-slate-700 text-slate-400 px-3 py-2 rounded-lg font-medium transition text-sm border border-slate-700" title="Download Template CSV">
 
 
-                        â¬‡ï¸ CSV
+                         CSV
 
 
                     </button>
@@ -5215,7 +5215,7 @@ ${res.data.errors.join("\n")}`);
                     <button onClick={handleDeleteAll} className="bg-red-900/50 hover:bg-red-800 text-red-200 px-4 py-2 rounded-lg font-medium transition text-sm border border-red-800">
 
 
-                        ðŸ—‘ï¸ Reset
+                         Reset
 
 
                     </button>
@@ -6250,7 +6250,7 @@ ${res.data.errors.join("\n")}`);
                 >
 
 
-                    ðŸ“ Active Positions
+                     Active Positions
 
 
                 </button>
@@ -6268,7 +6268,7 @@ ${res.data.errors.join("\n")}`);
                 >
 
 
-                    âš–ï¸ Portfolio Analytics
+                     Portfolio Analytics
 
 
                 </button>
@@ -7113,7 +7113,7 @@ ${res.data.errors.join("\n")}`);
                                         </th>
 
 
-                                        <th onClick={() => requestSort('ema8')} className="p-1.5 text-center border-r border-slate-800 cursor-pointer hover:text-white transition">
+                                        <th onClick={() => requestSort('ema8')} className="hidden xl:table-cell p-1.5 text-center border-r border-slate-800 cursor-pointer hover:text-white transition">
 
 
                                             E8 {getSortIcon('ema8')}
@@ -7122,7 +7122,7 @@ ${res.data.errors.join("\n")}`);
                                         </th>
 
 
-                                        <th onClick={() => requestSort('ema21')} className="p-1.5 text-center border-r border-slate-800 cursor-pointer hover:text-white transition">
+                                        <th onClick={() => requestSort('ema21')} className="hidden xl:table-cell p-1.5 text-center border-r border-slate-800 cursor-pointer hover:text-white transition">
 
 
                                             E21 {getSortIcon('ema21')}
@@ -7131,7 +7131,7 @@ ${res.data.errors.join("\n")}`);
                                         </th>
 
 
-                                        <th onClick={() => requestSort('ema35')} className="p-1.5 text-center border-r border-slate-800 cursor-pointer hover:text-white transition">
+                                        <th onClick={() => requestSort('ema35')} className="hidden xl:table-cell p-1.5 text-center border-r border-slate-800 cursor-pointer hover:text-white transition">
 
 
                                             E35 {getSortIcon('ema35')}
@@ -7140,7 +7140,7 @@ ${res.data.errors.join("\n")}`);
                                         </th>
 
 
-                                        <th onClick={() => requestSort('ema200')} className="p-1.5 text-center cursor-pointer hover:text-white transition">
+                                        <th onClick={() => requestSort('ema200')} className="hidden xl:table-cell p-1.5 text-center cursor-pointer hover:text-white transition">
 
 
                                             E200 {getSortIcon('ema200')}
@@ -7176,7 +7176,7 @@ ${res.data.errors.join("\n")}`);
                                         </th>
 
 
-                                        <th onClick={() => requestSort('range52w')} className="p-1.5 text-center text-slate-400 border-l border-slate-700 cursor-pointer hover:text-white transition" title="52-Week Range">
+                                        <th onClick={() => requestSort('range52w')} className="hidden xl:table-cell p-1.5 text-center text-slate-400 border-l border-slate-700 cursor-pointer hover:text-white transition" title="52-Week Range">
 
 
                                             52w {getSortIcon('range52w')}
@@ -7185,7 +7185,7 @@ ${res.data.errors.join("\n")}`);
                                         </th>
 
 
-                                        <th onClick={() => requestSort('diAlignment')} className="p-1.5 text-center text-blue-400 border-l border-slate-700 cursor-pointer hover:text-white transition" title="DI Alignment">
+                                        <th onClick={() => requestSort('diAlignment')} className="hidden xl:table-cell p-1.5 text-center text-blue-400 border-l border-slate-700 cursor-pointer hover:text-white transition" title="DI Alignment">
 
 
                                             DI {getSortIcon('diAlignment')}
@@ -7194,7 +7194,7 @@ ${res.data.errors.join("\n")}`);
                                         </th>
 
 
-                                        <th onClick={() => requestSort('momentumScore')} className="p-1.5 text-center text-green-400 border-l border-slate-700 cursor-pointer hover:text-white transition" title="Momentum Score">
+                                        <th onClick={() => requestSort('momentumScore')} className="hidden xl:table-cell p-1.5 text-center text-green-400 border-l border-slate-700 cursor-pointer hover:text-white transition" title="Momentum Score">
 
 
                                             Sc {getSortIcon('momentumScore')}
@@ -7203,7 +7203,7 @@ ${res.data.errors.join("\n")}`);
                                         </th>
 
 
-                                        <th onClick={() => requestSort('udvr')} className="p-1.5 text-center text-cyan-400 border-l border-slate-700 cursor-pointer hover:text-white transition" title="Up/Down Volume Ratio (Pressure Gauge)">
+                                        <th onClick={() => requestSort('udvr')} className="hidden xl:table-cell p-1.5 text-center text-cyan-400 border-l border-slate-700 cursor-pointer hover:text-white transition" title="Up/Down Volume Ratio (Pressure Gauge)">
 
 
                                             UV {getSortIcon('udvr')}
@@ -7212,7 +7212,7 @@ ${res.data.errors.join("\n")}`);
                                         </th>
 
 
-                                        <th onClick={() => requestSort('rsScore')} className="p-1.5 text-center text-orange-400 border-l border-slate-700 cursor-pointer hover:text-white transition" title="Relative Strength Score">
+                                        <th onClick={() => requestSort('rsScore')} className="hidden xl:table-cell p-1.5 text-center text-orange-400 border-l border-slate-700 cursor-pointer hover:text-white transition" title="Relative Strength Score">
 
 
                                             RS {getSortIcon('rsScore')}
@@ -7614,7 +7614,7 @@ ${res.data.errors.join("\n")}`);
                                                     {/* EMAS (Group level) with Violation Counters */}
 
 
-                                                    <td className={`p-2 text-center border-r border-slate-800 ${getEmaColor(currentPrice || 0, emas.ema_8)}`}>
+                                                    <td className={`hidden xl:table-cell p-2 text-center border-r border-slate-800 ${getEmaColor(currentPrice || 0, emas.ema_8)}`}>
 
 
                                                         {emas.ema_8 ? <span>${emas.ema_8.toFixed(2)}</span> : '-'}
@@ -7623,7 +7623,7 @@ ${res.data.errors.join("\n")}`);
                                                     </td>
 
 
-                                                    <td className={`p-2 text-center border-r border-slate-800 ${getEmaColor(currentPrice || 0, emas.ema_21)}`}>
+                                                    <td className={`hidden xl:table-cell p-2 text-center border-r border-slate-800 ${getEmaColor(currentPrice || 0, emas.ema_21)}`}>
 
 
                                                         {emas.ema_21 ? <span>${emas.ema_21.toFixed(2)}</span> : '-'}
@@ -7632,7 +7632,7 @@ ${res.data.errors.join("\n")}`);
                                                     </td>
 
 
-                                                    <td className={`p-2 text-center border-r border-slate-800 ${getEmaColor(currentPrice || 0, emas.ema_35)}`}>
+                                                    <td className={`hidden xl:table-cell p-2 text-center border-r border-slate-800 ${getEmaColor(currentPrice || 0, emas.ema_35)}`}>
 
 
                                                         {emas.ema_35 ? <span>${emas.ema_35.toFixed(2)}</span> : '-'}
@@ -7641,7 +7641,7 @@ ${res.data.errors.join("\n")}`);
                                                     </td>
 
 
-                                                    <td className={`p-2 text-center ${getEmaColor(currentPrice || 0, emas.ema_200)}`}>
+                                                    <td className={`hidden xl:table-cell p-2 text-center ${getEmaColor(currentPrice || 0, emas.ema_200)}`}>
 
 
                                                         {emas.ema_200 ? <span>${emas.ema_200.toFixed(2)}</span> : '-'}
@@ -7779,7 +7779,7 @@ ${res.data.errors.join("\n")}`);
                                                     {/* 52w Range */}
 
 
-                                                    <td className="p-2 text-center border-l border-slate-700" style={{ minWidth: '60px' }}>
+                                                    <td className="hidden xl:table-cell p-2 text-center border-l border-slate-700" style={{ minWidth: '60px' }}>
 
 
                                                         {(() => {
@@ -7822,9 +7822,7 @@ ${res.data.errors.join("\n")}`);
 
 
                                                     {/* DI Alignment (H1/H4/D) */}
-
-
-                                                    <td className="p-2 text-center border-l border-slate-700">
+                                                    <td className="hidden xl:table-cell p-2 text-center border-l border-slate-700">
 
 
                                                         {(() => {
@@ -7864,9 +7862,7 @@ ${res.data.errors.join("\n")}`);
 
 
                                                     {/* Momentum Score */}
-
-
-                                                    <td className="p-2 text-center border-l border-slate-700">
+                                                    <td className="hidden xl:table-cell p-2 text-center border-l border-slate-700">
 
 
                                                         {(() => {
@@ -7897,9 +7893,7 @@ ${res.data.errors.join("\n")}`);
 
 
                                                     {/* UV (Up/Down Volume Ratio) */}
-
-
-                                                    <td className="p-2 text-center border-l border-slate-700">
+                                                    <td className="hidden xl:table-cell p-2 text-center border-l border-slate-700">
 
 
                                                         {(() => {
@@ -7960,9 +7954,7 @@ ${res.data.errors.join("\n")}`);
 
 
                                                     {/* RS (Relative Strength Score) */}
-
-
-                                                    <td className="p-2 text-center border-l border-slate-700">
+                                                    <td className="hidden xl:table-cell p-2 text-center border-l border-slate-700">
 
 
                                                         {(() => {
@@ -11211,7 +11203,7 @@ function TradingViewChart({ ticker, chartData, elliottWave, metrics, tradeHistor
                 >
 
 
-                    ðŸ—‘ï¸
+                    
 
 
                     <span className="absolute -bottom-1 -right-1 bg-slate-900 text-[7px] text-slate-500 px-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity font-mono">⌫</span>
@@ -16136,7 +16128,7 @@ function MarketDashboard({ onTickerClick }) {
                                                     <div className={`text-center mt-2 text-lg font-bold ${moodColor}`}>
 
 
-                                                        {mood.includes('Optimistic') || mood.includes('Bullish') || mood.includes('Greed') ? '📈' : mood.includes('Fear') || mood.includes('Bearish') ? '📉' : 'âš–ï¸'} {mood}
+                                                        {mood.includes('Optimistic') || mood.includes('Bullish') || mood.includes('Greed') ? '📈' : mood.includes('Fear') || mood.includes('Bearish') ? '📉' : ''} {mood}
 
 
                                                     </div>
@@ -16970,7 +16962,7 @@ function Settings() {
                 <div className="p-3 bg-blue-600/20 rounded-xl">
 
 
-                    <span className="text-3xl">âš™ï¸</span>
+                    <span className="text-3xl"></span>
 
 
                 </div>
@@ -18914,7 +18906,7 @@ function ArgentinaPanel() {
                     <button onClick={handleDownloadTemplate} className="bg-slate-800 hover:bg-slate-700 text-slate-400 px-3 py-2 rounded-lg font-medium transition text-sm border border-slate-700" title="Download Template">
 
 
-                        â¬‡ï¸ CSV
+                         CSV
 
 
                     </button>
@@ -19508,7 +19500,7 @@ function ArgentinaPanel() {
                 <button onClick={() => setActiveSubTab('log')} className={`pb-3 text-sm font-bold tracking-wide transition border-b-2 flex items-center gap-2 ${activeSubTab === 'log' ? 'border-sky-500 text-sky-400' : 'border-transparent text-slate-500 hover:text-slate-300'}`}>
 
 
-                    ðŸ“ Journal
+                     Journal
 
 
                 </button>
@@ -19517,7 +19509,7 @@ function ArgentinaPanel() {
                 <button onClick={() => setActiveSubTab('analytics')} className={`pb-3 text-sm font-bold tracking-wide transition border-b-2 flex items-center gap-2 ${activeSubTab === 'analytics' ? 'border-sky-500 text-sky-400' : 'border-transparent text-slate-500 hover:text-slate-300'}`}>
 
 
-                    âš–ï¸ Portfolio Analytics
+                     Portfolio Analytics
 
 
                 </button>
@@ -20138,7 +20130,7 @@ function ArgentinaPanel() {
                                                         <span>↳</span> {t.ticker}
 
 
-                                                        <button onClick={() => handleDelete(t.id)} className="ml-2 text-red-500 hover:text-red-400 opacity-50 hover:opacity-100">ðŸ—‘ï¸</button>
+                                                        <button onClick={() => handleDelete(t.id)} className="ml-2 text-red-500 hover:text-red-400 opacity-50 hover:opacity-100"></button>
 
 
                                                     </td>
@@ -20564,7 +20556,7 @@ function ArgentinaPanel() {
                                 <div className="bg-slate-900 border border-slate-700 rounded-xl p-4">
 
 
-                                    <h5 className="text-slate-400 font-bold text-xs uppercase mb-3">ðŸ“ Letras Griegas</h5>
+                                    <h5 className="text-slate-400 font-bold text-xs uppercase mb-3"> Letras Griegas</h5>
 
 
                                     <div className="grid grid-cols-2 gap-2 text-sm">
@@ -21437,7 +21429,7 @@ function ArgentinaJournal() {
                                 <td className="px-6 py-4 text-right">
 
 
-                                    <button onClick={() => handleDelete(pos.id)} className="text-slate-600 hover:text-red-400">ðŸ—‘ï¸</button>
+                                    <button onClick={() => handleDelete(pos.id)} className="text-slate-600 hover:text-red-400"></button>
 
 
                                 </td>
@@ -22496,7 +22488,7 @@ function CryptoJournal() {
                     <input type="file" ref={fileInputRef} onChange={handleFileChange} style={{ display: 'none' }} accept=".csv" />
 
 
-                    <button onClick={() => window.location.href = `${API_BASE}/crypto/template`} className="bg-slate-800 hover:bg-slate-700 text-slate-400 px-3 py-2 rounded-lg text-sm border border-slate-700">â¬‡ï¸ CSV</button>
+                    <button onClick={() => window.location.href = `${API_BASE}/crypto/template`} className="bg-slate-800 hover:bg-slate-700 text-slate-400 px-3 py-2 rounded-lg text-sm border border-slate-700"> CSV</button>
 
 
                     <button onClick={() => fileInputRef.current.click()} className="bg-slate-700 hover:bg-slate-600 text-slate-200 px-4 py-2 rounded-lg text-sm border border-slate-600">{importLoading ? '...' : 'Import'}</button>
@@ -22898,7 +22890,7 @@ function CryptoJournal() {
                                                 )}
 
 
-                                                <button onClick={() => handleDelete(pos.id)} className="text-slate-600 hover:text-red-400 text-sm" title="Delete record">ðŸ—‘ï¸</button>
+                                                <button onClick={() => handleDelete(pos.id)} className="text-slate-600 hover:text-red-400 text-sm" title="Delete record"></button>
 
 
                                             </td>
@@ -23525,7 +23517,7 @@ function SharpePortfolioView() {
                             <option value="sharpe">🚀 High Sharpe Only</option>
 
 
-                            <option value="balanced">âš–ï¸ Balanced (Score)</option>
+                            <option value="balanced"> Balanced (Score)</option>
 
 
                         </select>
@@ -27155,7 +27147,7 @@ function WatchlistPanel() {
                                             >
 
 
-                                                ðŸ—‘ï¸
+                                                
 
 
                                             </button>
@@ -28805,7 +28797,7 @@ function App() {
                         <span className={`text-lg ${view === 'portfolio' ? 'text-purple-500' : 'text-slate-500 group-hover:text-purple-400'}`}></span>
 
 
-                        <span className="ml-3 text-sm font-medium hidden sm:block">Global Portfolio</span>
+                        <span className="ml-3 text-sm font-medium hidden sm:block">🌎 Global Portfolio</span>
 
 
                     </button>
@@ -28955,7 +28947,7 @@ function App() {
                     <button onClick={() => setView('charts')} className={`group relative w-full flex items-center p-2 rounded-xl transition-all duration-200 ${view === 'charts' ? 'bg-cyan-600/10 text-white' : 'hover:bg-[#151515] text-slate-500 hover:text-white'}`}>
 
 
-                        <span className={`text-lg ${view === 'charts' ? 'text-cyan-500' : 'text-slate-500 group-hover:text-cyan-400'}`}>ðŸ•¯ï¸</span>
+                        <span className={`text-lg ${view === 'charts' ? 'text-cyan-500' : 'text-slate-500 group-hover:text-cyan-400'}`}></span>
 
 
                         <span className="ml-3 text-sm font-medium hidden sm:block">Advanced Charts</span>
@@ -28988,10 +28980,10 @@ function App() {
                     >
 
 
-                        <span className={`text-lg ${view === 'settings' ? 'text-blue-500' : 'text-slate-500 group-hover:text-blue-400'}`}>âš™ï¸</span>
+                        <span className={`text-lg ${view === 'settings' ? 'text-blue-500' : 'text-slate-500 group-hover:text-blue-400'}`}></span>
 
 
-                        <span className="ml-3 text-sm font-medium hidden sm:block">Settings</span>
+                        <span className="ml-3 text-sm font-medium hidden sm:block">⚙️ Settings</span>
 
 
                     </button>
@@ -29015,7 +29007,7 @@ function App() {
                         <span className="text-lg">🚪</span>
 
 
-                        <span className="ml-3 text-sm font-medium hidden sm:block">Sign Out</span>
+                        <span className="ml-3 text-sm font-medium hidden sm:block">🚪 Sign Out</span>
 
 
                     </button>
@@ -29066,7 +29058,7 @@ function App() {
                             {view === 'watchlist' && '⭐ Watchlist'}
 
 
-                            {view === 'charts' && 'ðŸ•¯ï¸ Advanced Charts'}
+                            {view === 'charts' && ' Advanced Charts'}
 
 
                             {view === 'argentina' && '🇦🇷 Portfolio Merval'}
@@ -29087,7 +29079,7 @@ function App() {
                             {view === 'mentor-scanner' && '🎯 Mentor Scanner'}
 
 
-                            {view === 'settings' && 'âš™ï¸ Settings'}
+                            {view === 'settings' && ' Settings'}
 
 
                         </h1>
