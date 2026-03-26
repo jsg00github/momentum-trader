@@ -6500,74 +6500,45 @@ ${res.data.errors.join("\n")}`);
 
 
                             <button
-
-
                                 onClick={async () => {
-
-
                                     if (!sellData.exitPrice) return alert("Ingresa precio de salida");
 
-
-                                    const shares = sellData.sharesToSell ? parseInt(sellData.sharesToSell) : sellData.currentShares;
-
-
-
-
+                                    let sharesRemaining = sellData.sharesToSell ? parseFloat(sellData.sharesToSell) : sellData.currentShares;
+                                    if (sharesRemaining <= 0) return alert("Cantidad inválida");
+                                    if (sharesRemaining > sellData.currentShares) return alert("No tienes suficientes acciones");
 
                                     try {
-
-
-                                        await axios.post(`${API_BASE}/trades/add`, {
-
-
-                                            ticker: sellData.ticker,
-
-
-                                            entry_date: new Date().toISOString().split('T')[0],
-
-
-                                            entry_price: parseFloat(sellData.exitPrice),
-
-
-                                            shares: shares,
-
-
-                                            direction: 'SELL',
-
-
-                                            status: 'CLOSED'
-
-
-                                        });
-
-
+                                        if (sellData.groupTrades) {
+                                            const openTrades = sellData.groupTrades.filter(t => t.status === 'OPEN');
+                                            for (const trade of openTrades) {
+                                                if (sharesRemaining <= 0) break;
+                                                const sharesToClose = Math.min(sharesRemaining, trade.shares);
+                                                await axios.post(`${API_BASE}/argentina/positions/${trade.id}/close`, null, {
+                                                    params: {
+                                                        exit_price: parseFloat(sellData.exitPrice),
+                                                        shares: sharesToClose
+                                                    }
+                                                });
+                                                sharesRemaining -= sharesToClose;
+                                            }
+                                        } else {
+                                            // Fallback
+                                            await axios.post(`${API_BASE}/argentina/positions/${sellData.positionId}/close`, null, {
+                                                params: {
+                                                    exit_price: parseFloat(sellData.exitPrice),
+                                                    shares: sharesRemaining
+                                                }
+                                            });
+                                        }
                                         setShowSellModal(false);
-
-
-                                        fetchEssentialData(); // Refresh
-
-
+                                        fetchEssentialData();
                                     } catch (err) {
-
-
                                         alert("Error cerrando posición: " + (err.response?.data?.detail || err.message));
-
-
                                     }
-
-
                                 }}
-
-
-                                className="bg-red-600 hover:bg-red-500 text-white py-3 rounded-lg font-bold transition shadow-lg shadow-red-900/20"
-
-
+                                className="bg-red-600 hover:bg-red-500 text-white py-3 rounded-lg font-bold transition flex items-center justify-center gap-2"
                             >
-
-
                                 📉 VENDER
-
-
                             </button>
 
 
@@ -20047,35 +20018,16 @@ function ArgentinaPanel() {
 
 
                                                             const tradeToClose = groupTrades.find(t => t.status === 'OPEN');
-
-
                                                             if (tradeToClose) {
-
-
                                                                 setSellData({
-
-
                                                                     positionId: tradeToClose.id,
-
-
                                                                     ticker: ticker,
-
-
-                                                                    currentShares: tradeToClose.shares,
-
-
+                                                                    currentShares: displayShares,
                                                                     currentPrice: currentPrice || tradeToClose.entry_price,
-
-
                                                                     exitPrice: currentPrice || tradeToClose.entry_price,
-
-
-                                                                    sharesToSell: '' // Default to empty (implies all if not set, or user types)
-
-
+                                                                    sharesToSell: '',
+                                                                    groupTrades: groupTrades
                                                                 });
-
-
                                                                 setShowSellModal(true);
 
 
