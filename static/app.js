@@ -16605,8 +16605,7 @@ function MarketDashboard({ onTickerClick }) {
 
 
                                         {s.deep_dive && (
-
-
+                                            <>
                                             <div className="grid grid-cols-2 gap-2 text-[10px] bg-slate-800/50 p-1.5 rounded">
 
 
@@ -16635,7 +16634,6 @@ function MarketDashboard({ onTickerClick }) {
 
 
                                             </div>
-</div>
 
                                                 {/* Enrichment Panel for Laggard */}
                                                 {s.deep_dive.laggard.stage && (
@@ -16687,8 +16685,8 @@ function MarketDashboard({ onTickerClick }) {
                                                         </div>
                                                     </div>
                                                 )}
-
-)}
+                                            </>
+                                        )}
 
 
                                     </div>
