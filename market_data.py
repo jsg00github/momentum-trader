@@ -360,8 +360,12 @@ def _extract_ticker_ohlcv(ticker, batch_data):
         return None
 
 def _enrich_constituent(item, batch_data):
-    """Add VCP, volume trend, stage, 52w range, and analyst target to a leader/laggard dict."""
-    import indicators
+    """Add VCP, volume trend, stage, 52w range to a leader/laggard dict."""
+    try:
+        import indicators
+    except Exception:
+        return item
+    
     ticker = item["ticker"]
     
     # Try to extract full OHLCV
@@ -390,11 +394,9 @@ def _enrich_constituent(item, batch_data):
         item["stage"] = None
         item["range_52w"] = None
     
-    # Analyst target (lightweight yfinance call)
-    try:
-        item["analyst"] = _get_analyst_target(ticker)
-    except Exception:
-        item["analyst"] = None
+    # Analyst target — SKIP in dashboard worker (too slow, 1-2s per ticker)
+    # Will be fetched on-demand when user clicks the ticker for DetailView
+    item["analyst"] = None
     
     return item
 
@@ -435,10 +437,16 @@ def analyze_sector_constituents_preloaded(sector_ticker, all_closes, batch_data=
         weinstein = [r for r in results if r['trend_ok'] and r['perf'] > 0]
         laggard = sorted(weinstein, key=lambda x: x['perf'])[0] if weinstein else results[-1]
         
-        # Enrich leader and laggard with detailed metrics
+        # Enrich leader and laggard with detailed metrics (crash-safe)
         if batch_data is not None:
-            _enrich_constituent(leader, batch_data)
-            _enrich_constituent(laggard, batch_data)
+            try:
+                _enrich_constituent(leader, batch_data)
+            except Exception as e:
+                print(f"  [Deep Dive] Enrich leader {leader.get('ticker')} failed: {e}")
+            try:
+                _enrich_constituent(laggard, batch_data)
+            except Exception as e:
+                print(f"  [Deep Dive] Enrich laggard {laggard.get('ticker')} failed: {e}")
         
         return {"leader": leader, "laggard": laggard}
     except Exception as e:
