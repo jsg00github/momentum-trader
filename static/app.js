@@ -16606,7 +16606,7 @@ function MarketDashboard({ onTickerClick }) {
                                             <div className="text-[10px] bg-slate-800/50 p-2 rounded space-y-2">
                                                 {/* Leaders Section */}
                                                 <div>
-                                                    <div className="text-green-400 font-bold mb-1 text-[9px] uppercase tracking-wider">\u{1F3C6} Leaders</div>
+                                                    <div className="text-green-400 font-bold mb-1 text-[9px] uppercase tracking-wider">🏆 Leaders</div>
                                                     <div className="space-y-0.5">
                                                         {(s.deep_dive.leaders || [s.deep_dive.leader]).map((l, i) => (
                                                             <div key={l.ticker} onClick={(e) => { e.stopPropagation(); onTickerClick(l.ticker); }}
@@ -16621,7 +16621,7 @@ function MarketDashboard({ onTickerClick }) {
                                                 </div>
                                                 {/* Laggards Section */}
                                                 <div className="border-t border-slate-700/50 pt-2">
-                                                    <div className="text-orange-400 font-bold mb-1 text-[9px] uppercase tracking-wider">\u{1F422} Laggards (Catch-Up Plays)</div>
+                                                    <div className="text-orange-400 font-bold mb-1 text-[9px] uppercase tracking-wider">🐢 Laggards (Catch-Up Plays)</div>
                                                     <div className="space-y-1">
                                                         {(s.deep_dive.laggards || [s.deep_dive.laggard]).map((lag, i) => (
                                                             <div key={lag.ticker} onClick={(e) => { e.stopPropagation(); onTickerClick(lag.ticker); }}
@@ -16652,7 +16652,7 @@ function MarketDashboard({ onTickerClick }) {
                                                                         )}
                                                                         {lag.vol_trend && (
                                                                             <span className={`text-[8px] px-1 rounded ${lag.vol_trend.is_growing ? 'bg-cyan-900/40 text-cyan-300' : 'bg-slate-700 text-slate-400'}`}>
-                                                                                Vol {lag.vol_trend.is_growing ? '\u{1F4C8}' : '\u{1F4C9}'}
+                                                                                Vol {lag.vol_trend.is_growing ? '📈' : '📉'}
                                                                             </span>
                                                                         )}
                                                                         {lag.range_52w && (
