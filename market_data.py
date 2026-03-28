@@ -201,17 +201,17 @@ SECTORS = {
 }
 
 SECTOR_HOLDINGS = {
-    "XLK": ["MSFT", "AAPL", "NVDA", "AVGO", "ORCL", "ADBE", "CRM", "AMD"],
-    "XLF": ["JPM", "V", "MA", "BAC", "WFC", "MS", "GS", "AXP"],
-    "XLV": ["LLY", "UNH", "JNJ", "MRK", "ABBV", "TMO", "AMGN", "PFE"],
-    "XLY": ["AMZN", "TSLA", "HD", "MCD", "NKE", "LOW", "SBUX", "BKNG"],
-    "XLP": ["PG", "COST", "PEP", "KO", "WMT", "PM", "MDLZ", "CL"],
-    "XLE": ["XOM", "CVX", "COP", "EOG", "SLB", "MPC", "PSX", "OXY"],
-    "XLI": ["GE", "CAT", "UBER", "UNP", "HON", "BA", "UPS", "DE"],
-    "XLB": ["LIN", "SHW", "FCX", "APD", "ECL", "NEM", "DOW", "DD"],
-    "XLRE": ["PLD", "AMT", "EQIX", "PSA", "CCI", "O", "DLR", "VIC"],
-    "XLC": ["META", "GOOGL", "NFLX", "TMUS", "DIS", "CMCSA", "VZ", "T"],
-    "XLU": ["NEE", "SO", "DUK", "SRE", "AEP", "D", "PEG", "ED"]
+    "XLK": ["MSFT", "AAPL", "NVDA", "AVGO", "ORCL", "ADBE", "CRM", "AMD", "CSCO", "ACN", "IBM", "INTU", "NOW", "QCOM", "TXN"],
+    "XLF": ["JPM", "V", "MA", "BAC", "WFC", "MS", "GS", "AXP", "SPGI", "BLK", "C", "SCHW", "MMC", "CB", "PGR"],
+    "XLV": ["LLY", "UNH", "JNJ", "MRK", "ABBV", "TMO", "AMGN", "PFE", "DHR", "ABT", "BMY", "MDT", "ISRG", "SYK", "GILD"],
+    "XLY": ["AMZN", "TSLA", "HD", "MCD", "NKE", "LOW", "SBUX", "BKNG", "TJX", "CMG", "ORLY", "AZO", "MAR", "GM", "F"],
+    "XLP": ["PG", "COST", "PEP", "KO", "WMT", "PM", "MDLZ", "CL", "MO", "GIS", "KMB", "KHC", "STZ", "SYY", "HSY"],
+    "XLE": ["XOM", "CVX", "COP", "EOG", "SLB", "MPC", "PSX", "OXY", "VLO", "WMB", "KMI", "HES", "DVN", "HAL", "FANG"],
+    "XLI": ["GE", "CAT", "UBER", "UNP", "HON", "BA", "UPS", "DE", "RTX", "LMT", "WM", "ETN", "ITW", "EMR", "GD"],
+    "XLB": ["LIN", "SHW", "FCX", "APD", "ECL", "NEM", "DOW", "DD", "NUE", "VMC", "MLM", "PPG", "IFF", "CF", "ALB"],
+    "XLRE": ["PLD", "AMT", "EQIX", "PSA", "CCI", "O", "DLR", "WELL", "SPG", "AVB", "UDR", "VTR", "ARE", "EXR", "MAA"],
+    "XLC": ["META", "GOOGL", "NFLX", "TMUS", "DIS", "CMCSA", "VZ", "T", "CHTR", "EA", "WBD", "TTWO", "MTCH", "OMC", "LYV"],
+    "XLU": ["NEE", "SO", "DUK", "SRE", "AEP", "D", "PEG", "ED", "EXC", "XEL", "WEC", "ES", "AWK", "DTE", "FE"]
 }
 
 INDICES = ["SPY", "QQQ", "IWM", "^VIX", "BTC-USD"]
@@ -442,29 +442,36 @@ def analyze_sector_constituents_preloaded(sector_ticker, all_closes, batch_data=
                     perf = calculate_3m_perf(series)
                     ema50 = float(series.ewm(span=50, adjust=False).mean().iloc[-1])
                     curr_price = float(series.iloc[-1])
-                    results.append({"ticker": t, "perf": perf, "trend_ok": curr_price > ema50})
+                    results.append({"ticker": t, "perf": round(perf, 1), "trend_ok": curr_price > ema50})
             except Exception as e:
                 continue
         
         if not results: return None
         results.sort(key=lambda x: x['perf'], reverse=True)
-        leader = results[0]
-        # Robust laggard logic
-        weinstein = [r for r in results if r['trend_ok'] and r['perf'] > 0]
-        laggard = sorted(weinstein, key=lambda x: x['perf'])[0] if weinstein else results[-1]
         
-        # Enrich leader and laggard with detailed metrics (crash-safe)
+        # Top 5 leaders (best performers)
+        leaders = results[:5]
+        
+        # Top 5 laggards (worst performers still in uptrend, or absolute worst if not enough)
+        uptrend_stocks = [r for r in results if r['trend_ok'] and r['perf'] > 0]
+        uptrend_sorted = sorted(uptrend_stocks, key=lambda x: x['perf'])
+        laggards = uptrend_sorted[:5] if len(uptrend_sorted) >= 5 else uptrend_sorted + [r for r in reversed(results) if r not in uptrend_sorted][:5 - len(uptrend_sorted)]
+        
+        # Enrich only laggards with detailed metrics (crash-safe)
         if batch_data is not None:
-            try:
-                _enrich_constituent(leader, batch_data)
-            except Exception as e:
-                print(f"  [Deep Dive] Enrich leader {leader.get('ticker')} failed: {e}")
-            try:
-                _enrich_constituent(laggard, batch_data)
-            except Exception as e:
-                print(f"  [Deep Dive] Enrich laggard {laggard.get('ticker')} failed: {e}")
+            for lag in laggards:
+                try:
+                    _enrich_constituent(lag, batch_data)
+                except Exception as e:
+                    print(f"  [Deep Dive] Enrich laggard {lag.get('ticker')} failed: {e}")
         
-        return {"leader": leader, "laggard": laggard}
+        # Backward compat: keep single leader/laggard for old frontend code
+        return {
+            "leader": leaders[0] if leaders else None,
+            "laggard": laggards[0] if laggards else None,
+            "leaders": leaders,
+            "laggards": laggards
+        }
     except Exception as e:
         print(f"Error analyzing {sector_ticker}: {e}")
         return None

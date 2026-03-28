@@ -16601,91 +16601,72 @@ function MarketDashboard({ onTickerClick }) {
 
 
 
-                                        {/* Deep Dive Info */}
-
-
+                                        {/* Deep Dive Info - Top 5 Leaders & Laggards */}
                                         {s.deep_dive && (
-                                            <>
-                                            <div className="grid grid-cols-2 gap-2 text-[10px] bg-slate-800/50 p-1.5 rounded">
-
-
-                                                <div onClick={(e) => { e.stopPropagation(); onTickerClick(s.deep_dive.leader.ticker); }} className="hover:text-green-400 cursor-pointer transition">
-
-
-                                                    <div className="text-green-400 font-bold mb-0.5">ðŸ† Leader</div>
-
-
-                                                    <div className="font-mono">{s.deep_dive.leader.ticker} <span className="text-green-300">+{s.deep_dive.leader.perf.toFixed(1)}%</span></div>
-
-
-                                                </div>
-
-
-                                                <div onClick={(e) => { e.stopPropagation(); onTickerClick(s.deep_dive.laggard.ticker); }} className="text-right hover:text-orange-400 cursor-pointer transition">
-
-
-                                                    <div className="text-orange-400 font-bold mb-0.5">ðŸ¢ Laggard</div>
-
-
-                                                    <div className="font-mono">{s.deep_dive.laggard.ticker} <span className="text-orange-300">{s.deep_dive.laggard.perf > 0 ? '+' : ''}{s.deep_dive.laggard.perf.toFixed(1)}%</span></div>
-
-
-                                                </div>
-
-
-                                            </div>
-
-                                                {/* Enrichment Panel for Laggard */}
-                                                {s.deep_dive.laggard.stage && (
-                                                    <div className="mt-2 pt-2 border-t border-slate-700/50">
-                                                        <div className="text-[9px] text-slate-500 uppercase font-bold mb-1">🔬 Laggard Intel</div>
-                                                        <div className="grid grid-cols-3 gap-1 text-[9px]">
-                                                            {/* Weinstein Stage */}
-                                                            <div className={`text-center px-1 py-0.5 rounded ${
-                                                                s.deep_dive.laggard.stage?.color === 'green' ? 'bg-green-900/40 text-green-300' :
-                                                                s.deep_dive.laggard.stage?.color === 'blue' ? 'bg-blue-900/40 text-blue-300' :
-                                                                s.deep_dive.laggard.stage?.color === 'yellow' ? 'bg-yellow-900/40 text-yellow-300' :
-                                                                'bg-red-900/40 text-red-300'
-                                                            }`}>
-                                                                {s.deep_dive.laggard.stage?.label || 'N/A'}
+                                            <div className="text-[10px] bg-slate-800/50 p-2 rounded space-y-2">
+                                                {/* Leaders Section */}
+                                                <div>
+                                                    <div className="text-green-400 font-bold mb-1 text-[9px] uppercase tracking-wider">\u{1F3C6} Leaders</div>
+                                                    <div className="space-y-0.5">
+                                                        {(s.deep_dive.leaders || [s.deep_dive.leader]).map((l, i) => (
+                                                            <div key={l.ticker} onClick={(e) => { e.stopPropagation(); onTickerClick(l.ticker); }}
+                                                                className="flex justify-between items-center hover:bg-slate-700/50 px-1 py-0.5 rounded cursor-pointer transition group">
+                                                                <span className="font-mono text-slate-300 group-hover:text-green-300">
+                                                                    <span className="text-slate-500 text-[8px] mr-1">#{i+1}</span>{l.ticker}
+                                                                </span>
+                                                                <span className="text-green-400 font-mono font-bold">+{l.perf?.toFixed ? l.perf.toFixed(1) : l.perf}%</span>
                                                             </div>
-                                                            {/* VCP Tightness */}
-                                                            {s.deep_dive.laggard.vcp && (
-                                                                <div className={`text-center px-1 py-0.5 rounded ${s.deep_dive.laggard.vcp.is_vcp ? 'bg-emerald-900/40 text-emerald-300' : 'bg-slate-800 text-slate-400'}`}>
-                                                                    VCP {s.deep_dive.laggard.vcp.tightness_pct}%
-                                                                </div>
-                                                            )}
-                                                            {/* Volume Trend */}
-                                                            {s.deep_dive.laggard.vol_trend && (
-                                                                <div className={`text-center px-1 py-0.5 rounded ${s.deep_dive.laggard.vol_trend.is_growing ? 'bg-cyan-900/40 text-cyan-300' : 'bg-slate-800 text-slate-400'}`}>
-                                                                    Vol {s.deep_dive.laggard.vol_trend.is_growing ? '📈' : '📉'}
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                        <div className="grid grid-cols-2 gap-1 mt-1 text-[9px]">
-                                                            {/* 52w Range */}
-                                                            {s.deep_dive.laggard.range_52w && (
-                                                                <div className="bg-slate-800 rounded px-1 py-0.5">
-                                                                    <div className="text-slate-500 text-[8px]">52w</div>
-                                                                    <div className="w-full bg-slate-700 rounded-full h-1.5 mt-0.5">
-                                                                        <div className="bg-gradient-to-r from-red-500 via-yellow-500 to-green-500 h-1.5 rounded-full" style={{ width: `${Math.min(100, s.deep_dive.laggard.range_52w.position_pct)}%` }}></div>
-                                                                    </div>
-                                                                    <div className="text-slate-400 mt-0.5">{s.deep_dive.laggard.range_52w.position_pct}%</div>
-                                                                </div>
-                                                            )}
-                                                            {/* Analyst Target */}
-                                                            {s.deep_dive.laggard.analyst && (
-                                                                <div className={`rounded px-1 py-0.5 ${s.deep_dive.laggard.analyst.upside_pct > 15 ? 'bg-green-900/40' : 'bg-slate-800'}`}>
-                                                                    <div className="text-slate-500 text-[8px]">🎯 Target</div>
-                                                                    <div className={`font-mono font-bold ${s.deep_dive.laggard.analyst.upside_pct > 15 ? 'text-green-300' : 'text-slate-300'}`}>
-                                                                        +{s.deep_dive.laggard.analyst.upside_pct}%
-                                                                    </div>
-                                                                </div>
-                                                            )}
-                                                        </div>
+                                                        ))}
                                                     </div>
-                                                )}
-                                            </>
+                                                </div>
+                                                {/* Laggards Section */}
+                                                <div className="border-t border-slate-700/50 pt-2">
+                                                    <div className="text-orange-400 font-bold mb-1 text-[9px] uppercase tracking-wider">\u{1F422} Laggards (Catch-Up Plays)</div>
+                                                    <div className="space-y-1">
+                                                        {(s.deep_dive.laggards || [s.deep_dive.laggard]).map((lag, i) => (
+                                                            <div key={lag.ticker} onClick={(e) => { e.stopPropagation(); onTickerClick(lag.ticker); }}
+                                                                className="hover:bg-slate-700/50 px-1 py-1 rounded cursor-pointer transition group">
+                                                                <div className="flex justify-between items-center">
+                                                                    <span className="font-mono text-slate-300 group-hover:text-orange-300">
+                                                                        <span className="text-slate-500 text-[8px] mr-1">#{i+1}</span>{lag.ticker}
+                                                                    </span>
+                                                                    <span className={`font-mono font-bold ${lag.perf > 0 ? 'text-orange-300' : 'text-red-400'}`}>
+                                                                        {lag.perf > 0 ? '+' : ''}{lag.perf?.toFixed ? lag.perf.toFixed(1) : lag.perf}%
+                                                                    </span>
+                                                                </div>
+                                                                {/* Enrichment badges */}
+                                                                {(lag.stage || lag.vcp || lag.vol_trend || lag.range_52w) && (
+                                                                    <div className="flex gap-1 mt-0.5 flex-wrap">
+                                                                        {lag.stage && (
+                                                                            <span className={`text-[8px] px-1 rounded ${
+                                                                                lag.stage.color === 'green' ? 'bg-green-900/40 text-green-300' :
+                                                                                lag.stage.color === 'blue' ? 'bg-blue-900/40 text-blue-300' :
+                                                                                lag.stage.color === 'yellow' ? 'bg-yellow-900/40 text-yellow-300' :
+                                                                                'bg-red-900/40 text-red-300'
+                                                                            }`}>{lag.stage.label}</span>
+                                                                        )}
+                                                                        {lag.vcp && (
+                                                                            <span className={`text-[8px] px-1 rounded ${lag.vcp.is_vcp ? 'bg-emerald-900/40 text-emerald-300' : 'bg-slate-700 text-slate-400'}`}>
+                                                                                VCP {lag.vcp.tightness_pct}%
+                                                                            </span>
+                                                                        )}
+                                                                        {lag.vol_trend && (
+                                                                            <span className={`text-[8px] px-1 rounded ${lag.vol_trend.is_growing ? 'bg-cyan-900/40 text-cyan-300' : 'bg-slate-700 text-slate-400'}`}>
+                                                                                Vol {lag.vol_trend.is_growing ? '\u{1F4C8}' : '\u{1F4C9}'}
+                                                                            </span>
+                                                                        )}
+                                                                        {lag.range_52w && (
+                                                                            <span className="text-[8px] px-1 rounded bg-slate-700 text-slate-300">
+                                                                                52w: {lag.range_52w.position_pct}%
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            </div>
                                         )}
 
 
