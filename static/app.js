@@ -16635,9 +16635,60 @@ function MarketDashboard({ onTickerClick }) {
 
 
                                             </div>
+</div>
 
+                                                {/* Enrichment Panel for Laggard */}
+                                                {s.deep_dive.laggard.stage && (
+                                                    <div className="mt-2 pt-2 border-t border-slate-700/50">
+                                                        <div className="text-[9px] text-slate-500 uppercase font-bold mb-1">🔬 Laggard Intel</div>
+                                                        <div className="grid grid-cols-3 gap-1 text-[9px]">
+                                                            {/* Weinstein Stage */}
+                                                            <div className={`text-center px-1 py-0.5 rounded ${
+                                                                s.deep_dive.laggard.stage?.color === 'green' ? 'bg-green-900/40 text-green-300' :
+                                                                s.deep_dive.laggard.stage?.color === 'blue' ? 'bg-blue-900/40 text-blue-300' :
+                                                                s.deep_dive.laggard.stage?.color === 'yellow' ? 'bg-yellow-900/40 text-yellow-300' :
+                                                                'bg-red-900/40 text-red-300'
+                                                            }`}>
+                                                                {s.deep_dive.laggard.stage?.label || 'N/A'}
+                                                            </div>
+                                                            {/* VCP Tightness */}
+                                                            {s.deep_dive.laggard.vcp && (
+                                                                <div className={`text-center px-1 py-0.5 rounded ${s.deep_dive.laggard.vcp.is_vcp ? 'bg-emerald-900/40 text-emerald-300' : 'bg-slate-800 text-slate-400'}`}>
+                                                                    VCP {s.deep_dive.laggard.vcp.tightness_pct}%
+                                                                </div>
+                                                            )}
+                                                            {/* Volume Trend */}
+                                                            {s.deep_dive.laggard.vol_trend && (
+                                                                <div className={`text-center px-1 py-0.5 rounded ${s.deep_dive.laggard.vol_trend.is_growing ? 'bg-cyan-900/40 text-cyan-300' : 'bg-slate-800 text-slate-400'}`}>
+                                                                    Vol {s.deep_dive.laggard.vol_trend.is_growing ? '📈' : '📉'}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        <div className="grid grid-cols-2 gap-1 mt-1 text-[9px]">
+                                                            {/* 52w Range */}
+                                                            {s.deep_dive.laggard.range_52w && (
+                                                                <div className="bg-slate-800 rounded px-1 py-0.5">
+                                                                    <div className="text-slate-500 text-[8px]">52w</div>
+                                                                    <div className="w-full bg-slate-700 rounded-full h-1.5 mt-0.5">
+                                                                        <div className="bg-gradient-to-r from-red-500 via-yellow-500 to-green-500 h-1.5 rounded-full" style={{ width: `${Math.min(100, s.deep_dive.laggard.range_52w.position_pct)}%` }}></div>
+                                                                    </div>
+                                                                    <div className="text-slate-400 mt-0.5">{s.deep_dive.laggard.range_52w.position_pct}%</div>
+                                                                </div>
+                                                            )}
+                                                            {/* Analyst Target */}
+                                                            {s.deep_dive.laggard.analyst && (
+                                                                <div className={`rounded px-1 py-0.5 ${s.deep_dive.laggard.analyst.upside_pct > 15 ? 'bg-green-900/40' : 'bg-slate-800'}`}>
+                                                                    <div className="text-slate-500 text-[8px]">🎯 Target</div>
+                                                                    <div className={`font-mono font-bold ${s.deep_dive.laggard.analyst.upside_pct > 15 ? 'text-green-300' : 'text-slate-300'}`}>
+                                                                        +{s.deep_dive.laggard.analyst.upside_pct}%
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                )}
 
-                                        )}
+)}
 
 
                                     </div>

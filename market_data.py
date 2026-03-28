@@ -320,7 +320,85 @@ def calculate_3m_perf(series):
     if start == 0: return 0.0
     return ((end - start) / start) * 100
 
-def analyze_sector_constituents_preloaded(sector_ticker, all_closes):
+def _get_analyst_target(ticker):
+    """Fetch analyst mean target price from yfinance .info (cached per session)."""
+    try:
+        info = yf.Ticker(ticker).info
+        target = info.get("targetMeanPrice")
+        current = info.get("currentPrice") or info.get("regularMarketPrice")
+        if target and current and current > 0:
+            upside = ((target - current) / current) * 100
+            return {"target": round(target, 2), "upside_pct": round(upside, 1)}
+    except Exception:
+        pass
+    return None
+
+def _extract_ticker_ohlcv(ticker, batch_data):
+    """Extract a single-ticker OHLCV DataFrame from a batch MultiIndex download."""
+    try:
+        if batch_data is None or batch_data.empty:
+            return None
+        if isinstance(batch_data.columns, pd.MultiIndex):
+            levels = batch_data.columns.get_level_values(1) if len(batch_data.columns.levels) > 1 else batch_data.columns.get_level_values(0)
+            if ticker in levels:
+                df = batch_data.xs(ticker, axis=1, level=1)
+            elif ticker in batch_data.columns.get_level_values(0):
+                df = batch_data.xs(ticker, axis=1, level=0)
+            else:
+                return None
+        elif ticker in batch_data.columns:
+            return None  # Single-level columns = only Close data, can't build OHLCV
+        else:
+            return None
+        
+        # Ensure we have the required columns
+        required = ['Close', 'High', 'Low']
+        if not all(c in df.columns for c in required):
+            return None
+        return df.dropna(subset=['Close'])
+    except Exception:
+        return None
+
+def _enrich_constituent(item, batch_data):
+    """Add VCP, volume trend, stage, 52w range, and analyst target to a leader/laggard dict."""
+    import indicators
+    ticker = item["ticker"]
+    
+    # Try to extract full OHLCV
+    df = _extract_ticker_ohlcv(ticker, batch_data)
+    
+    if df is not None and len(df) >= 50:
+        try:
+            item["vcp"] = indicators.calculate_vcp_metrics(df)
+        except Exception:
+            item["vcp"] = None
+        try:
+            item["vol_trend"] = indicators.calculate_buying_volume_trend(df)
+        except Exception:
+            item["vol_trend"] = None
+        try:
+            item["stage"] = indicators.calculate_weinstein_stage(df)
+        except Exception:
+            item["stage"] = None
+        try:
+            item["range_52w"] = indicators.calculate_52w_range(df)
+        except Exception:
+            item["range_52w"] = None
+    else:
+        item["vcp"] = None
+        item["vol_trend"] = None
+        item["stage"] = None
+        item["range_52w"] = None
+    
+    # Analyst target (lightweight yfinance call)
+    try:
+        item["analyst"] = _get_analyst_target(ticker)
+    except Exception:
+        item["analyst"] = None
+    
+    return item
+
+def analyze_sector_constituents_preloaded(sector_ticker, all_closes, batch_data=None):
     tickers = SECTOR_HOLDINGS.get(sector_ticker, [])
     if not tickers: return None
     try:
@@ -348,7 +426,6 @@ def analyze_sector_constituents_preloaded(sector_ticker, all_closes):
                     curr_price = float(series.iloc[-1])
                     results.append({"ticker": t, "perf": perf, "trend_ok": curr_price > ema50})
             except Exception as e:
-                # print(f"  Debug: Sector constituent {t} fail: {e}")
                 continue
         
         if not results: return None
@@ -357,6 +434,12 @@ def analyze_sector_constituents_preloaded(sector_ticker, all_closes):
         # Robust laggard logic
         weinstein = [r for r in results if r['trend_ok'] and r['perf'] > 0]
         laggard = sorted(weinstein, key=lambda x: x['perf'])[0] if weinstein else results[-1]
+        
+        # Enrich leader and laggard with detailed metrics
+        if batch_data is not None:
+            _enrich_constituent(leader, batch_data)
+            _enrich_constituent(laggard, batch_data)
+        
         return {"leader": leader, "laggard": laggard}
     except Exception as e:
         print(f"Error analyzing {sector_ticker}: {e}")
@@ -712,7 +795,7 @@ def update_market_status_worker():
                     chg3m = ((curr-p3m)/p3m)*100 if p3m != 0 else 0
                     
                     # Deep Dive using preloaded data
-                    deep_dive = analyze_sector_constituents_preloaded(tick, b_closes)
+                    deep_dive = analyze_sector_constituents_preloaded(tick, b_closes, batch_data)
                     
                     sectors_perf.append({
                         "name": name, 
