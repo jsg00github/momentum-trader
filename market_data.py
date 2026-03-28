@@ -359,6 +359,22 @@ def _extract_ticker_ohlcv(ticker, batch_data):
     except Exception:
         return None
 
+def _sanitize_numpy(obj):
+    """Recursively convert numpy types to native Python for JSON serialization."""
+    if isinstance(obj, dict):
+        return {k: _sanitize_numpy(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [_sanitize_numpy(v) for v in obj]
+    elif isinstance(obj, (np.integer,)):
+        return int(obj)
+    elif isinstance(obj, (np.floating,)):
+        return float(obj)
+    elif isinstance(obj, (np.bool_,)):
+        return bool(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    return obj
+
 def _enrich_constituent(item, batch_data):
     """Add VCP, volume trend, stage, 52w range to a leader/laggard dict."""
     try:
@@ -373,19 +389,19 @@ def _enrich_constituent(item, batch_data):
     
     if df is not None and len(df) >= 50:
         try:
-            item["vcp"] = indicators.calculate_vcp_metrics(df)
+            item["vcp"] = _sanitize_numpy(indicators.calculate_vcp_metrics(df))
         except Exception:
             item["vcp"] = None
         try:
-            item["vol_trend"] = indicators.calculate_buying_volume_trend(df)
+            item["vol_trend"] = _sanitize_numpy(indicators.calculate_buying_volume_trend(df))
         except Exception:
             item["vol_trend"] = None
         try:
-            item["stage"] = indicators.calculate_weinstein_stage(df)
+            item["stage"] = _sanitize_numpy(indicators.calculate_weinstein_stage(df))
         except Exception:
             item["stage"] = None
         try:
-            item["range_52w"] = indicators.calculate_52w_range(df)
+            item["range_52w"] = _sanitize_numpy(indicators.calculate_52w_range(df))
         except Exception:
             item["range_52w"] = None
     else:
