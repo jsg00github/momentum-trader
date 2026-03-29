@@ -11055,7 +11055,8 @@ function TradingViewChart({ ticker, chartData, elliottWave, metrics, tradeHistor
                 >
 
 
-                    ✏️
+                    ✏️
+
 
 
                     <span className="absolute -bottom-1 -right-1 bg-slate-900 text-[8px] text-slate-500 px-1 rounded opacity-0 group-hover:opacity-100 transition-opacity font-mono">T</span>
@@ -11106,7 +11107,8 @@ function TradingViewChart({ ticker, chartData, elliottWave, metrics, tradeHistor
                 >
 
 
-                    ➡️
+                    ➡️
+
 
 
                     <span className="absolute -bottom-1 -right-1 bg-slate-900 text-[8px] text-slate-500 px-1 rounded opacity-0 group-hover:opacity-100 transition-opacity font-mono">R</span>
@@ -11130,7 +11132,8 @@ function TradingViewChart({ ticker, chartData, elliottWave, metrics, tradeHistor
                 >
 
 
-                    🏷️
+                    🏷️
+
 
 
                     <span className="absolute -bottom-1 -right-1 bg-slate-900 text-[8px] text-slate-500 px-1 rounded opacity-0 group-hover:opacity-100 transition-opacity font-mono">L</span>
@@ -22902,6 +22905,256 @@ function CryptoJournal() {
 
 
 // Sharpe Portfolio View Component
+
+
+
+// =====================================================================
+// MOMENTUM MENTOR VIEW - Professional Trading Guidance (CAN SLIM + VCP)
+// =====================================================================
+function MomentumMentorView() {
+    const [ticker, setTicker] = useState('');
+    const [entryAnalysis, setEntryAnalysis] = useState(null);
+    const [regime, setRegime] = useState(null);
+    const [scanResults, setScanResults] = useState(null);
+    const [loading, setLoading] = useState(false);
+    const [scanLoading, setScanLoading] = useState(false);
+    const [activeTab, setActiveTab] = useState('regime');
+
+    // Load market regime on mount
+    useEffect(() => {
+        axios.get(`${API_BASE}/mentor/market-regime`)
+            .then(r => setRegime(r.data))
+            .catch(e => console.error('Regime fetch failed:', e));
+    }, []);
+
+    const analyzeEntry = async () => {
+        if (!ticker.trim()) return;
+        setLoading(true);
+        setEntryAnalysis(null);
+        try {
+            const r = await axios.get(`${API_BASE}/mentor/entry/${ticker.trim().toUpperCase()}`);
+            setEntryAnalysis(r.data);
+            setActiveTab('entry');
+        } catch (e) {
+            console.error('Entry analysis failed:', e);
+            setEntryAnalysis({ error: e.message });
+        }
+        setLoading(false);
+    };
+
+    const runScan = async () => {
+        setScanLoading(true);
+        try {
+            const r = await axios.get(`${API_BASE}/mentor/scan?limit=20`);
+            setScanResults(r.data);
+            setActiveTab('scan');
+        } catch (e) {
+            console.error('Mentor scan failed:', e);
+        }
+        setScanLoading(false);
+    };
+
+    const decisionColors = {
+        'BUY': 'text-green-400 bg-green-900/30 border-green-500/30',
+        'WAIT': 'text-yellow-400 bg-yellow-900/30 border-yellow-500/30',
+        'WATCH': 'text-blue-400 bg-blue-900/30 border-blue-500/30',
+        'AVOID': 'text-red-400 bg-red-900/30 border-red-500/30'
+    };
+
+    const phaseColors = {
+        'BULL': 'text-green-400',
+        'CORRECTION': 'text-yellow-400',
+        'BEAR': 'text-red-400'
+    };
+
+    return (
+        <div className="p-4 md:p-6 space-y-6">
+            <div className="flex items-center justify-between flex-wrap gap-4">
+                <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+                    🎯 Momentum Mentor
+                </h2>
+                <div className="flex gap-2">
+                    <input
+                        type="text"
+                        value={ticker}
+                        onChange={e => setTicker(e.target.value.toUpperCase())}
+                        onKeyDown={e => e.key === 'Enter' && analyzeEntry()}
+                        placeholder="Enter ticker..."
+                        className="bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:border-blue-500 focus:outline-none w-32"
+                    />
+                    <button onClick={analyzeEntry} disabled={loading}
+                        className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-bold transition disabled:opacity-50">
+                        {loading ? '...' : 'Analyze'}
+                    </button>
+                    <button onClick={runScan} disabled={scanLoading}
+                        className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg text-sm font-bold transition disabled:opacity-50">
+                        {scanLoading ? 'Scanning...' : '🔍 Scan Market'}
+                    </button>
+                </div>
+            </div>
+
+            {/* Tabs */}
+            <div className="flex gap-1 border-b border-slate-700 pb-1">
+                {[
+                    { key: 'regime', label: '📊 Market Regime' },
+                    { key: 'entry', label: '🎯 Entry Analysis' },
+                    { key: 'scan', label: '🔍 Scan Results' }
+                ].map(t => (
+                    <button key={t.key} onClick={() => setActiveTab(t.key)}
+                        className={`px-4 py-2 text-sm font-medium rounded-t-lg transition ${
+                            activeTab === t.key
+                                ? 'bg-slate-700 text-white border-b-2 border-blue-500'
+                                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                        }`}>
+                        {t.label}
+                    </button>
+                ))}
+            </div>
+
+            {/* Market Regime Tab */}
+            {activeTab === 'regime' && (
+                <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700/50">
+                    {regime ? (
+                        <div className="space-y-4">
+                            <div className="flex items-center gap-4 flex-wrap">
+                                <div className="text-center">
+                                    <div className="text-slate-400 text-xs uppercase mb-1">Market Phase</div>
+                                    <div className={`text-3xl font-black ${phaseColors[regime.phase] || 'text-slate-300'}`}>
+                                        {regime.phase || 'N/A'}
+                                    </div>
+                                </div>
+                                <div className="text-center">
+                                    <div className="text-slate-400 text-xs uppercase mb-1">Position Size</div>
+                                    <div className="text-2xl font-bold text-white">
+                                        {regime.position_multiplier ? `${(regime.position_multiplier * 100).toFixed(0)}%` : 'N/A'}
+                                    </div>
+                                </div>
+                                <div className="text-center">
+                                    <div className="text-slate-400 text-xs uppercase mb-1">Distribution Days</div>
+                                    <div className={`text-2xl font-bold ${(regime.distribution_days || 0) >= 5 ? 'text-red-400' : 'text-green-400'}`}>
+                                        {regime.distribution_days ?? 'N/A'}
+                                    </div>
+                                </div>
+                                <div className="text-center">
+                                    <div className="text-slate-400 text-xs uppercase mb-1">Breadth</div>
+                                    <div className="text-2xl font-bold text-white">
+                                        {regime.breadth_pct ? `${regime.breadth_pct}%` : 'N/A'}
+                                    </div>
+                                </div>
+                            </div>
+                            {regime.guidance && (
+                                <div className="bg-slate-900/50 rounded-lg p-4 text-slate-300 text-sm leading-relaxed">
+                                    {regime.guidance}
+                                </div>
+                            )}
+                        </div>
+                    ) : (
+                        <div className="text-slate-500 text-center py-8">Loading market regime...</div>
+                    )}
+                </div>
+            )}
+
+            {/* Entry Analysis Tab */}
+            {activeTab === 'entry' && (
+                <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700/50">
+                    {loading ? (
+                        <div className="text-slate-500 text-center py-8">Analyzing {ticker}...</div>
+                    ) : entryAnalysis ? (
+                        entryAnalysis.error ? (
+                            <div className="text-red-400 text-center py-8">{entryAnalysis.error}</div>
+                        ) : (
+                            <div className="space-y-4">
+                                <div className="flex items-center gap-4 flex-wrap">
+                                    <span className="text-xl font-bold text-white">{entryAnalysis.ticker || ticker}</span>
+                                    <span className={`px-4 py-2 rounded-lg border text-lg font-black ${decisionColors[entryAnalysis.decision] || 'text-slate-400 bg-slate-800'}`}>
+                                        {entryAnalysis.decision || 'N/A'}
+                                    </span>
+                                    {entryAnalysis.confidence && (
+                                        <span className="text-slate-400 text-sm">
+                                            Confidence: <span className="text-white font-bold">{entryAnalysis.confidence}%</span>
+                                        </span>
+                                    )}
+                                </div>
+                                {entryAnalysis.rationale && (
+                                    <div className="bg-slate-900/50 rounded-lg p-4 text-slate-300 text-sm leading-relaxed whitespace-pre-wrap">
+                                        {entryAnalysis.rationale}
+                                    </div>
+                                )}
+                                {(entryAnalysis.entry_price || entryAnalysis.stop_loss || entryAnalysis.targets) && (
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                        {entryAnalysis.entry_price && (
+                                            <div className="bg-slate-900/50 rounded-lg p-3 text-center">
+                                                <div className="text-slate-500 text-xs uppercase mb-1">Entry</div>
+                                                <div className="text-green-400 font-mono font-bold text-lg">${entryAnalysis.entry_price}</div>
+                                            </div>
+                                        )}
+                                        {entryAnalysis.stop_loss && (
+                                            <div className="bg-slate-900/50 rounded-lg p-3 text-center">
+                                                <div className="text-slate-500 text-xs uppercase mb-1">Stop Loss</div>
+                                                <div className="text-red-400 font-mono font-bold text-lg">${entryAnalysis.stop_loss}</div>
+                                            </div>
+                                        )}
+                                        {entryAnalysis.targets && entryAnalysis.targets.map((t, i) => (
+                                            <div key={i} className="bg-slate-900/50 rounded-lg p-3 text-center">
+                                                <div className="text-slate-500 text-xs uppercase mb-1">Target {i+1}</div>
+                                                <div className="text-blue-400 font-mono font-bold text-lg">${t}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                {entryAnalysis.position_size && (
+                                    <div className="bg-slate-900/50 rounded-lg p-3 text-sm text-slate-300">
+                                        <span className="text-slate-500">Suggested Position: </span>
+                                        <span className="text-white font-bold">{entryAnalysis.position_size} shares</span>
+                                        {entryAnalysis.risk_pct && <span className="text-slate-500 ml-2">({entryAnalysis.risk_pct}% risk)</span>}
+                                    </div>
+                                )}
+                            </div>
+                        )
+                    ) : (
+                        <div className="text-slate-500 text-center py-8">
+                            Enter a ticker above and click <span className="text-blue-400 font-bold">Analyze</span> to get entry guidance
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Scan Results Tab */}
+            {activeTab === 'scan' && (
+                <div className="bg-slate-800/50 rounded-xl border border-slate-700/50 overflow-hidden">
+                    {scanLoading ? (
+                        <div className="text-slate-500 text-center py-8">Scanning market for opportunities...</div>
+                    ) : scanResults && scanResults.results ? (
+                        <div>
+                            <div className="px-4 py-3 bg-slate-900/50 border-b border-slate-700 flex items-center justify-between">
+                                <span className="text-white font-bold text-sm">{scanResults.results.length} BUY Signals Found</span>
+                                {scanResults.cached && <span className="text-xs text-slate-500">Cached</span>}
+                            </div>
+                            <div className="divide-y divide-slate-700/50 max-h-[500px] overflow-y-auto">
+                                {scanResults.results.map((r, i) => (
+                                    <div key={r.ticker || i} className="px-4 py-3 hover:bg-slate-700/30 transition flex items-center justify-between">
+                                        <div>
+                                            <span className="text-white font-bold font-mono">{r.ticker}</span>
+                                            {r.decision && <span className={`ml-2 text-xs px-2 py-0.5 rounded ${decisionColors[r.decision] || ''}`}>{r.decision}</span>}
+                                        </div>
+                                        <div className="text-right text-sm">
+                                            {r.entry_price && <span className="text-green-400 font-mono mr-3">Entry: ${r.entry_price}</span>}
+                                            {r.confidence && <span className="text-slate-400">{r.confidence}%</span>}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="text-slate-500 text-center py-8">
+                            Click <span className="text-emerald-400 font-bold">Scan Market</span> to find BUY opportunities
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
 
 
 function SharpePortfolioView() {
