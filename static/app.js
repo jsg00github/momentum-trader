@@ -11055,7 +11055,7 @@ function TradingViewChart({ ticker, chartData, elliottWave, metrics, tradeHistor
                 >
 
 
-                    âœï¸
+                    ✏️
 
 
                     <span className="absolute -bottom-1 -right-1 bg-slate-900 text-[8px] text-slate-500 px-1 rounded opacity-0 group-hover:opacity-100 transition-opacity font-mono">T</span>
@@ -11106,7 +11106,7 @@ function TradingViewChart({ ticker, chartData, elliottWave, metrics, tradeHistor
                 >
 
 
-                    âž¡ï¸
+                    ➡️
 
 
                     <span className="absolute -bottom-1 -right-1 bg-slate-900 text-[8px] text-slate-500 px-1 rounded opacity-0 group-hover:opacity-100 transition-opacity font-mono">R</span>
@@ -11130,7 +11130,7 @@ function TradingViewChart({ ticker, chartData, elliottWave, metrics, tradeHistor
                 >
 
 
-                    ðŸ·ï¸
+                    🏷️
 
 
                     <span className="absolute -bottom-1 -right-1 bg-slate-900 text-[8px] text-slate-500 px-1 rounded opacity-0 group-hover:opacity-100 transition-opacity font-mono">L</span>
@@ -20417,7 +20417,7 @@ function ArgentinaPanel() {
                                 <div className="bg-slate-900 border border-slate-700 rounded-xl p-4">
 
 
-                                    <h5 className="text-slate-400 font-bold text-xs uppercase mb-3">ðŸ› ï¸ Análisis Técnico & Volatilidad</h5>
+                                    <h5 className="text-slate-400 font-bold text-xs uppercase mb-3"> ¸ Anlisis Tcnico & Volatilidad</h5>
 
 
                                     <div className="space-y-2 text-sm">
