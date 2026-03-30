@@ -63,7 +63,7 @@ def get_market_insight(context_data):
         """
         
         response = client.models.generate_content(
-            model='gemini-2.0-flash-exp',
+            model='gemini-2.0-flash',
             contents=prompt
         )
         return response.text
@@ -116,7 +116,7 @@ def get_portfolio_insight(portfolio_data):
         """
         
         response = client.models.generate_content(
-            model='gemini-2.0-flash-exp',
+            model='gemini-2.0-flash',
             contents=prompt
         )
         return response.text
@@ -200,7 +200,7 @@ USER QUESTION: {user_query}
 Provide a helpful, data-driven response:"""
 
         response = client.models.generate_content(
-            model='gemini-2.0-flash-exp',
+            model='gemini-2.0-flash',
             contents=system_prompt
         )
         
