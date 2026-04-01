@@ -1,6 +1,20 @@
+import sys
+import os
+# Fix Windows console encoding: prevent 'charmap' codec errors with emoji/unicode in print()
+if sys.platform == 'win32':
+    for stream in ('stdout', 'stderr'):
+        s = getattr(sys, stream)
+        if hasattr(s, 'reconfigure'):
+            s.reconfigure(encoding='utf-8', errors='replace')
+        else:
+            import io
+            setattr(sys, stream, io.TextIOWrapper(s.buffer, encoding='utf-8', errors='replace'))
+os.environ['PYTHONIOENCODING'] = 'utf-8'
+
 from fastapi import FastAPI, Request, Depends, HTTPException, status
 from dotenv import load_dotenv
 load_dotenv() # Load environment variables early
+
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -18,7 +32,7 @@ import yfinance as yf
 import pandas as pd
 import os
 import market_data 
-import ai_advisor # New Import
+import momentum_mentor  # New professional trading mentor
 import health # Healthcheck module
 from database import engine, Base, get_db
 from sqlalchemy.orm import Session
@@ -281,6 +295,22 @@ def process_ticker(ticker, use_cache=True, strategy="rally_3m"):
                 result = screener.compute_3m_pattern(df)
             if result:
                 result["ticker"] = ticker
+                
+                # Add industry from yfinance (lightweight info call)
+                try:
+                    import yfinance as _yf
+                    _info = _yf.Ticker(ticker).info
+                    result["industry"] = _info.get("industry", "—")
+                except Exception:
+                    result["industry"] = "—"
+                
+                # Surface 52w high distance % as a sortable numeric field
+                r52 = result.get("range_52w")
+                if r52 and r52.get("high", 0) > 0:
+                    result["high_52w_dist_pct"] = round(100 - r52["position_pct"], 1)
+                else:
+                    result["high_52w_dist_pct"] = None
+                
                 return result
             # If successful but no result (verification failed), just return None
             return None
@@ -327,6 +357,7 @@ def run_scan(req: ScanRequest, background_tasks: BackgroundTasks):
     scan_engine.SCAN_STATUS["current"] = 0
     scan_engine.SCAN_STATUS["total"] = req.limit
     scan_engine.SCAN_STATUS["results"] = []
+    scan_engine.SCAN_STATUS["is_running"] = True  # FIX: Set eagerly to prevent race condition with frontend polling
     
     background_tasks.add_task(scan_engine.run_market_scan, limit=req.limit, strategy=req.strategy)
     return {"status": "scanning", "message": "Scan initiated in background", "limit": req.limit}
@@ -401,7 +432,7 @@ async def scheduled_reports_loop():
                 
                 if last_sent["SCAN"] != current_date:
                     print(f"[{now}] Running Post-Market Automated Scan...")
-                    scan_res = scan_engine.run_market_scan(limit=2000, strategy="rally_3m")
+                    scan_res = scan_engine.run_market_scan(limit=2000, strategy="3m_rally")
                     if scan_res and "results" in scan_res:
                         top_picks = [r for r in scan_res["results"] if r.get("grade") in ["A", "B"]]
                         if top_picks:
@@ -758,9 +789,97 @@ def get_market_news_api():
 
 import options_scanner # New Import
 
+# Momentum Mentor API Endpoints (Professional Trading Guidance)
+@app.get("/api/mentor/entry/{ticker}")
+def get_mentor_entry_analysis(ticker: str, account_value: Optional[float] = None):
+    """
+    Get professional entry analysis for a ticker using CAN SLIM, VCP, and Stage Analysis.
+    
+    Returns BUY/WAIT/WATCH decision with complete execution plan:
+    - Entry price
+    - Stop loss
+    - Position size (1-2% risk)
+    - Targets (20%, 40%, 60%)
+    - Clear rationale with methodology citations
+    """
+    return momentum_mentor.get_entry_analysis(ticker, account_value)
+
+
+@app.post("/api/mentor/hold")
+def get_mentor_hold_analysis(
+    ticker: str,
+    entry_price: float,
+    shares: int,
+    stop_loss: float,
+    peak_price: Optional[float] = None
+):
+    """
+    Get professional hold/exit recommendation for existing position.
+    
+    Returns HOLD/REDUCE/EXIT decision with:
+    - Updated trailing stops (Minervini rules)
+    - Distribution detection (O'Neil)
+    - Stage shift monitoring (Weinstein)
+    - Profit-taking guidance
+    """
+    return momentum_mentor.get_hold_analysis(ticker, entry_price, shares, stop_loss, peak_price)
+
+
+@app.get("/api/mentor/market-regime")
+def get_market_regime_status():
+    """
+    Get current market regime and trading guidance.
+    
+    Returns:
+    - Market phase (BULL/CORRECTION/BEAR)
+    - Position sizing multiplier
+    - Follow-through day detection (O'Neil)
+    - Distribution day count
+    - Market breadth (% stocks above 200 MA)
+    """
+    return momentum_mentor.get_market_status()
+
+
+@app.get("/api/mentor/scan")
+def scan_mentor_opportunities(limit: int = 20, force_refresh: bool = False):
+    """
+    Scan ALL SEC tickers for BUY opportunities using Momentum Mentor.
+    
+    Features:
+    - Scans ~500 SEC tickers (same as W.RSI scanner)
+    - Uses intelligent 4-hour cache (shared with other scanners)
+    - Returns cached results if available (instant response)
+    - Automatically rescans if cache is stale
+    
+    Args:
+        limit: Max BUY results to return (default: 20)
+        force_refresh: Force new scan ignoring cache (default: False)
+    """
+    import mentor_scanner
+    return mentor_scanner.get_cached_or_scan(force_refresh=force_refresh, limit=limit)
+
+
+@app.get("/api/mentor/scan/status")
+def get_mentor_scan_status():
+    """Get current scan progress (useful for frontend loading indicators)"""
+    import mentor_scanner
+    return mentor_scanner.get_scan_status()
+
+
+# Legacy AI recommendations (simplified - use mentor endpoints for full analysis)
 @app.get("/api/ai-recommendations")
 def get_ai_recommendations_api():
-    return ai_advisor.get_recommendations()
+    """LEGACY: Use /api/mentor/* endpoints for professional analysis"""
+    # Keep minimal compatibility
+    return {
+        "message": "Use new /api/mentor/* endpoints for professional trading guidance",
+        "endpoints": {
+            "entry_analysis": "/api/mentor/entry/{ticker}",
+            "hold_analysis": "/api/mentor/hold",
+            "market_regime": "/api/mentor/market-regime"
+        }
+    }
+
 
 @app.post("/api/scan-options")
 def scan_options_api():
