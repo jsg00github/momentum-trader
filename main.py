@@ -70,7 +70,6 @@ import watchlist
 from watchlist import router as watchlist_router
 import alerts
 import asyncio
-import asyncio
 from datetime import datetime
 import socket
 
@@ -937,7 +936,7 @@ def backfill_snapshots_api(files: bool = False):
 # DEBUG / ADMIN TOOLS
 # -----------------------------------------------------
 @app.get("/api/debug/status")
-def debug_status_api():
+def debug_status_api(current_user: models.User = Depends(auth.get_current_user)):
     """Diagnostic endpoint to inspect DB state in production"""
     from database import SessionLocal, engine
     import models
@@ -992,7 +991,7 @@ def debug_status_api():
         db.close()
 
 @app.get("/api/debug/fix")
-def debug_run_fix_api(user_id: int = None, email: str = None):
+def debug_run_fix_api(user_id: int = None, email: str = None, current_user: models.User = Depends(auth.get_current_user)):
     """Manually trigger snapshot rebuild (accessible via browser)"""
     import rebuild_snapshots
     from database import SessionLocal
@@ -1632,10 +1631,7 @@ def get_portfolio_benchmark(current_user: models.User = Depends(auth.get_current
 # -----------------------------------------------------
 # BACKUP ENDPOINTS
 # -----------------------------------------------------
-try:
-    import backup
-except ImportError:
-    import backup
+import backup
 
 @app.post("/api/backups/create")
 def create_backup_endpoint():
