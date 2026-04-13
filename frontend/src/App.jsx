@@ -1208,6 +1208,52 @@ function TradeJournal() {
     }, [groupedTrades]);
 
     const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
+    const [dismissedAlerts, setDismissedAlerts] = useState(new Set());
+
+    // --- SL/TP Visual Alerts ---
+    const tradeAlerts = useMemo(() => {
+        const alerts = [];
+        trades.filter(t => t.status === 'OPEN').forEach(t => {
+            const live = liveData[t.ticker];
+            if (!live || !live.price) return;
+            const price = live.price;
+
+            // Stop Loss alerts
+            if (t.stop_loss && t.stop_loss > 0) {
+                if (price <= t.stop_loss) {
+                    alerts.push({
+                        id: `sl_hit_${t.ticker}`,
+                        type: 'SL_HIT',
+                        ticker: t.ticker,
+                        message: `🔴 ${t.ticker} HIT Stop Loss ($${t.stop_loss.toFixed(2)}) — Current: $${price.toFixed(2)}`,
+                        severity: 'critical'
+                    });
+                } else if (price <= t.stop_loss * 1.02) {
+                    alerts.push({
+                        id: `sl_warn_${t.ticker}`,
+                        type: 'SL_WARNING',
+                        ticker: t.ticker,
+                        message: `⚠️ ${t.ticker} approaching SL ($${t.stop_loss.toFixed(2)}) — Current: $${price.toFixed(2)} (${((price / t.stop_loss - 1) * 100).toFixed(1)}% away)`,
+                        severity: 'warning'
+                    });
+                }
+            }
+
+            // Target Price alerts
+            [t.target, t.target2, t.target3].forEach((tp, i) => {
+                if (tp && tp > 0 && price >= tp) {
+                    alerts.push({
+                        id: `tp${i+1}_${t.ticker}`,
+                        type: 'TP_HIT',
+                        ticker: t.ticker,
+                        message: `🎯 ${t.ticker} reached Target ${i+1} ($${tp.toFixed(2)}) — Current: $${price.toFixed(2)}`,
+                        severity: 'success'
+                    });
+                }
+            });
+        });
+        return alerts.filter(a => !dismissedAlerts.has(a.id));
+    }, [trades, liveData, dismissedAlerts]);
 
     const currentGroups = activeTab === 'active' ? activeGroups : historyGroups;
 
@@ -2020,6 +2066,25 @@ ${res.data.errors.join("\n")}`);
                                 TRADE HISTORY
                             </button>
                         </div>
+                        {/* SL/TP Alert Banner */}
+                        {activeTab === 'active' && tradeAlerts.length > 0 && (
+                            <div className="space-y-2 mb-4 animate-fade-in-up">
+                                {tradeAlerts.map((a) => (
+                                    <div key={a.id} className={`flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl border text-sm font-medium ${
+                                        a.severity === 'critical' ? 'bg-red-500/10 border-red-500/30 text-red-400' :
+                                        a.severity === 'warning' ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' :
+                                        'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                                    }`}>
+                                        <span>{a.message}</span>
+                                        <button
+                                            onClick={() => setDismissedAlerts(prev => new Set([...prev, a.id]))}
+                                            className="text-white/30 hover:text-white/60 text-xs ml-2 shrink-0"
+                                            title="Dismiss"
+                                        >✕</button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                         <div className="bg-slate-900 border border-slate-700 overflow-y-auto max-h-[80vh] rounded-lg shadow-xl w-full">
                             <table className="w-full text-left text-[10px] break-words">
                                 <thead className="bg-[#0f172a] text-slate-400 uppercase font-bold border-b border-slate-600 select-none">
@@ -3617,6 +3682,7 @@ function Scanner({ onTickerClick }) {
     const [limit, setLimit] = useState(20000);
     const [progress, setProgress] = useState({ total: 0, current: 0 });
     const [sortConfig, setSortConfig] = useState({ key: 'score', direction: 'desc' });
+    const [strategy, setStrategy] = useState('weekly_rsi');
 
     useEffect(() => {
         let interval;
@@ -3650,7 +3716,7 @@ function Scanner({ onTickerClick }) {
         setStats(null);
         setProgress({ total: 0, current: 0 });
         try {
-            const res = await axios.post(`${API_BASE}/scan`, { limit });
+            const res = await axios.post(`${API_BASE}/scan`, { limit, strategy });
             // The scan is now backgrounded, we don't expect results in the POST response
             if (res.data && res.data.status === "scanning") {
                 // Set total immediately so progress bar appears
@@ -3915,6 +3981,27 @@ function Scanner({ onTickerClick }) {
                             </button>
                         </>
                     )}
+
+                    {/* Strategy Selector */}
+                    <div className="flex gap-2 mr-4">
+                        {[
+                            { id: 'weekly_rsi', label: '📊 W.RSI', desc: 'Weekly RSI Crossover' },
+                            { id: 'rally_3m', label: '🚀 3M Rally', desc: '3-Month Rally Pattern' },
+                            { id: 'vcp', label: '🔄 VCP', desc: 'Volatility Contraction' }
+                        ].map(s => (
+                            <button key={s.id} onClick={() => setStrategy(s.id)}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                                    strategy === s.id
+                                        ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40'
+                                        : 'bg-[#1a1a1a] text-slate-400 hover:text-white border border-[#2a2a2a]'
+                                }`}
+                                title={s.desc}
+                                disabled={scanning}
+                            >
+                                {s.label}
+                            </button>
+                        ))}
+                    </div>
 
                     <div className="flex gap-2">
                         <button

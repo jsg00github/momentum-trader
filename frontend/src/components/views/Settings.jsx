@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { API_BASE } from '../../api/client';
+import { useToast } from '../common/ToastProvider';
 
 /**
  * Settings — Platform settings panel
  * Theme, density, Telegram alerts, feedback
  */
 function Settings() {
+    const { addToast } = useToast();
     const [theme, setTheme] = useState(localStorage.getItem('theme') || 'dark');
     const [density, setDensity] = useState(localStorage.getItem('density') || 'comfortable');
     const [alertSettings, setAlertSettings] = useState({
@@ -64,14 +66,14 @@ function Settings() {
 
     const handleChatIdSave = () => {
         axios.post(`${API_BASE}/alerts/settings`, alertSettings)
-            .then(() => alert('Telegram Chat ID saved!'))
-            .catch(() => alert('Error saving settings'));
+            .then(() => addToast('Telegram Chat ID saved!', 'success'))
+            .catch(() => addToast('Error saving settings', 'error'));
     };
 
     const handleTestAlert = () => {
         axios.post(`${API_BASE}/alerts/test`)
-            .then(() => alert('Test alert sent! Check your Telegram.'))
-            .catch(e => alert('Error: ' + (e.response?.data?.detail || e.message)));
+            .then(() => addToast('Test alert sent! Check your Telegram.', 'success'))
+            .catch(e => addToast('Error: ' + (e.response?.data?.detail || e.message), 'error'));
     };
 
     const handleFeedbackSubmit = () => {
