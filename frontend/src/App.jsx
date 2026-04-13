@@ -8236,7 +8236,7 @@ function App() {
                         </h1>
                         <div className="flex items-center gap-4">
                             {deferredPrompt && (
-                                <button onClick={handleInstallClick} className="bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white px-3 py-1.5 rounded-lg font-bold text-xs shadow-lg animate-pulse flex items-center gap-1">
+                                <button onClick={handleInstallClick} className="bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white px-3 py-1.5 rounded-lg font-bold text-xs shadow-lg flex items-center gap-1">
                                     <span>📲</span> Install App
                                 </button>
                             )}
