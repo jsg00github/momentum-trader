@@ -39,12 +39,15 @@ CACHE_TTL_SECONDS = int(os.getenv("PRICE_CACHE_TTL", "60"))  # 60 seconds for ac
 # ============================================
 
 class PriceCache:
-    """Thread-safe in-memory price cache with TTL."""
+    """Thread-safe in-memory price cache with TTL and maxsize eviction."""
     
-    def __init__(self, ttl: int = 60):
+    def __init__(self, ttl: int = 60, maxsize: int = 500):
         self.ttl = ttl
+        self.maxsize = maxsize
         self._cache: Dict[str, dict] = {}
         self._lock = threading.Lock()
+        self._hits = 0
+        self._misses = 0
     
     def get(self, ticker: str) -> Optional[dict]:
         """Get cached price if not expired."""
@@ -52,18 +55,30 @@ class PriceCache:
             if ticker in self._cache:
                 entry = self._cache[ticker]
                 if time.time() - entry['timestamp'] < self.ttl:
+                    self._hits += 1
                     return entry['data']
                 else:
                     del self._cache[ticker]
+            self._misses += 1
         return None
     
     def set(self, ticker: str, data: dict):
-        """Cache a price with current timestamp."""
+        """Cache a price with current timestamp. Evicts oldest if at capacity."""
         with self._lock:
             self._cache[ticker] = {
                 'data': data,
                 'timestamp': time.time()
             }
+            # Evict oldest entries if over maxsize
+            if len(self._cache) > self.maxsize:
+                # Sort by timestamp, remove oldest 10%
+                sorted_keys = sorted(
+                    self._cache.keys(),
+                    key=lambda k: self._cache[k]['timestamp']
+                )
+                evict_count = max(1, len(sorted_keys) // 10)
+                for key in sorted_keys[:evict_count]:
+                    del self._cache[key]
     
     def get_many(self, tickers: List[str]) -> Dict[str, dict]:
         """Get multiple cached prices, returns dict of hits."""
@@ -78,17 +93,25 @@ class PriceCache:
         """Clear all cached data."""
         with self._lock:
             self._cache.clear()
+            self._hits = 0
+            self._misses = 0
     
     def stats(self) -> dict:
         """Return cache statistics."""
         with self._lock:
+            total = self._hits + self._misses
             return {
                 'entries': len(self._cache),
-                'ttl': self.ttl
+                'maxsize': self.maxsize,
+                'ttl': self.ttl,
+                'hits': self._hits,
+                'misses': self._misses,
+                'hit_rate': f"{(self._hits / total * 100):.1f}%" if total > 0 else "N/A"
             }
 
 # Global cache instance (shared across all requests/users)
-_price_cache = PriceCache(ttl=CACHE_TTL_SECONDS)
+# maxsize=500 prevents unbounded memory growth during Scanner runs
+_price_cache = PriceCache(ttl=CACHE_TTL_SECONDS, maxsize=500)
 
 # ============================================
 # Finnhub Client
@@ -489,8 +512,8 @@ def _fetch_yfinance(ticker: str) -> dict:
 
 def _fetch_yfinance_download_fallback(ticker: str) -> dict:
     """Fallback using download() which is slower but sometimes more robust against attribute errors."""
-    yf = get_yfinance()
-    df = yf.download(ticker, period="5d", progress=False, threads=False)
+    from market_data import _rate_limited_download
+    df = _rate_limited_download(ticker, period="5d", progress=False, threads=False)
     if df.empty: return None
     
     if isinstance(df.columns, pd.MultiIndex): pass
@@ -537,8 +560,8 @@ def _fetch_yfinance_batch(tickers: List[str]) -> Dict[str, dict]:
         # Or just rely on the fact that for BATCH, we accept regular close if optimization is needed.
         # BUT user specifically complained.
         
-        # Let's try period="5d" default first (daily).
-        data = yf.download(tickers, period="5d", prepost=True, threads=True, progress=False)
+        from market_data import _rate_limited_download
+        data = _rate_limited_download(tickers, period="5d", prepost=True, threads=True, progress=False)
         
         if data.empty:
             return result

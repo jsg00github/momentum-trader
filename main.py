@@ -1574,7 +1574,7 @@ def get_portfolio_benchmark(current_user: models.User = Depends(auth.get_current
             start_date = dates[0]
             end_date = dates[-1]
             
-            spy_data = yf.download("SPY", start=start_date, end=end_date, progress=False)
+            spy_data = market_data.safe_yf_download("SPY", start=start_date, end=end_date, progress=False)
             
             if not spy_data.empty:
                 spy_close = spy_data['Close']

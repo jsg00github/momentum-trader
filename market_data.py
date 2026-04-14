@@ -21,6 +21,25 @@ _session.headers.update({
 # Thread-safe lock for yfinance downloads if needed
 _download_lock = threading.Lock()
 
+# ============================================
+# Rate Limiter for yfinance — prevents 429 errors
+# ============================================
+_yf_rate_lock = threading.Lock()
+_last_yf_call = 0
+_YF_MIN_INTERVAL = 0.2  # 200ms minimum between yfinance API calls
+
+def _rate_limited_download(*args, **kwargs):
+    """Wrapper around yf.download that enforces rate limiting to avoid 429 errors.
+    All yfinance downloads should go through this function.
+    """
+    global _last_yf_call
+    with _yf_rate_lock:
+        elapsed = time.time() - _last_yf_call
+        if elapsed < _YF_MIN_INTERVAL:
+            time.sleep(_YF_MIN_INTERVAL - elapsed)
+        _last_yf_call = time.time()
+    return yf.download(*args, **kwargs)
+
 # Timeout for Yahoo Finance downloads (seconds)
 YF_DOWNLOAD_TIMEOUT = 60
 
@@ -68,7 +87,7 @@ def safe_yf_download(tickers, **kwargs):
         try:
             # Add timeout to kwargs if not present
             kwargs['timeout'] = kwargs.get('timeout', YF_DOWNLOAD_TIMEOUT)
-            df = yf.download(tickers_str, threads=use_threads, **kwargs)
+            df = _rate_limited_download(tickers_str, threads=use_threads, **kwargs)
             
             if df is not None and not df.empty:
                 # Diagnostics: verify we got what we asked for
