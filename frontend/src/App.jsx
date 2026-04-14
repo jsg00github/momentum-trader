@@ -3370,15 +3370,19 @@ function PositionSizer({ entryPrice, stopLoss }) {
 }
 
 function PortfolioHeatmap({ trades, liveData }) {
-    const data = trades.filter(t => t.status === 'OPEN').map(t => {
+    const data = trades.filter(t => t.status?.toUpperCase() === 'OPEN').map(t => {
         const live = liveData[t.ticker] || {};
-        const currentPrice = live.price || t.entry_price;
-        const value = currentPrice * t.shares;
-        const pnlPct = ((currentPrice - t.entry_price) / t.entry_price) * 100;
+        const currentPrice = live.price || t.entry_price || 0;
+        const value = currentPrice * (t.shares || 0);
+        const pnlPct = t.entry_price > 0 ? ((currentPrice - t.entry_price) / t.entry_price) * 100 : 0;
         return { name: t.ticker, size: Math.abs(value), pnlPct, value };
-    });
+    }).filter(d => d.size > 0);
 
-    if (data.length === 0) return null;
+    if (data.length === 0) return (
+        <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-xl mb-6 flex justify-center items-center h-[150px]">
+            <span className="text-slate-500 italic">No active positions for heatmap</span>
+        </div>
+    );
 
     return (
         <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-xl mb-6">
