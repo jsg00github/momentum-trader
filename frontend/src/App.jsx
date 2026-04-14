@@ -3369,6 +3369,34 @@ function PositionSizer({ entryPrice, stopLoss }) {
     );
 }
 
+function MultiTimeframeRSI({ dailyRSI, weeklyRSI, monthlyRSI }) {
+    const getRSIColor = (v) => v > 70 ? 'text-red-400' : v > 50 ? 'text-green-400' : v > 30 ? 'text-yellow-400' : 'text-red-500';
+
+    return (
+        <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-xl">
+            <h4 className="text-slate-400 text-[10px] uppercase tracking-[0.2em] font-black mb-4 flex items-center gap-2">
+                <span>📊</span> Multi-TF RSI
+            </h4>
+            <div className="grid grid-cols-3 gap-3">
+                {[
+                    { label: 'Daily', value: dailyRSI },
+                    { label: 'Weekly', value: weeklyRSI },
+                    { label: 'Monthly', value: monthlyRSI }
+                ].map(({ label, value }) => (
+                    <div key={label} className="bg-[#0a0f18] rounded-xl p-3 text-center border border-slate-700/50">
+                        <div className="text-[9px] text-slate-500 font-bold uppercase tracking-wider mb-1">{label}</div>
+                        <div className={`text-xl font-black font-mono ${getRSIColor(value)}`}>{value ? value.toFixed(1) : '—'}</div>
+                        <div className="w-full h-1.5 bg-slate-800 rounded-full mt-2 overflow-hidden border border-slate-700/30">
+                            <div className="h-full rounded-full transition-all duration-500"
+                                style={{ width: `${value || 0}%`, backgroundColor: value > 70 ? '#f87171' : value > 50 ? '#34d399' : '#fbbf24' }} />
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
 function PortfolioHeatmap({ trades, liveData }) {
     const data = trades.filter(t => t.status?.toUpperCase() === 'OPEN').map(t => {
         const live = liveData[t.ticker] || {};
@@ -3572,6 +3600,11 @@ function DetailView({ ticker, onClose, overrideMetrics }) {
                 </div>
                 <div className="col-span-12 lg:col-span-3 flex flex-col gap-6">
                     <PositionSizer entryPrice={metrics?.entry} stopLoss={metrics?.stop_loss} />
+                    <MultiTimeframeRSI 
+                        dailyRSI={metrics?.daily_rsi || metrics?.rsi_14 || 50} 
+                        weeklyRSI={metrics?.weekly_rsi || 50} 
+                        monthlyRSI={metrics?.monthly_rsi || 50} 
+                    />
                 </div>
             </div>
         </div >
