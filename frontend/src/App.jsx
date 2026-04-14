@@ -631,10 +631,10 @@ function JournalAnalytics({ equityData, calendarData }) {
 
 // Form to Log New Trades
 // Form to Log New Trades
-function TradeForm({ onSave, onCancel }) {
+function TradeForm({ onSave, onCancel, initialData = {} }) {
     const [formData, setFormData] = useState({
-        ticker: '',
-        direction: 'BUY', // Using 'direction' as the field name to match backend input model, but UI will show "Action"
+        ticker: initialData.ticker || '',
+        direction: initialData.direction || 'BUY', // Using 'direction' as the field name to match backend input model, but UI will show "Action"
         entry_date: new Date().toISOString().split('T')[0],
         entry_price: '',
         shares: '',
@@ -1131,6 +1131,20 @@ function TradeJournal() {
     const [liveData, setLiveData] = useState({});
     const [loading, setLoading] = useState(true);
     const [showForm, setShowForm] = useState(false);
+    const [initialFormData, setInitialFormData] = useState({});
+
+    const handleOpenAdd = (e, ticker) => {
+        e.stopPropagation();
+        setInitialFormData({ ticker, direction: 'BUY' });
+        setShowForm(true);
+    };
+
+    const handleOpenSell = (e, ticker) => {
+        e.stopPropagation();
+        setInitialFormData({ ticker, direction: 'SELL' });
+        setShowForm(true);
+    };
+
     const [refreshing, setRefreshing] = useState(false);
     const [expandedGroups, setExpandedGroups] = useState({});
     const [activeTab, setActiveTab] = useState('active');
@@ -1710,13 +1724,13 @@ ${res.data.errors.join("\n")}`);
                     >
                         {analyzing ? '🔄 Analyzing...' : '🤖 AI Insights'}
                     </button>
-                    <button onClick={() => setShowForm(!showForm)} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-medium transition text-sm">
+                    <button onClick={() => { setInitialFormData({}); setShowForm(!showForm); }} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-medium transition text-sm">
                         {showForm ? 'Cancel' : '+ Log Trade'}
                     </button>
                 </div>
             </div>
 
-            {showForm && <TradeForm onSave={() => { setShowForm(false); fetchData(); }} onCancel={() => setShowForm(false)} />}
+            {showForm && <TradeForm onSave={() => { setShowForm(false); fetchData(); }} onCancel={() => setShowForm(false)} initialData={initialFormData} />}
 
             {/* AI Insight Display */}
             {aiInsight && (
@@ -2281,7 +2295,22 @@ ${res.data.errors.join("\n")}`);
                                                             return <span className={colorClass}>${mPath.toFixed(2)}</span>;
                                                         })()}
                                                     </td>
-                                                    <td className="p-2 bg-slate-900"></td>
+                                                    <td className="p-2 flex gap-1 justify-center bg-slate-900 border-l border-slate-800">
+                                                        {!isHistory && (
+                                                            <>
+                                                                <button
+                                                                    onClick={(e) => handleOpenAdd(e, ticker)}
+                                                                    className="w-6 h-6 rounded bg-blue-900/50 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-800 flex items-center justify-center font-bold text-xs"
+                                                                    title="Buy More"
+                                                                >+</button>
+                                                                <button
+                                                                    onClick={(e) => handleOpenSell(e, ticker)}
+                                                                    className="w-6 h-6 rounded bg-red-900/50 hover:bg-red-600 text-red-400 hover:text-white border border-red-800 flex items-center justify-center font-bold text-xs"
+                                                                    title="Sell"
+                                                                >-</button>
+                                                            </>
+                                                        )}
+                                                    </td>
                                                 </tr>
 
                                                 {/* DETAIL ROWS */}
@@ -5665,6 +5694,7 @@ function ArgentinaPanel() {
                                     <th className="p-2 text-center border-r border-slate-800">EMA 21</th>
                                     <th className="p-2 text-center border-r border-slate-800">EMA 35</th>
                                     <th className="p-2 text-center">EMA 200</th>
+                                    <th className="p-2"></th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-800">
@@ -5734,6 +5764,22 @@ function ArgentinaPanel() {
                                                 </td>
                                                 <td className={`p-2 text-center ${getEmaColor(currentPrice || 0, emas.ema_200)}`}>
                                                     {emas.ema_200 ? <span>${emas.ema_200.toFixed(2)}</span> : '-'}
+                                                </td>
+                                                <td className="p-2 flex gap-1 justify-center bg-slate-900 border-l border-slate-800">
+                                                    {activeTab !== 'history' && (
+                                                        <>
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); setFormData({ ...formData, ticker, shares: '' }); setShowAddForm(true); }}
+                                                                className="w-6 h-6 rounded bg-sky-900/50 hover:bg-sky-600 text-sky-400 hover:text-white border border-sky-800 flex items-center justify-center font-bold text-xs"
+                                                                title="Buy More"
+                                                            >+</button>
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); setFormData({ ...formData, ticker, shares: '-' }); setShowAddForm(true); }}
+                                                                className="w-6 h-6 rounded bg-red-900/50 hover:bg-red-600 text-red-400 hover:text-white border border-red-800 flex items-center justify-center font-bold text-xs"
+                                                                title="Sell"
+                                                            >-</button>
+                                                        </>
+                                                    )}
                                                 </td>
                                             </tr>
 
