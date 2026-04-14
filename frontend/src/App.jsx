@@ -2066,6 +2066,12 @@ ${res.data.errors.join("\n")}`);
                                 TRADE HISTORY
                             </button>
                         </div>
+
+                        {/* Portfolio Heatmap (FASE 6.1) */}
+                        {activeTab === 'active' && (
+                            <PortfolioHeatmap trades={trades} liveData={liveData} />
+                        )}
+
                         {/* SL/TP Alert Banner */}
                         {activeTab === 'active' && tradeAlerts.length > 0 && (
                             <div className="space-y-2 mb-4 animate-fade-in-up">
@@ -3318,6 +3324,87 @@ function MetricCard({ label, value, subtext, color = "text-white", className = "
 }
 
 
+function PositionSizer({ entryPrice, stopLoss }) {
+    const [capital, setCapital] = useState(100000);
+    const [riskPct, setRiskPct] = useState(1);
+
+    const riskAmount = capital * (riskPct / 100);
+    const riskPerShare = entryPrice && stopLoss ? Math.abs(entryPrice - stopLoss) : 0;
+    const shares = riskPerShare > 0 ? Math.floor(riskAmount / riskPerShare) : 0;
+    const positionValue = shares * (entryPrice || 0);
+    const positionPct = capital > 0 ? (positionValue / capital * 100) : 0;
+
+    return (
+        <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-xl">
+            <h4 className="text-slate-400 text-[10px] uppercase tracking-[0.2em] font-black mb-4 flex items-center gap-2">
+                <span>🧮</span> Position Sizer
+            </h4>
+            <div className="space-y-4">
+                <div>
+                    <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-2 block">Capital ($)</label>
+                    <input type="number" value={capital} onChange={e => setCapital(+e.target.value)}
+                        className="w-full bg-[#0a0f18] border border-slate-700 rounded-lg p-2.5 text-sm text-white font-mono focus:outline-none focus:border-blue-500 transition-colors" />
+                </div>
+                <div>
+                    <div className="flex justify-between items-center mb-2">
+                        <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Risk ({riskPct}%)</label>
+                        <span className="text-xs font-mono text-red-400">-${riskAmount.toFixed(0)}</span>
+                    </div>
+                    <input type="range" min="0.25" max="3" step="0.25" value={riskPct}
+                        onChange={e => setRiskPct(+e.target.value)} className="w-full accent-blue-500" />
+                </div>
+                
+                <div className="pt-4 border-t border-slate-700/50 space-y-3">
+                    <div className="flex justify-between items-center">
+                        <span className="text-xs text-slate-400">Shares to Buy</span>
+                        <span className="text-lg font-black text-white font-mono">{shares}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                        <span className="text-xs text-slate-400">Position Size</span>
+                        <span className="text-sm font-bold text-slate-300 font-mono">${positionValue.toFixed(0)} ({positionPct.toFixed(1)}%)</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function PortfolioHeatmap({ trades, liveData }) {
+    const data = trades.filter(t => t.status === 'OPEN').map(t => {
+        const live = liveData[t.ticker] || {};
+        const currentPrice = live.price || t.entry_price;
+        const value = currentPrice * t.shares;
+        const pnlPct = ((currentPrice - t.entry_price) / t.entry_price) * 100;
+        return { name: t.ticker, size: Math.abs(value), pnlPct, value };
+    });
+
+    if (data.length === 0) return null;
+
+    return (
+        <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-xl mb-6">
+            <h3 className="text-slate-400 text-[10px] uppercase tracking-[0.2em] font-black mb-4 flex items-center gap-2">
+                <span>📊</span> Position Heatmap
+            </h3>
+            <Recharts.ResponsiveContainer width="100%" height={250}>
+                <Recharts.Treemap data={data} dataKey="size" nameKey="name"
+                    content={({ x, y, width, height, name, pnlPct }) => (
+                        <g>
+                            <rect x={x} y={y} width={width} height={height} rx={4}
+                                fill={pnlPct >= 0 ? `hsl(${Math.min(pnlPct*3,140)}, 65%, 35%)` : `hsl(0, ${Math.min(Math.abs(pnlPct)*4,80)}%, 35%)`}
+                                stroke="#1e293b" strokeWidth={2} />
+                            {width > 40 && height > 25 && (
+                                <>
+                                    <text x={x + width/2} y={y + height/2 - 6} textAnchor="middle" fill="white" fontSize={12} fontWeight="900" style={{ pointerEvents: 'none' }}>{name}</text>
+                                    <text x={x + width/2} y={y + height/2 + 10} textAnchor="middle" fill="rgba(255,255,255,0.8)" fontSize={10} fontWeight="bold" style={{ pointerEvents: 'none' }}>{pnlPct >= 0 ? '+' : ''}{pnlPct?.toFixed(1)}%</text>
+                                </>
+                            )}
+                        </g>
+                    )} />
+            </Recharts.ResponsiveContainer>
+        </div>
+    );
+}
+
 function DetailView({ ticker, onClose, overrideMetrics }) {
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -3468,7 +3555,7 @@ function DetailView({ ticker, onClose, overrideMetrics }) {
 
             {/* Content Component Grid - Cleanup: Occupy full width */}
             <div className="flex-1 grid grid-cols-12 gap-6 min-h-0">
-                <div className="col-span-12 bg-slate-800 rounded-xl border border-slate-700 p-4 flex flex-col">
+                <div className="col-span-12 lg:col-span-9 bg-slate-800 rounded-xl border border-slate-700 p-4 flex flex-col">
                     <div className="flex-1 w-full min-h-0">
                         <TradingViewChart
                             ticker={ticker}
@@ -3478,6 +3565,9 @@ function DetailView({ ticker, onClose, overrideMetrics }) {
                             tradeHistory={data.trade_history}
                         />
                     </div>
+                </div>
+                <div className="col-span-12 lg:col-span-3 flex flex-col gap-6">
+                    <PositionSizer entryPrice={metrics?.entry} stopLoss={metrics?.stop_loss} />
                 </div>
             </div>
         </div >
