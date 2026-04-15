@@ -631,10 +631,11 @@ function JournalAnalytics({ equityData, calendarData }) {
 
 // Form to Log New Trades
 // Form to Log New Trades
-function TradeForm({ onSave, onCancel, initialData = {} }) {
+function TradeForm({ onSave, onCancel, initialData = {}, isArgentina = false }) {
     const [formData, setFormData] = useState({
         ticker: initialData.ticker || '',
-        direction: initialData.direction || 'BUY', // Using 'direction' as the field name to match backend input model, but UI will show "Action"
+        direction: initialData.direction || 'BUY', 
+        asset_type: initialData.asset_type || 'stock',
         entry_date: new Date().toISOString().split('T')[0],
         entry_price: '',
         shares: '',
@@ -655,6 +656,43 @@ function TradeForm({ onSave, onCancel, initialData = {} }) {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+
+        if (isArgentina) {
+            const payload = {
+                ticker: formData.ticker,
+                asset_type: formData.asset_type,
+                shares: parseFloat(formData.shares),
+                entry_date: formData.entry_date,
+                stop_loss: formData.stop_loss ? parseFloat(formData.stop_loss) : null,
+                target: formData.target ? parseFloat(formData.target) : null,
+                target2: formData.target2 ? parseFloat(formData.target2) : null,
+                target3: formData.target3 ? parseFloat(formData.target3) : null,
+            };
+
+            try {
+                if (formData.direction === 'BUY') {
+                    payload.entry_price = parseFloat(formData.entry_price);
+                    await authFetch(`${API_BASE}/argentina/positions`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                } else {
+                    payload.exit_price = parseFloat(formData.entry_price);
+                    await authFetch(`${API_BASE}/argentina/positions/close_by_ticker`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                }
+                if (onSave) onSave();
+            } catch (err) {
+                console.error(err);
+                alert("Error saving Argentina trade: " + (err.response?.data?.detail || err.message));
+            }
+            return;
+        }
+
         const payload = {
             ...formData,
             entry_price: parseFloat(formData.entry_price),
@@ -689,6 +727,16 @@ function TradeForm({ onSave, onCancel, initialData = {} }) {
                     <label className="block text-xs text-slate-400 mb-1">Ticker</label>
                     <input required name="ticker" value={formData.ticker} onChange={handleChange} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white uppercase" />
                 </div>
+                {isArgentina && (
+                    <div>
+                        <label className="block text-xs text-slate-400 mb-1">Tipo de Activo</label>
+                        <select name="asset_type" value={formData.asset_type} onChange={handleChange} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white font-bold">
+                            <option value="stock">Acción Local</option>
+                            <option value="cedear">CEDEAR</option>
+                            <option value="option">Opción (Opciones)</option>
+                        </select>
+                    </div>
+                )}
                 <div>
                     <label className="block text-xs text-slate-400 mb-1">Action</label>
                     <select name="direction" value={formData.direction} onChange={handleChange} className={`w-full border border-slate-700 rounded p-2 text-white font-bold ${isSell ? 'bg-red-900/50' : 'bg-green-900/50'}`}>
@@ -5947,174 +5995,12 @@ function ArgentinaPanel() {
 
 
 
-// Add Argentina Position Modal
-function AddArgentinaModal({ onClose, onAdd, initialData = {} }) {
-    const [formData, setFormData] = useState({
-        ticker: initialData.ticker || '', asset_type: initialData.asset_type || 'stock', entry_date: new Date().toISOString().split('T')[0],
-        entry_price: '', shares: '', strategy: '', hypothesis: '', notes: '',
-        option_strike: '', option_expiry: '', option_type: 'call'
-    });
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        try {
-            await authFetch(`${API_BASE}/argentina/positions`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(formData)
-            });
-            onAdd();
-            onClose();
-        } catch (e) {
-            console.error(e);
-            alert("Failed to add position");
-        }
-    };
-
-    return (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-            <div className="bg-slate-900 border border-slate-700 rounded-xl p-6 w-full max-w-lg">
-                <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-xl font-bold text-white">🇦🇷 Nueva Posición Argentina</h3>
-                    <button onClick={onClose} className="text-slate-400 hover:text-white">✕</button>
-                </div>
-                <form onSubmit={handleSubmit} className="space-y-3">
-                    <div className="grid grid-cols-2 gap-3">
-                        <div>
-                            <label className="text-xs text-slate-400 block mb-1">Ticker</label>
-                            <input className="w-full bg-black/50 border border-slate-700 rounded p-2 text-white uppercase"
-                                value={formData.ticker} onChange={e => setFormData({ ...formData, ticker: e.target.value.toUpperCase() })} required autoFocus />
-                        </div>
-                        <div>
-                            <label className="text-xs text-slate-400 block mb-1">Tipo de Activo</label>
-                            <select className="w-full bg-black/50 border border-slate-700 rounded p-2 text-white"
-                                value={formData.asset_type} onChange={e => setFormData({ ...formData, asset_type: e.target.value })}>
-                                <option value="stock">Acción Local</option>
-                                <option value="cedear">CEDEAR</option>
-                                <option value="option">Opción</option>
-                                <option value="bond">Bono</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    {formData.asset_type === 'option' && (
-                        <div className="bg-purple-900/20 p-3 rounded border border-purple-900/50 grid grid-cols-3 gap-2">
-                            <div>
-                                <label className="text-[10px] text-purple-300 block">Strike</label>
-                                <input type="number" className="w-full bg-black/50 border border-purple-800 rounded p-1 text-white text-sm"
-                                    value={formData.option_strike} onChange={e => setFormData({ ...formData, option_strike: parseFloat(e.target.value) })} />
-                            </div>
-                            <div>
-                                <label className="text-[10px] text-purple-300 block">Vencimiento</label>
-                                <input type="date" className="w-full bg-black/50 border border-purple-800 rounded p-1 text-white text-sm"
-                                    value={formData.option_expiry} onChange={e => setFormData({ ...formData, option_expiry: e.target.value })} />
-                            </div>
-                            <div>
-                                <label className="text-[10px] text-purple-300 block">Tipo</label>
-                                <select className="w-full bg-black/50 border border-purple-800 rounded p-1 text-white text-sm"
-                                    value={formData.option_type} onChange={e => setFormData({ ...formData, option_type: e.target.value })}>
-                                    <option value="call">Call</option>
-                                    <option value="put">Put</option>
-                                </select>
-                            </div>
-                        </div>
-                    )}
-
-                    <div className="grid grid-cols-3 gap-3">
-                        <div>
-                            <label className="text-xs text-slate-400 block mb-1">Cantidad</label>
-                            <input type="number" step="any" className="w-full bg-black/50 border border-slate-700 rounded p-2 text-white"
-                                value={formData.shares} onChange={e => setFormData({ ...formData, shares: parseFloat(e.target.value) })} required />
-                        </div>
-                        <div>
-                            <label className="text-xs text-slate-400 block mb-1">Precio Entrada</label>
-                            <input type="number" step="any" className="w-full bg-black/50 border border-slate-700 rounded p-2 text-white"
-                                value={formData.entry_price} onChange={e => setFormData({ ...formData, entry_price: parseFloat(e.target.value) })} required />
-                        </div>
-                        <div>
-                            <label className="text-xs text-slate-400 block mb-1">Fecha</label>
-                            <input type="date" className="w-full bg-black/50 border border-slate-700 rounded p-2 text-white"
-                                value={formData.entry_date} onChange={e => setFormData({ ...formData, entry_date: e.target.value })} required />
-                        </div>
-                    </div>
-                    <div>
-                        <label className="text-xs text-slate-400 block mb-1">Estrategia / Hipotesis</label>
-                        <textarea className="w-full bg-black/50 border border-slate-700 rounded p-2 text-white h-16 text-sm"
-                            value={formData.hypothesis} onChange={e => setFormData({ ...formData, hypothesis: e.target.value })} placeholder="Ej: Rebote en soporte..." />
-                    </div>
-
-                    <div className="flex justify-end gap-2 pt-2">
-                        <button type="button" onClick={onClose} className="px-4 py-2 text-slate-400 hover:text-white">Cancelar</button>
-                        <button type="submit" className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded font-bold">Guardar</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    );
-}
-
-// Sell / Close Argentina Position Modal
-function SellArgentinaModal({ position, onClose, onSave }) {
-    const [formData, setFormData] = useState({
-        shares: position.shares,
-        exit_price: position.current_price || position.manual_price || position.entry_price || '',
-    });
-
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        try {
-            await authFetch(`${API_BASE}/argentina/positions/${position.id}/close`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    shares: parseFloat(formData.shares),
-                    exit_price: parseFloat(formData.exit_price)
-                })
-            });
-            onSave();
-            onClose();
-        } catch (err) {
-            console.error(err);
-            alert('Error closing position in Argentina journal.');
-        }
-    };
-
-    return (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-            <div className="bg-slate-900 border border-slate-700 rounded-xl p-6 w-full max-w-sm">
-                <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-                    <span>📉</span> Vender <span className="text-blue-400">{position.ticker}</span>
-                </h3>
-                <div className="bg-slate-800/50 p-3 rounded text-sm text-slate-300 mb-4 border border-slate-700">
-                    <div>Disponibles: <span className="font-bold text-white">{position.shares}</span></div>
-                    <div>Precio Entrada: <span className="font-bold text-slate-400">${position.entry_price?.toLocaleString()}</span></div>
-                </div>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    <div>
-                        <label className="text-xs text-slate-400 block mb-1">Cantidad a Vender</label>
-                        <input type="number" step="any" max={position.shares} className="w-full bg-black/50 border border-slate-700 rounded p-2 text-white"
-                            value={formData.shares} onChange={e => setFormData({ ...formData, shares: e.target.value })} required />
-                    </div>
-                    <div>
-                        <label className="text-xs text-slate-400 block mb-1">Precio de Salida</label>
-                        <input type="number" step="any" className="w-full bg-black/50 border border-slate-700 rounded p-2 text-white font-mono"
-                            value={formData.exit_price} onChange={e => setFormData({ ...formData, exit_price: e.target.value })} required />
-                    </div>
-                    <div className="flex justify-end gap-2 pt-2">
-                        <button type="button" onClick={onClose} className="px-4 py-2 text-slate-400 hover:text-white transition">Cancelar</button>
-                        <button type="submit" className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded font-bold shadow-lg transition">Vender</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    );
-}
 
 // Argentina Journal Component
 function ArgentinaJournal() {
     const [portfolio, setPortfolio] = useState({ holdings: [], total_ars: 0, total_mep: 0, total_ccl: 0 });
-    const [showAddModal, setShowAddModal] = useState(false);
-    const [showSellModalPos, setShowSellModalPos] = useState(null);
+    const [showTradeForm, setShowTradeForm] = useState(false);
     const [initialAddData, setInitialAddData] = useState({});
     const [loading, setLoading] = useState(false);
 
@@ -6144,8 +6030,14 @@ function ArgentinaJournal() {
 
     return (
         <div className="p-4 container mx-auto max-w-[1600px]">
-            {showAddModal && <AddArgentinaModal onClose={() => setShowAddModal(false)} onAdd={fetchPortfolio} initialData={initialAddData} />}
-            {showSellModalPos && <SellArgentinaModal position={showSellModalPos} onClose={() => setShowSellModalPos(null)} onSave={fetchPortfolio} />}
+            {showTradeForm && (
+                <TradeForm
+                    onSave={() => { setShowTradeForm(false); fetchPortfolio(); }}
+                    onCancel={() => setShowTradeForm(false)}
+                    initialData={initialAddData}
+                    isArgentina={true}
+                />
+            )}
 
             <div className="flex justify-between items-center mb-6">
                 <div>
@@ -6160,7 +6052,7 @@ function ArgentinaJournal() {
                     </div>
                 </div>
                 <div>
-                    <button onClick={() => { setInitialAddData({}); setShowAddModal(true); }} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-bold shadow-lg flex items-center gap-2">
+                    <button onClick={() => { setInitialAddData({ direction: 'BUY' }); setShowTradeForm(true); }} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-bold shadow-lg flex items-center gap-2">
                         <span>➕</span> Nueva Posición
                     </button>
                 </div>
@@ -6204,24 +6096,26 @@ function ArgentinaJournal() {
                                                 prefix="$" type="number" width="w-24"
                                                 className={`text-right font-mono text-sm ${pos.manual_price ? 'text-yellow-400 font-bold' : 'text-slate-300'}`}
                                             />
-                                            {pos.manual_price && <div className="text-[9px] text-yellow-500/60">MANUAL</div>}
+                                            <div className="flex flex-col text-[10px] items-end text-slate-400 mt-1">
+                                                <span>Actualizado: {pos.manual_price_updated_at ? new Date(pos.manual_price_updated_at).toLocaleTimeString() : 'N/A'}</span>
+                                            </div>
                                         </>
                                     ) : (
-                                        <span>${pos.current_price?.toLocaleString()}</span>
+                                        `$${pos.current_price?.toLocaleString()}`
                                     )}
                                 </td>
-                                <td className="px-6 py-4 text-right font-bold text-slate-200">${pos.value_ars?.toLocaleString()}</td>
+                                <td className="px-6 py-4 text-right text-white font-bold">${pos.value_ars?.toLocaleString()}</td>
                                 <td className={`px-6 py-4 text-right font-bold ${pos.pnl_ars >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                    ${pos.pnl_ars?.toLocaleString()} ({pos.pnl_pct}%)
+                                    ${pos.pnl_ars?.toLocaleString()} ({pos.pnl_pct?.toFixed(2)}%)
                                 </td>
                                 <td className="px-6 py-4 text-center">
-                                    <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold ${pos.asset_type === 'stock' ? 'bg-blue-900/30 text-blue-300' : pos.asset_type === 'cedear' ? 'bg-orange-900/30 text-orange-300' : 'bg-purple-900/30 text-purple-300'}`}>
+                                    <span className="bg-slate-800 text-slate-300 text-[10px] px-2 py-1 rounded border border-slate-600 uppercase">
                                         {pos.asset_type}
                                     </span>
                                 </td>
                                 <td className="px-6 py-4 text-right flex gap-2 items-center justify-end">
-                                    <button onClick={() => { setInitialAddData({ ticker: pos.ticker, asset_type: pos.asset_type }); setShowAddModal(true); }} className="px-2 py-1 bg-blue-900/50 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-800 rounded font-bold text-[10px] uppercase transition">Comprar</button>
-                                    <button onClick={() => setShowSellModalPos(pos)} className="px-2 py-1 bg-red-900/50 hover:bg-red-600 text-red-400 hover:text-white border border-red-800 rounded font-bold text-[10px] uppercase transition">Vender</button>
+                                    <button onClick={() => { setInitialAddData({ ticker: pos.ticker, asset_type: pos.asset_type, direction: 'BUY' }); setShowTradeForm(true); }} className="px-2 py-1 bg-blue-900/50 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-800 rounded font-bold text-[10px] uppercase transition">Comprar</button>
+                                    <button onClick={() => { setInitialAddData({ ticker: pos.ticker, asset_type: pos.asset_type, direction: 'SELL' }); setShowTradeForm(true); }} className="px-2 py-1 bg-red-900/50 hover:bg-red-600 text-red-400 hover:text-white border border-red-800 rounded font-bold text-[10px] uppercase transition">Vender</button>
                                     <button onClick={() => handleDelete(pos.id)} className="text-slate-600 hover:text-red-400 ml-2" title="Eliminar entrada">🗑️</button>
                                 </td>
                             </tr>

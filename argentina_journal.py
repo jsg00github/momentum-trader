@@ -40,6 +40,12 @@ class ArgentinaPositionCreate(BaseModel):
 class ManualPriceUpdate(BaseModel):
     price: float
 
+class CloseByTickerRequest(BaseModel):
+    ticker: str
+    asset_type: str = 'stock'
+    shares: float
+    exit_price: float
+
 class IOLCredentials(BaseModel):
     username: str
     password: str
@@ -251,6 +257,66 @@ def api_delete_position(position_id: int, current_user: models.User = Depends(au
     db.commit()
     return {"id": position_id, "status": "deleted"}
 
+@router.post("/positions/close_by_ticker")
+def api_close_position_by_ticker(req: CloseByTickerRequest, current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    """Close positions for a ticker using FIFO."""
+    positions = db.query(models.ArgentinaPosition).filter(
+        models.ArgentinaPosition.user_id == current_user.id,
+        models.ArgentinaPosition.ticker == req.ticker.upper(),
+        models.ArgentinaPosition.asset_type == req.asset_type,
+        models.ArgentinaPosition.status.in_(["OPEN", "Open"])
+    ).order_by(models.ArgentinaPosition.entry_date.asc()).all()
+    
+    if not positions:
+        raise HTTPException(status_code=404, detail="No open positions found for this ticker")
+    
+    total_shares_available = sum(p.shares for p in positions)
+    shares_to_sell = req.shares
+    
+    if shares_to_sell <= 0 or shares_to_sell > total_shares_available:
+        raise HTTPException(status_code=400, detail=f"Invalid share count. You only have {total_shares_available}.")
+
+    closed_ids = []
+    
+    for pos in positions:
+        if shares_to_sell <= 0:
+            break
+            
+        current_shares = float(pos.shares)
+        sell_amount = min(shares_to_sell, current_shares)
+        
+        if sell_amount >= current_shares:
+            # Full exit of this tranche
+            pos.status = 'CLOSED'
+            pos.exit_date = datetime.now().strftime("%Y-%m-%d")
+            pos.exit_price = req.exit_price
+            closed_ids.append(pos.id)
+            shares_to_sell -= current_shares
+        else:
+            # Partial exit of this tranche
+            closed_part = models.ArgentinaPosition(
+                user_id=pos.user_id,
+                ticker=pos.ticker,
+                asset_type=pos.asset_type,
+                entry_date=pos.entry_date,
+                entry_price=pos.entry_price,
+                shares=sell_amount,
+                status='CLOSED',
+                exit_date=datetime.now().strftime("%Y-%m-%d"),
+                exit_price=req.exit_price,
+                notes=f"FIFO partial from ID {pos.id}"
+            )
+            db.add(closed_part)
+            
+            pos.shares = current_shares - sell_amount
+            notes_append = f"Sold {sell_amount} @ {req.exit_price} (FIFO)"
+            pos.notes = f"{pos.notes} | {notes_append}" if pos.notes else notes_append
+            
+            shares_to_sell -= sell_amount
+            
+    db.commit()
+    return {"status": "success", "closed_tranches": len(closed_ids)}
+
 # ============================================
 # Portfolio Valuation
 # ============================================
@@ -266,57 +332,72 @@ def api_get_portfolio(current_user: models.User = Depends(auth.get_current_user)
     # I will fix the model to match.
     positions = db.query(models.ArgentinaPosition).filter(
         models.ArgentinaPosition.user_id == current_user.id,
-        models.ArgentinaPosition.exit_price == None # Proxy for Open
+        models.ArgentinaPosition.status.in_(["OPEN", "Open"])
     ).all()
     
     rates = argentina_data.get_dolar_rates()
     total_ars = 0.0
     holdings = []
     
+    grouped_positions = {}
     for pos in positions:
+        key = f"{pos.ticker}_{pos.asset_type}"
+        if key not in grouped_positions:
+            grouped_positions[key] = {
+                "id": pos.id, # representative ID
+                "ticker": pos.ticker,
+                "asset_type": pos.asset_type,
+                "shares": 0.0,
+                "total_cost": 0.0,
+                "manual_price": pos.manual_price,
+                "manual_price_updated_at": pos.manual_price_updated_at
+            }
+        grouped_positions[key]["shares"] += pos.shares
+        grouped_positions[key]["total_cost"] += pos.shares * pos.entry_price
+
+    for key, p in grouped_positions.items():
+        avg_entry_price = p["total_cost"] / p["shares"] if p["shares"] > 0 else 0
         current_price = None
-        if pos.asset_type in ["stock", "cedear"]:
+
+        if p["asset_type"] in ["stock", "cedear"]:
             # Try IOL first, then Yahoo Finance
-            quote = argentina_data.get_iol_quote(pos.ticker)
+            quote = argentina_data.get_iol_quote(p["ticker"])
             if quote:
                 current_price = quote.get("ultimoPrecio", 0)
             else:
-                current_price = argentina_data.get_byma_price_yf(pos.ticker)
-        elif pos.asset_type == "option":
+                current_price = argentina_data.get_byma_price_yf(p["ticker"])
+        elif p["asset_type"] == "option":
             # Options: Priority to Manual Price > Entry Price
-            if pos.manual_price is not None:
-                current_price = pos.manual_price
+            if p["manual_price"] is not None:
+                current_price = p["manual_price"]
             else:
-                current_price = pos.entry_price  # Placeholder
+                current_price = avg_entry_price  # Placeholder
             
         if current_price is None:
              # Fallback: check manual price field even for stocks if live failed
-             if pos.manual_price is not None:
-                 current_price = pos.manual_price
+             if p["manual_price"] is not None:
+                 current_price = p["manual_price"]
              else:
-                 current_price = pos.entry_price
+                 current_price = avg_entry_price
             
-        val_ars = current_price * pos.shares
-        cost = pos.entry_price * pos.shares
-        pnl = val_ars - cost
-        pnl_pct = ((current_price / pos.entry_price) - 1) * 100 if pos.entry_price else 0
+        val_ars = current_price * p["shares"]
+        pnl = val_ars - p["total_cost"]
+        pnl_pct = ((current_price / avg_entry_price) - 1) * 100 if avg_entry_price else 0
         
         total_ars += val_ars
         
         holdings.append({
-            "id": pos.id,
-            "ticker": pos.ticker,
-            "asset_type": pos.asset_type,
-            "shares": pos.shares,
-            "entry_price": pos.entry_price,
+            "id": p["id"],
+            "ticker": p["ticker"],
+            "asset_type": p["asset_type"],
+            "shares": p["shares"],
+            "entry_price": avg_entry_price,
             "current_price": round(current_price, 2),
             "value_ars": round(val_ars, 2),
             "pnl_ars": round(pnl, 2),
-            "value_ars": round(val_ars, 2),
-            "pnl_ars": round(pnl, 2),
             "pnl_pct": round(pnl_pct, 2),
-            "manual_price": pos.manual_price,
-            "manual_price_updated_at": pos.manual_price_updated_at.isoformat() if pos.manual_price_updated_at else None
+            "manual_price": p["manual_price"],
+            "manual_price_updated_at": p["manual_price_updated_at"].isoformat() if p["manual_price_updated_at"] else None
         })
         
     ccl = rates.get("ccl", 1200)
