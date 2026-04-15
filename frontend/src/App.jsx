@@ -2086,30 +2086,7 @@ ${res.data.errors.join("\n")}`);
                             </button>
                         </div>
 
-                        {/* Portfolio Heatmap (FASE 6.1) */}
-                        {activeTab === 'active' && (
-                            <PortfolioHeatmap trades={trades} liveData={liveData} />
-                        )}
 
-                        {/* SL/TP Alert Banner */}
-                        {activeTab === 'active' && tradeAlerts.length > 0 && (
-                            <div className="space-y-2 mb-4 animate-fade-in-up">
-                                {tradeAlerts.map((a) => (
-                                    <div key={a.id} className={`flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl border text-sm font-medium ${
-                                        a.severity === 'critical' ? 'bg-red-500/10 border-red-500/30 text-red-400' :
-                                        a.severity === 'warning' ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' :
-                                        'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-                                    }`}>
-                                        <span>{a.message}</span>
-                                        <button
-                                            onClick={() => setDismissedAlerts(prev => new Set([...prev, a.id]))}
-                                            className="text-white/30 hover:text-white/60 text-xs ml-2 shrink-0"
-                                            title="Dismiss"
-                                        >✕</button>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
                         <div className="bg-slate-900 border border-slate-700 overflow-y-auto max-h-[80vh] rounded-lg shadow-xl w-full">
                             <table className="w-full text-left text-[10px] break-words">
                                 <thead className="bg-[#0f172a] text-slate-400 uppercase font-bold border-b border-slate-600 select-none">
