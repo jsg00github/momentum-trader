@@ -678,9 +678,13 @@ function TradeForm({ onSave, onCancel, initialData = {} }) {
     const isSell = formData.direction === 'SELL';
 
     return (
-        <div className="bg-slate-800 p-6 rounded-lg border border-slate-700 mb-6">
-            <h3 className="text-xl font-bold mb-4 text-white">Log Transaction</h3>
-            <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={onCancel}>
+            <div className="bg-slate-900 p-6 rounded-xl border border-slate-700 w-full max-w-3xl shadow-2xl relative" onClick={e => e.stopPropagation()}>
+                <button type="button" onClick={onCancel} className="absolute top-4 right-4 text-slate-400 hover:text-white transition">✕</button>
+                <h3 className="text-xl font-bold mb-4 text-white flex items-center gap-2">
+                    <span className="text-2xl">{isSell ? '📉' : '🛒'}</span> {isSell ? 'Vender Posición' : 'Nueva Orden (Compra)'}
+                </h3>
+                <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div>
                     <label className="block text-xs text-slate-400 mb-1">Ticker</label>
                     <input required name="ticker" value={formData.ticker} onChange={handleChange} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white uppercase" />
@@ -727,13 +731,14 @@ function TradeForm({ onSave, onCancel, initialData = {} }) {
                     </>
                 )}
 
-                <div className="col-span-full flex justify-end gap-3 mt-4">
-                    <button type="button" onClick={onCancel} className="px-4 py-2 rounded text-slate-300 hover:text-white transition">Cancel</button>
-                    <button type="submit" className={`px-6 py-2 text-white rounded font-medium transition ${isSell ? 'bg-red-600 hover:bg-red-500' : 'bg-blue-600 hover:bg-blue-500'}`}>
-                        {isSell ? 'Confirm Sell' : 'Log Buy'}
+                <div className="col-span-full flex justify-end gap-3 mt-6">
+                    <button type="button" onClick={onCancel} className="px-4 py-2 rounded text-slate-300 hover:text-white transition">Cancelar</button>
+                    <button type="submit" className={`px-6 py-2 text-white rounded font-medium transition shadow-lg ${isSell ? 'bg-red-600 hover:bg-red-500' : 'bg-blue-600 hover:bg-blue-500'}`}>
+                        {isSell ? 'Confirmar Venta' : 'Cargar Compra'}
                     </button>
                 </div>
             </form>
+            </div>
         </div>
     )
 }
@@ -2300,14 +2305,14 @@ ${res.data.errors.join("\n")}`);
                                                             <>
                                                                 <button
                                                                     onClick={(e) => handleOpenAdd(e, ticker)}
-                                                                    className="w-6 h-6 rounded bg-blue-900/50 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-800 flex items-center justify-center font-bold text-xs"
-                                                                    title="Buy More"
-                                                                >+</button>
+                                                                    className="px-2 py-1 rounded bg-blue-900/50 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-800 flex items-center justify-center font-bold text-[10px] uppercase transition-colors"
+                                                                    title="Comprar más"
+                                                                >Comprar</button>
                                                                 <button
                                                                     onClick={(e) => handleOpenSell(e, ticker)}
-                                                                    className="w-6 h-6 rounded bg-red-900/50 hover:bg-red-600 text-red-400 hover:text-white border border-red-800 flex items-center justify-center font-bold text-xs"
-                                                                    title="Sell"
-                                                                >-</button>
+                                                                    className="px-2 py-1 rounded bg-red-900/50 hover:bg-red-600 text-red-400 hover:text-white border border-red-800 flex items-center justify-center font-bold text-[10px] uppercase transition-colors"
+                                                                    title="Vender posición"
+                                                                >Vender</button>
                                                             </>
                                                         )}
                                                     </td>
@@ -5966,9 +5971,9 @@ function ArgentinaPanel() {
 
 
 // Add Argentina Position Modal
-function AddArgentinaModal({ onClose, onAdd }) {
+function AddArgentinaModal({ onClose, onAdd, initialData = {} }) {
     const [formData, setFormData] = useState({
-        ticker: '', asset_type: 'stock', entry_date: new Date().toISOString().split('T')[0],
+        ticker: initialData.ticker || '', asset_type: initialData.asset_type || 'stock', entry_date: new Date().toISOString().split('T')[0],
         entry_price: '', shares: '', strategy: '', hypothesis: '', notes: '',
         option_strike: '', option_expiry: '', option_type: 'call'
     });
@@ -6071,10 +6076,69 @@ function AddArgentinaModal({ onClose, onAdd }) {
     );
 }
 
+// Sell / Close Argentina Position Modal
+function SellArgentinaModal({ position, onClose, onSave }) {
+    const [formData, setFormData] = useState({
+        shares: position.shares,
+        exit_price: position.current_price || position.manual_price || position.entry_price || '',
+    });
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        try {
+            await authFetch(`${API_BASE}/argentina/positions/${position.id}/close`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    shares: parseFloat(formData.shares),
+                    exit_price: parseFloat(formData.exit_price)
+                })
+            });
+            onSave();
+            onClose();
+        } catch (err) {
+            console.error(err);
+            alert('Error closing position in Argentina journal.');
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+            <div className="bg-slate-900 border border-slate-700 rounded-xl p-6 w-full max-w-sm">
+                <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                    <span>📉</span> Vender <span className="text-blue-400">{position.ticker}</span>
+                </h3>
+                <div className="bg-slate-800/50 p-3 rounded text-sm text-slate-300 mb-4 border border-slate-700">
+                    <div>Disponibles: <span className="font-bold text-white">{position.shares}</span></div>
+                    <div>Precio Entrada: <span className="font-bold text-slate-400">${position.entry_price?.toLocaleString()}</span></div>
+                </div>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <div>
+                        <label className="text-xs text-slate-400 block mb-1">Cantidad a Vender</label>
+                        <input type="number" step="any" max={position.shares} className="w-full bg-black/50 border border-slate-700 rounded p-2 text-white"
+                            value={formData.shares} onChange={e => setFormData({ ...formData, shares: e.target.value })} required />
+                    </div>
+                    <div>
+                        <label className="text-xs text-slate-400 block mb-1">Precio de Salida</label>
+                        <input type="number" step="any" className="w-full bg-black/50 border border-slate-700 rounded p-2 text-white font-mono"
+                            value={formData.exit_price} onChange={e => setFormData({ ...formData, exit_price: e.target.value })} required />
+                    </div>
+                    <div className="flex justify-end gap-2 pt-2">
+                        <button type="button" onClick={onClose} className="px-4 py-2 text-slate-400 hover:text-white transition">Cancelar</button>
+                        <button type="submit" className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded font-bold shadow-lg transition">Vender</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+}
+
 // Argentina Journal Component
 function ArgentinaJournal() {
     const [portfolio, setPortfolio] = useState({ holdings: [], total_ars: 0, total_mep: 0, total_ccl: 0 });
     const [showAddModal, setShowAddModal] = useState(false);
+    const [showSellModalPos, setShowSellModalPos] = useState(null);
+    const [initialAddData, setInitialAddData] = useState({});
     const [loading, setLoading] = useState(false);
 
     const fetchPortfolio = async () => {
@@ -6103,7 +6167,8 @@ function ArgentinaJournal() {
 
     return (
         <div className="p-4 container mx-auto max-w-[1600px]">
-            {showAddModal && <AddArgentinaModal onClose={() => setShowAddModal(false)} onAdd={fetchPortfolio} />}
+            {showAddModal && <AddArgentinaModal onClose={() => setShowAddModal(false)} onAdd={fetchPortfolio} initialData={initialAddData} />}
+            {showSellModalPos && <SellArgentinaModal position={showSellModalPos} onClose={() => setShowSellModalPos(null)} onSave={fetchPortfolio} />}
 
             <div className="flex justify-between items-center mb-6">
                 <div>
@@ -6118,7 +6183,7 @@ function ArgentinaJournal() {
                     </div>
                 </div>
                 <div>
-                    <button onClick={() => setShowAddModal(true)} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-bold shadow-lg flex items-center gap-2">
+                    <button onClick={() => { setInitialAddData({}); setShowAddModal(true); }} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-bold shadow-lg flex items-center gap-2">
                         <span>➕</span> Nueva Posición
                     </button>
                 </div>
@@ -6177,8 +6242,10 @@ function ArgentinaJournal() {
                                         {pos.asset_type}
                                     </span>
                                 </td>
-                                <td className="px-6 py-4 text-right">
-                                    <button onClick={() => handleDelete(pos.id)} className="text-slate-600 hover:text-red-400">🗑️</button>
+                                <td className="px-6 py-4 text-right flex gap-2 items-center justify-end">
+                                    <button onClick={() => { setInitialAddData({ ticker: pos.ticker, asset_type: pos.asset_type }); setShowAddModal(true); }} className="px-2 py-1 bg-blue-900/50 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-800 rounded font-bold text-[10px] uppercase transition">Comprar</button>
+                                    <button onClick={() => setShowSellModalPos(pos)} className="px-2 py-1 bg-red-900/50 hover:bg-red-600 text-red-400 hover:text-white border border-red-800 rounded font-bold text-[10px] uppercase transition">Vender</button>
+                                    <button onClick={() => handleDelete(pos.id)} className="text-slate-600 hover:text-red-400 ml-2" title="Eliminar entrada">🗑️</button>
                                 </td>
                             </tr>
                         ))}
