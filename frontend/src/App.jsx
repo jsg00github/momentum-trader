@@ -1415,7 +1415,19 @@ function TradeJournal() {
                 currentPrice,
                 preMktChange: (!isHistory && live.extended_change_pct) ? live.extended_change_pct : 0,
                 isPremarket: live.is_premarket || false,
-                isPostmarket: live.is_postmarket || false
+                isPostmarket: live.is_postmarket || false,
+                entry_date: minEntryDate,
+                sl: groupTrades[0]?.stop_loss || 0,
+                t1: groupTrades[0]?.target || 0,
+                t2: groupTrades[0]?.target2 || 0,
+                t3: groupTrades[0]?.target3 || 0,
+                strategy: groupTrades[0]?.strategy || '',
+                rsi: live.rs_score || 0,
+                ema8: live.ema_8 || 0,
+                ema21: live.ema_21 || 0,
+                ema35: live.ema_35 || 0,
+                ema200: live.ema_200 || 0,
+                mpath: live.uv_score || 0
             };
         });
     }, [currentGroups, liveData, activeTab, premarket]);
@@ -2142,7 +2154,9 @@ ${res.data.errors.join("\n")}`);
                                         <th onClick={() => requestSort('ticker')} className="p-2 border-r border-slate-800 sticky left-0 bg-[#0f172a] z-10 cursor-pointer hover:text-white transition">
                                             Ticker <span className="text-[9px] ml-1">{getSortIcon('ticker')}</span>
                                         </th>
-                                        <th className="p-2 border-r border-slate-800">Fecha</th>
+                                        <th onClick={() => requestSort('entry_date')} className="p-2 border-r border-slate-800 cursor-pointer hover:text-white transition">
+                                            Fecha <span className="text-[9px] ml-1">{getSortIcon('entry_date')}</span>
+                                        </th>
                                         <th onClick={() => requestSort('avgPpc')} className="p-2 text-right border-r border-slate-800 text-yellow-300 cursor-pointer hover:text-white transition">
                                             PPC <span className="text-[9px] ml-1">{getSortIcon('avgPpc')}</span>
                                         </th>
@@ -2167,20 +2181,42 @@ ${res.data.errors.join("\n")}`);
                                         <th onClick={() => requestSort('totalPnlPct')} className="p-2 border-r border-slate-800 text-right font-bold text-white cursor-pointer hover:text-blue-400 transition">
                                             % Trade <span className="text-[9px] ml-1">{getSortIcon('totalPnlPct')}</span>
                                         </th>
-                                        <th className="p-2 border-r border-slate-800 text-center">SL</th>
-                                        <th className="p-2 border-r border-slate-800 text-center">TP1</th>
-                                        <th className="p-2 border-r border-slate-800 text-center">TP2</th>
-                                        <th className="p-2 border-r border-slate-800 text-center">TP3</th>
+                                        <th onClick={() => requestSort('sl')} className="p-2 border-r border-slate-800 text-center cursor-pointer hover:text-white transition">
+                                            SL <span className="text-[9px] ml-1">{getSortIcon('sl')}</span>
+                                        </th>
+                                        <th onClick={() => requestSort('t1')} className="p-2 border-r border-slate-800 text-center cursor-pointer hover:text-white transition">
+                                            TP1 <span className="text-[9px] ml-1">{getSortIcon('t1')}</span>
+                                        </th>
+                                        <th onClick={() => requestSort('t2')} className="p-2 border-r border-slate-800 text-center cursor-pointer hover:text-white transition">
+                                            TP2 <span className="text-[9px] ml-1">{getSortIcon('t2')}</span>
+                                        </th>
+                                        <th onClick={() => requestSort('t3')} className="p-2 border-r border-slate-800 text-center cursor-pointer hover:text-white transition">
+                                            TP3 <span className="text-[9px] ml-1">{getSortIcon('t3')}</span>
+                                        </th>
                                         <th onClick={() => requestSort('daysHeld')} className="p-2 border-r border-slate-800 text-center cursor-pointer hover:text-white transition">
                                             Days <span className="text-[9px] ml-1">{getSortIcon('daysHeld')}</span>
                                         </th>
-                                        <th className="p-2 border-r border-slate-800">Strategy</th>
-                                        <th className="p-2 text-center border-r border-slate-800">W. RSI</th>
-                                        <th className="p-2 text-center border-r border-slate-800">EMA 8</th>
-                                        <th className="p-2 text-center border-r border-slate-800">EMA 21</th>
-                                        <th className="p-2 text-center border-r border-slate-800">EMA 35</th>
-                                        <th className="p-2 text-center">EMA 200</th>
-                                        <th className="p-2 text-center text-cyan-400 border-l border-slate-700">M.Path</th>
+                                        <th onClick={() => requestSort('strategy')} className="p-2 border-r border-slate-800 cursor-pointer hover:text-white transition">
+                                            Strategy <span className="text-[9px] ml-1">{getSortIcon('strategy')}</span>
+                                        </th>
+                                        <th onClick={() => requestSort('rsi')} className="p-2 text-center border-r border-slate-800 cursor-pointer hover:text-white transition">
+                                            W. RSI <span className="text-[9px] ml-1">{getSortIcon('rsi')}</span>
+                                        </th>
+                                        <th onClick={() => requestSort('ema8')} className="p-2 text-center border-r border-slate-800 cursor-pointer hover:text-white transition">
+                                            EMA 8 <span className="text-[9px] ml-1">{getSortIcon('ema8')}</span>
+                                        </th>
+                                        <th onClick={() => requestSort('ema21')} className="p-2 text-center border-r border-slate-800 cursor-pointer hover:text-white transition">
+                                            EMA 21 <span className="text-[9px] ml-1">{getSortIcon('ema21')}</span>
+                                        </th>
+                                        <th onClick={() => requestSort('ema35')} className="p-2 text-center border-r border-slate-800 cursor-pointer hover:text-white transition">
+                                            EMA 35 <span className="text-[9px] ml-1">{getSortIcon('ema35')}</span>
+                                        </th>
+                                        <th onClick={() => requestSort('ema200')} className="p-2 text-center cursor-pointer hover:text-white transition border-r border-slate-800">
+                                            EMA 200 <span className="text-[9px] ml-1">{getSortIcon('ema200')}</span>
+                                        </th>
+                                        <th onClick={() => requestSort('mpath')} className="p-2 text-center text-cyan-400 border-l border-slate-700 cursor-pointer hover:text-white transition">
+                                            M.Path <span className="text-[9px] ml-1">{getSortIcon('mpath')}</span>
+                                        </th>
                                         <th className="p-2"></th>
                                     </tr>
                                 </thead>
@@ -6003,6 +6039,36 @@ function ArgentinaJournal() {
     const [showTradeForm, setShowTradeForm] = useState(false);
     const [initialAddData, setInitialAddData] = useState({});
     const [loading, setLoading] = useState(false);
+    const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
+
+    const sortedHoldings = useMemo(() => {
+        let sortableItems = [...portfolio.holdings];
+        if (sortConfig.key !== null) {
+            sortableItems.sort((a, b) => {
+                let aValue = a[sortConfig.key];
+                let bValue = b[sortConfig.key];
+
+                if (typeof aValue === 'string') aValue = aValue.toLowerCase();
+                if (typeof bValue === 'string') bValue = bValue.toLowerCase();
+
+                if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
+                if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
+                return 0;
+            });
+        }
+        return sortableItems;
+    }, [portfolio.holdings, sortConfig]);
+
+    const requestSort = (key) => {
+        let direction = 'asc';
+        if (sortConfig.key === key && sortConfig.direction === 'asc') direction = 'desc';
+        setSortConfig({ key, direction });
+    };
+
+    const getSortIcon = (key) => {
+        if (sortConfig.key !== key) return '↕';
+        return sortConfig.direction === 'asc' ? '↑' : '↓';
+    };
 
     const fetchPortfolio = async () => {
         setLoading(true);
@@ -6062,20 +6128,20 @@ function ArgentinaJournal() {
                 <table className="w-full text-sm text-left">
                     <thead className="bg-[#151515] text-slate-400 uppercase text-xs">
                         <tr>
-                            <th className="px-6 py-4">Ticker</th>
-                            <th className="px-6 py-4 text-right">Cantidad</th>
-                            <th className="px-6 py-4 text-right">Entrada</th>
-                            <th className="px-6 py-4 text-right">Actual</th>
-                            <th className="px-6 py-4 text-right">Valor ARS</th>
-                            <th className="px-6 py-4 text-right">P&L</th>
-                            <th className="px-6 py-4 text-center">Tipo</th>
-                            <th className="px-6 py-4 text-right">Acciones</th>
+                            <th onClick={() => requestSort('ticker')} className="px-6 py-4 cursor-pointer hover:text-white transition">Ticker <span className="text-[9px] ml-1">{getSortIcon('ticker')}</span></th>
+                            <th onClick={() => requestSort('shares')} className="px-6 py-4 text-right cursor-pointer hover:text-white transition">Cantidad <span className="text-[9px] ml-1">{getSortIcon('shares')}</span></th>
+                            <th onClick={() => requestSort('entry_price')} className="px-6 py-4 text-right cursor-pointer hover:text-white transition">Entrada <span className="text-[9px] ml-1">{getSortIcon('entry_price')}</span></th>
+                            <th onClick={() => requestSort('current_price')} className="px-6 py-4 text-right cursor-pointer hover:text-white transition">Actual <span className="text-[9px] ml-1">{getSortIcon('current_price')}</span></th>
+                            <th onClick={() => requestSort('value_ars')} className="px-6 py-4 text-right cursor-pointer hover:text-white transition">Valor ARS <span className="text-[9px] ml-1">{getSortIcon('value_ars')}</span></th>
+                            <th onClick={() => requestSort('pnl_ars')} className="px-6 py-4 text-right cursor-pointer hover:text-white transition">P&L <span className="text-[9px] ml-1">{getSortIcon('pnl_ars')}</span></th>
+                            <th onClick={() => requestSort('asset_type')} className="px-6 py-4 text-center cursor-pointer hover:text-white transition">Tipo <span className="text-[9px] ml-1">{getSortIcon('asset_type')}</span></th>
+                            <th className="px-6 py-4 text-right cursor-default">Acciones</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-[#1a1a1a]">
-                        {portfolio.holdings.length === 0 ? (
+                        {sortedHoldings.length === 0 ? (
                             <tr><td colSpan="8" className="p-8 text-center text-slate-500">No hay posiciones activas.</td></tr>
-                        ) : portfolio.holdings.map(pos => (
+                        ) : sortedHoldings.map(pos => (
                             <tr key={pos.id} className="hover:bg-[#1a1a1a]">
                                 <td className="px-6 py-4 font-bold text-white">{pos.ticker}</td>
                                 <td className="px-6 py-4 text-right">{pos.shares}</td>
