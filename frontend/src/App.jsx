@@ -1422,7 +1422,7 @@ function TradeJournal() {
                 t2: groupTrades[0]?.target2 || 0,
                 t3: groupTrades[0]?.target3 || 0,
                 strategy: groupTrades[0]?.strategy || '',
-                rsi: live.rs_score || 0,
+                rsi: live.rsi_weekly?.val || 0,
                 ema8: live.ema_8 || 0,
                 ema21: live.ema_21 || 0,
                 ema35: live.ema_35 || 0,
