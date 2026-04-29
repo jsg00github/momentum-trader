@@ -17,7 +17,7 @@ import indicators
 
 
 # Configuration
-PERIOD = "1y"            # Increased to 1y to ensure 30+ weekly bars
+PERIOD = "4y"            # Increased to 4y for Monthly MACD
 INTERVAL = "1d"           # timeframe diario
 
 # Ventanas (en barras de trading)
@@ -368,9 +368,29 @@ def scan_rsi_crossover(df: pd.DataFrame):
         except:
             pass
 
+        # VCP Metrics (3-6 Months)
+        vcp_metrics = {"tightness_pct": 0.0, "contractions": 0, "is_vcp": False, "base_depth_pct": 0.0}
+        try:
+            vcp_metrics = indicators.calculate_vcp_metrics(df, 126)
+        except:
+            pass
+
+        # Performance History
+        len_df = len(df)
+        perf_1w = ((last_close / df['Close'].iloc[-5]) - 1) * 100 if len_df >= 5 else 0
+        perf_1m = ((last_close / df['Close'].iloc[-21]) - 1) * 100 if len_df >= 21 else 0
+        perf_2m = ((last_close / df['Close'].iloc[-42]) - 1) * 100 if len_df >= 42 else 0
+        perf_3m = ((last_close / df['Close'].iloc[-63]) - 1) * 100 if len_df >= 63 else 0
+
+        macd_m = indicators.calculate_monthly_macd(df)
+
         return {
             "date": str(df.index[-1].date()),
             "price": float(last_close),
+            "perf_1w": round(float(perf_1w), 2),
+            "perf_1m": round(float(perf_1m), 2),
+            "perf_2m": round(float(perf_2m), 2),
+            "perf_3m": round(float(perf_3m), 2),
             "rsi": round(rsi_data['rsi'], 2),
             "rsi_color": rsi_data.get('color', 'gray'),  # NEW: 6-tier phase color
             "ema3": round(rsi_data['ema3'], 2),
@@ -395,10 +415,278 @@ def scan_rsi_crossover(df: pd.DataFrame):
             "di_alignment": di_alignment,
             "momentum_score": momentum_score,
             "pressure_gauge": pressure_gauge,
+            "vcp_metrics": vcp_metrics,
+            "macd_m": macd_m,
+            "float_shares": get_float_shares_formatted(ticker),
             "setup": "Weekly RSI Reversal (w.rsi)"
         }
     
     return None
+
+def get_float_shares_formatted(ticker: str) -> str:
+    if not ticker: return "-"
+    try:
+        info = yf.Ticker(ticker).info
+        shares = info.get('floatShares', 0)
+        if not shares:
+            shares = info.get('sharesOutstanding', 0)
+        if shares >= 1_000_000_000:
+            return f"{shares/1_000_000_000:.1f}B"
+        elif shares >= 1_000_000:
+            return f"{shares/1_000_000:.1f}M"
+        elif shares > 0:
+            return str(shares)
+        return "-"
+    except:
+        return "-"
+
+
+def scan_3m_rally(df: pd.DataFrame, ticker: str = None):
+    """
+    Scanner for Explosive 3-Month Rally pullbacks.
+    - 3-Month return > +90%
+    - 1-Month return between 0% and -25% (shallow correction)
+    - 1-Week return > +10% (resuming momentum)
+    """
+    if df is None or df.empty:
+        return None
+        
+    df = indicators.normalize_dataframe(df)
+    df = df.sort_index()
+    
+    len_df = len(df)
+    if len_df < 65:
+        return None
+        
+    close = df['Close'].values
+    last_close = float(close[-1])
+    
+    # Calculate performance
+    perf_1w = ((last_close / float(close[-5])) - 1) * 100
+    perf_1m = ((last_close / float(close[-21])) - 1) * 100
+    perf_2m = ((last_close / float(close[-42])) - 1) * 100
+    perf_3m = ((last_close / float(close[-63])) - 1) * 100
+    
+    # Apply strict conditions
+    if perf_3m <= 90.0:
+        return None
+    if not (-25.0 <= perf_1m <= 0.0):
+        return None
+    if perf_1w <= 10.0:
+        return None
+        
+    rally_high_3m = float(df['High'].iloc[-63:].max())
+    rally_low_3m = float(df['Low'].iloc[-63:].min())
+    
+    # If passes conditions, calculate all the standard UI indicators
+    rsi_data = indicators.calculate_weekly_rsi_analytics(df)
+    if not rsi_data:
+        return None
+        
+    # Standard Indicators
+    vol_data = indicators.calculate_buying_volume_trend(df, window=21)
+    stars = 3 if (rsi_data.get('color') == 'green' or rsi_data.get('smi_bullish')) else 2
+    
+    macd_d = indicators.calculate_daily_macd(df)
+    ema60_d = indicators.calculate_ema(df, 60)
+    sma200_d = indicators.calculate_sma(df, 200)
+    
+    di_plus, di_minus, adx = indicators.calculate_adx_di(df, period=14)
+    di_h1_dict = indicators.calculate_multi_tf_di({'d1': df}) # simplified for d1
+    di_alignment = {"h1": None, "h4": None, "d1": di_plus > di_minus}
+    
+    stage_data = indicators.calculate_weinstein_stage(df)
+    range_52w = indicators.calculate_52w_range(df).get("position_pct")
+    is_bullish = rsi_data.get('ema3', 0) > rsi_data.get('ema14', 0)
+    
+    ema_dict = {'ema_200': sma200_d, 'ema_35': ema60_d, 'ema_21': ema60_d, 'ema_8': ema60_d} 
+    momentum_score = indicators.calculate_momentum_score(last_close, ema_dict, rsi_data, di_alignment)
+    
+    pressure_gauge = {"udvr_normalized": 50, "udvr_trend": "neutral", "composite": 50, "signal": "neutral"}
+    try:
+         pressure_gauge = indicators.calculate_pressure_gauge(df, None)
+    except:
+         pass
+         
+    vcp_metrics = {"tightness_pct": 0.0, "contractions": 0, "is_vcp": False, "base_depth_pct": 0.0}
+    try:
+         vcp_metrics = indicators.calculate_vcp_metrics(df, 126)
+    except:
+         pass
+         
+    # Volume Week vs Month
+    vol_week_ratio = 1.0
+    try:
+        if len_df >= 20:
+            vol_w = df['Volume'].iloc[-5:].mean()
+            vol_m = df['Volume'].iloc[-20:].mean()
+            vol_week_ratio = vol_w / vol_m if vol_m > 0 else 1.0
+    except:
+        pass
+
+    macd_m = indicators.calculate_monthly_macd(df)
+
+    return {
+        "date": str(df.index[-1].date()),
+        "price": last_close,
+        "perf_1w": round(perf_1w, 2),
+        "perf_1m": round(perf_1m, 2),
+        "perf_2m": round(perf_2m, 2),
+        "perf_3m": round(perf_3m, 2),
+        "rally_high_3m": round(rally_high_3m, 2),
+        "rally_low_3m": round(rally_low_3m, 2),
+        "rsi": round(rsi_data['rsi'], 2),
+        "rsi_color": rsi_data.get('color', 'gray'),
+        "ema3": round(rsi_data['ema3'], 2),
+        "ema14": round(rsi_data['ema14'], 2),
+        "ema60_d": round(ema60_d, 2),
+        "sma200_d": round(sma200_d, 2) if sma200_d else None,
+        "is_above_sma200": last_close > (sma200_d or 999999), 
+        "di_plus": round(di_plus, 2),
+        "di_minus": round(di_minus, 2),
+        "adx": round(adx, 2),
+        "di_plus_above_adx": di_plus > adx,
+        "vol_ratio": round(vol_data['ratio'], 2),
+        "is_vol_growing": vol_data['is_growing'],
+        "vol_week_vs_month": round(vol_week_ratio, 2),
+        "stars": stars,
+        "macd_d": round(macd_d, 2),
+        "is_bullish": bool(is_bullish),
+        "smi": round(rsi_data.get('smi', 0.0), 2),
+        "smi_bullish": rsi_data.get('smi_bullish', False),
+        "stage": stage_data,
+        "range_52w": range_52w,
+        "di_alignment": di_alignment,
+        "vcp_metrics": vcp_metrics,
+        "macd_m": macd_m,
+        "float_shares": get_float_shares_formatted(ticker),
+        "setup": "3M Rally (90/25/10)"
+    }
+
+
+def scan_deep_oversold(df: pd.DataFrame, ticker: str = None):
+    """
+    Deep Oversold Scanner
+    - Weekly RSI < 30
+    - Daily RSI < 25
+    Returns stocks fundamentally crashing but finding deep exhaustion.
+    """
+    if df is None or df.empty:
+        return None
+        
+    df = indicators.normalize_dataframe(df)
+    df = df.sort_index()
+    
+    if len(df) < 65:
+        return None
+        
+    # Quick Reject logic (perform daily RSI check before heavy indicator calculations)
+    rsi_d_series = indicators.calculate_rsi(df['Close'], period=14)
+    if rsi_d_series is None or len(rsi_d_series) < 1:
+         return None
+         
+    rsi_d_current = float(rsi_d_series.iloc[-1])
+    if rsi_d_current >= 25:
+         return None
+         
+    # Full indicator load if it passes Daily quick-check
+    rsi_data = indicators.calculate_weekly_rsi_analytics(df)
+    if not rsi_data:
+        return None
+        
+    rsi_w_current = float(rsi_data['rsi'])
+    if rsi_w_current >= 30:
+        return None
+        
+    # Calculate performance metrics
+    close = df['Close'].values
+    last_close = float(close[-1])
+    
+    perf_1w = ((last_close / float(close[-5])) - 1) * 100
+    perf_1m = ((last_close / float(close[-21])) - 1) * 100
+    perf_2m = ((last_close / float(close[-42])) - 1) * 100
+    perf_3m = ((last_close / float(close[-63])) - 1) * 100
+    
+    rally_high_3m = float(df['High'].iloc[-63:].max())
+    rally_low_3m = float(df['Low'].iloc[-63:].min())
+        
+    # Standard Indicators
+    vol_data = indicators.calculate_buying_volume_trend(df, window=21)
+    stars = 3 if rsi_d_current < 20 else 2
+    
+    macd_d = indicators.calculate_daily_macd(df)
+    ema60_d = indicators.calculate_ema(df, 60)
+    sma200_d = indicators.calculate_sma(df, 200)
+    
+    di_plus, di_minus, adx = indicators.calculate_adx_di(df, period=14)
+    di_alignment = {"h1": None, "h4": None, "d1": di_plus > di_minus}
+    
+    stage_data = indicators.calculate_weinstein_stage(df)
+    range_52w = indicators.calculate_52w_range(df).get("position_pct")
+    is_bullish = False
+    
+    ema_dict = {'ema_200': sma200_d, 'ema_35': ema60_d, 'ema_21': ema60_d, 'ema_8': ema60_d} 
+    momentum_score = indicators.calculate_momentum_score(last_close, ema_dict, rsi_data, di_alignment)
+    
+    pressure_gauge = {"udvr_normalized": 50, "udvr_trend": "neutral", "composite": 50, "signal": "neutral"}
+    try:
+         pressure_gauge = indicators.calculate_pressure_gauge(df, None)
+    except:
+         pass
+         
+    vcp_metrics = {"tightness_pct": 0.0, "contractions": 0, "is_vcp": False, "base_depth_pct": 0.0}
+    
+    # Volume Week vs Month
+    vol_week_ratio = 1.0
+    try:
+         vol_w = df['Volume'].iloc[-5:].mean()
+         vol_m = df['Volume'].iloc[-20:].mean()
+         vol_week_ratio = vol_w / vol_m if vol_m > 0 else 1.0
+    except:
+         pass
+
+    macd_m = indicators.calculate_monthly_macd(df)
+
+    # Note: We assign RSI_D to the `rsi_d` field to add support for it
+    return {
+        "date": str(df.index[-1].date()),
+        "price": last_close,
+        "perf_1w": round(perf_1w, 2),
+        "perf_1m": round(perf_1m, 2),
+        "perf_2m": round(perf_2m, 2),
+        "perf_3m": round(perf_3m, 2),
+        "rally_high_3m": round(rally_high_3m, 2),
+        "rally_low_3m": round(rally_low_3m, 2),
+        "rsi": round(rsi_w_current, 2),
+        "rsi_d": round(rsi_d_current, 2),  # NEW EXPLICIT DAILY RSI
+        "rsi_color": rsi_data.get('color', 'gray'),
+        "ema3": round(rsi_data['ema3'], 2),
+        "ema14": round(rsi_data['ema14'], 2),
+        "ema60_d": round(ema60_d, 2),
+        "sma200_d": round(sma200_d, 2) if sma200_d else None,
+        "is_above_sma200": last_close > (sma200_d or 999999), 
+        "di_plus": round(di_plus, 2),
+        "di_minus": round(di_minus, 2),
+        "adx": round(adx, 2),
+        "di_plus_above_adx": di_plus > adx,
+        "vol_ratio": round(vol_data['ratio'], 2),
+        "is_vol_growing": vol_data['is_growing'],
+        "vol_week_vs_month": round(vol_week_ratio, 2),
+        "stars": stars,
+        "macd_d": round(macd_d, 2),
+        "is_bullish": False,
+        "smi": round(rsi_data.get('smi', 0.0), 2),
+        "smi_bullish": rsi_data.get('smi_bullish', False),
+        "stage": stage_data,
+        "range_52w": range_52w,
+        "di_alignment": di_alignment,
+        "momentum_score": momentum_score,
+        "pressure_gauge": pressure_gauge,
+        "vcp_metrics": vcp_metrics,
+        "macd_m": macd_m,
+        "float_shares": get_float_shares_formatted(ticker),
+        "setup": "Deep Oversold (<25/<30)"
+    }
 
 
 def scan_vcp_pattern(df: pd.DataFrame, ticker: str = None):
@@ -498,18 +786,510 @@ def scan_vcp_pattern(df: pd.DataFrame, ticker: str = None):
     if depth_pct < 2 or depth_pct > 50:
         return None
     
+    macd_m = indicators.calculate_monthly_macd(df)
+    
     return {
         "ticker": ticker,
         "price": round(float(last_close), 2),
         "change_pct": round(float(df['Close'].pct_change().iloc[-1] * 100), 2),
         "vol_ratio": round(vol_ratio, 2),
         "base_depth": round(depth_pct, 2),
+        "macd_m": macd_m,
+        "float_shares": get_float_shares_formatted(ticker),
         "contraction_count": 1, # Simplified
         "stars": 3 if range_10d_pct < 10 else 2,
         "setup": "VCP (Tight)"
     }
     
 
+def scan_wave2_correction(df: pd.DataFrame, ticker: str = None):
+    """
+    Scanner for Elliott Wave 2 Correction ending.
+    Detects stocks finishing a Wave 2 pullback — ideal entry for Wave 3 impulse.
+    
+    Uses elliott.find_wave2_correction() for core detection, then enriches
+    with standard scanner indicators for frontend compatibility.
+    """
+    if df is None or df.empty:
+        return None
+    
+    df = indicators.normalize_dataframe(df)
+    df = df.sort_index()
+    
+    if len(df) < 65:
+        return None
+    
+    # Core detection via elliott module
+    import elliott
+    wave_data = elliott.find_wave2_correction(df)
+    
+    if not wave_data:
+        return None
+    
+    # Standard indicator calculations (for UI parity with other strategies)
+    close = df['Close'].values
+    last_close = float(close[-1])
+    len_df = len(df)
+    
+    # Performance metrics
+    perf_1w = ((last_close / float(close[-5])) - 1) * 100 if len_df >= 5 else 0
+    perf_1m = ((last_close / float(close[-21])) - 1) * 100 if len_df >= 21 else 0
+    perf_2m = ((last_close / float(close[-42])) - 1) * 100 if len_df >= 42 else 0
+    perf_3m = ((last_close / float(close[-63])) - 1) * 100 if len_df >= 63 else 0
+    
+    # Weekly RSI analytics
+    rsi_data = indicators.calculate_weekly_rsi_analytics(df)
+    if not rsi_data:
+        return None
+    
+    # Standard indicators
+    vol_data = indicators.calculate_buying_volume_trend(df, window=21)
+    macd_d = indicators.calculate_daily_macd(df)
+    ema60_d = indicators.calculate_ema(df, 60)
+    sma200_d = indicators.calculate_sma(df, 200)
+    di_plus, di_minus, adx = indicators.calculate_adx_di(df, period=14)
+    
+    is_bullish = rsi_data.get('ema3', 0) > rsi_data.get('ema14', 0)
+    
+    # Stage & Range
+    stage_data = {"stage": 0, "label": "N/A", "color": "gray"}
+    try:
+        stage_data = indicators.calculate_weinstein_stage(df, last_close)
+    except:
+        pass
+    
+    range_52w = {"low": 0, "high": 0, "position_pct": 50}
+    try:
+        range_52w = indicators.calculate_52w_range(df, last_close)
+    except:
+        pass
+    
+    di_alignment = {"h1": None, "h4": None, "d1": di_plus > di_minus}
+    
+    momentum_score = 0
+    try:
+        ema_dict = {
+            'ema_8': indicators.calculate_ema(df, 8),
+            'ema_21': indicators.calculate_ema(df, 21),
+            'ema_35': indicators.calculate_ema(df, 35),
+            'ema_200': sma200_d
+        }
+        rsi_summary = {'bullish': is_bullish, 'color': rsi_data.get('color', 'red')}
+        momentum_score = indicators.calculate_momentum_score(last_close, ema_dict, rsi_summary, di_alignment)
+    except:
+        pass
+    
+    pressure_gauge = {"udvr_normalized": 50, "udvr_trend": "neutral", "composite": 50, "signal": "neutral"}
+    try:
+        pressure_gauge = indicators.calculate_pressure_gauge(df, None)
+    except:
+        pass
+    
+    vcp_metrics = {"tightness_pct": 0.0, "contractions": 0, "is_vcp": False, "base_depth_pct": 0.0}
+    try:
+        vcp_metrics = indicators.calculate_vcp_metrics(df, 126)
+    except:
+        pass
+    
+    # Volume week vs month
+    vol_week_ratio = 1.0
+    try:
+        if len_df >= 21:
+            vol_w = df['Volume'].iloc[-5:].mean()
+            vol_m = df['Volume'].iloc[-21:].mean()
+            vol_week_ratio = vol_w / vol_m if vol_m > 0 else 1.0
+    except:
+        pass
+    
+    macd_m = indicators.calculate_monthly_macd(df)
+    
+    return {
+        "date": str(df.index[-1].date()),
+        "price": last_close,
+        "perf_1w": round(perf_1w, 2),
+        "perf_1m": round(perf_1m, 2),
+        "perf_2m": round(perf_2m, 2),
+        "perf_3m": round(perf_3m, 2),
+        "rsi": round(rsi_data['rsi'], 2),
+        "rsi_color": rsi_data.get('color', 'gray'),
+        "ema3": round(rsi_data['ema3'], 2),
+        "ema14": round(rsi_data['ema14'], 2),
+        "ema60_d": round(ema60_d, 2),
+        "sma200_d": round(sma200_d, 2) if sma200_d else None,
+        "is_above_sma200": last_close > (sma200_d or 999999),
+        "di_plus": round(di_plus, 2),
+        "di_minus": round(di_minus, 2),
+        "adx": round(adx, 2),
+        "di_plus_above_adx": di_plus > adx,
+        "vol_ratio": round(vol_data['ratio'], 2),
+        "is_vol_growing": vol_data['is_growing'],
+        "vol_week_vs_month": round(vol_week_ratio, 2),
+        "stars": wave_data.get("stars", 1),
+        "macd_d": round(macd_d, 2),
+        "is_bullish": bool(is_bullish),
+        "smi": round(rsi_data.get('smi', 0.0), 2),
+        "smi_bullish": rsi_data.get('smi_bullish', False),
+        "stage": stage_data,
+        "range_52w": range_52w,
+        "di_alignment": di_alignment,
+        "momentum_score": momentum_score,
+        "pressure_gauge": pressure_gauge,
+        "vcp_metrics": vcp_metrics,
+        "macd_m": macd_m,
+        "float_shares": get_float_shares_formatted(ticker),
+        # Wave 2 specific fields
+        "w1_height_pct": wave_data.get("w1_height_pct", 0),
+        "w2_retrace_pct": wave_data.get("w2_retrace_pct", 0),
+        "w2_fib_level": wave_data.get("w2_fib_level", 0),
+        "wave_quality": wave_data.get("quality", "LOW"),
+        "wave_phase": wave_data.get("phase", "Unknown"),
+        "rsi_daily": wave_data.get("rsi_daily", 50),
+        "w3_target_100": wave_data.get("w3_target_100", 0),
+        "w3_target_1618": wave_data.get("w3_target_1618", 0),
+        "w3_target_2618": wave_data.get("w3_target_2618", 0),
+        "wave_labels": wave_data.get("wave_labels", []),
+        "signal_details": wave_data.get("signal_details", []),
+        "setup": "Elliott Wave 2 Correction"
+    }
+
+
+def scan_bull_flag(df: pd.DataFrame, ticker: str = None):
+    """
+    Lightweight Bull Flag scanner for mentor pipeline.
+    Detects: Strong upward pole (>15%) followed by flat/down consolidation.
+    Works with pre-downloaded DataFrame (no extra API calls).
+    """
+    if df is None or df.empty:
+        return None
+    
+    df = indicators.normalize_dataframe(df)
+    df = df.sort_index().dropna()
+    
+    if len(df) < 60:
+        return None
+    
+    close = df['Close'].values
+    high = df['High'].values
+    low = df['Low'].values
+    volume = df['Volume'].values
+    last_close = close[-1]
+    
+    # --- FIND THE POLE (strong upward move in last 60 days) ---
+    best_pole = None
+    
+    # Scan for pole: look for the biggest rally in the 60-day window
+    window = min(60, len(df) - 1)
+    for pole_start in range(len(df) - window, len(df) - 15):
+        for pole_end in range(pole_start + 3, min(pole_start + 31, len(df) - 5)):
+            pole_low = low[pole_start]
+            pole_high = high[pole_end]
+            pole_gain = (pole_high - pole_low) / pole_low
+            pole_days = pole_end - pole_start
+            
+            if pole_gain >= 0.15 and pole_days >= 3 and pole_days <= 30:
+                if best_pole is None or pole_gain > best_pole['gain']:
+                    best_pole = {
+                        'start_idx': pole_start,
+                        'end_idx': pole_end,
+                        'low': pole_low,
+                        'high': pole_high,
+                        'gain': pole_gain,
+                        'days': pole_days
+                    }
+    
+    if best_pole is None:
+        return None
+    
+    # --- FLAG (consolidation after the pole) ---
+    flag_start = best_pole['end_idx']
+    flag_bars = len(df) - 1 - flag_start
+    
+    # Flag must be 5-25 bars
+    if flag_bars < 5 or flag_bars > 25:
+        return None
+    
+    flag_high = high[flag_start:].max()
+    flag_low = low[flag_start:].min()
+    flag_depth_pct = (flag_high - flag_low) / flag_high * 100
+    
+    # Flag must not exceed pole high significantly
+    if flag_high > best_pole['high'] * 1.03:
+        return None
+    
+    # Flag retracement must be <50% of pole
+    pole_height = best_pole['high'] - best_pole['low']
+    retracement = best_pole['high'] - flag_low
+    if retracement > pole_height * 0.50:
+        return None
+    
+    # Slope of flag highs should be flat or down
+    flag_highs = high[flag_start:]
+    x = np.arange(len(flag_highs))
+    slope, intercept = np.polyfit(x, flag_highs, 1)
+    
+    # Normalize slope relative to price
+    slope_pct = (slope / last_close) * 100
+    if slope_pct > 0.3:  # Flag shouldn't slope up more than 0.3% per day
+        return None
+    
+    # Volume should decline during flag
+    vol_flag = volume[flag_start:].mean()
+    vol_pole = volume[best_pole['start_idx']:best_pole['end_idx']].mean()
+    vol_declining = vol_flag < vol_pole * 1.1  # Allow slight increase
+    
+    if not vol_declining:
+        return None
+    
+    # Entry: top of flag channel + 1% buffer
+    channel_top = float(slope * (len(flag_highs) - 1) + intercept)
+    entry = round(channel_top * 1.01, 2)
+    stop = round(flag_low * 0.98, 2)
+    target = round(entry + pole_height, 2)  # Measured move: pole height from breakout
+    
+    return {
+        "ticker": ticker,
+        "pattern": "Bull Flag",
+        "price": round(float(last_close), 2),
+        "pole_gain_pct": round(best_pole['gain'] * 100, 1),
+        "pole_days": best_pole['days'],
+        "flag_days": flag_bars,
+        "flag_depth_pct": round(flag_depth_pct, 1),
+        "retracement_pct": round((retracement / pole_height) * 100, 1),
+        "entry": entry,
+        "stop": stop,
+        "target": target,
+        "setup": "Bull Flag"
+    }
+
+
+def scan_ascending_triangle(df: pd.DataFrame, ticker: str = None):
+    """
+    Ascending Triangle scanner for mentor pipeline.
+    Detects: Flat resistance + rising higher lows (ascending support).
+    Works with pre-downloaded DataFrame (no extra API calls).
+    """
+    if df is None or df.empty:
+        return None
+    
+    df = indicators.normalize_dataframe(df)
+    df = df.sort_index().dropna()
+    
+    if len(df) < 40:
+        return None
+    
+    close = df['Close'].values
+    high = df['High'].values
+    low = df['Low'].values
+    volume = df['Volume'].values
+    last_close = close[-1]
+    
+    # Use last 30 trading days for triangle detection
+    lookback = min(30, len(df) - 1)
+    segment_high = high[-lookback:]
+    segment_low = low[-lookback:]
+    segment_close = close[-lookback:]
+    segment_vol = volume[-lookback:]
+    
+    # --- FLAT RESISTANCE ---
+    # Find resistance: must have 2+ touches near the same level
+    resistance = segment_high.max()
+    
+    # Count touches within 2% of resistance
+    touch_zone = resistance * 0.98
+    touches = sum(1 for h in segment_high if h >= touch_zone)
+    
+    if touches < 2:
+        return None
+    
+    # --- RISING LOWS (Higher lows) ---
+    # Split into thirds and check lows are rising
+    third = len(segment_low) // 3
+    if third < 3:
+        return None
+    
+    low_1 = segment_low[:third].min()
+    low_2 = segment_low[third:2*third].min()
+    low_3 = segment_low[2*third:].min()
+    
+    # Each third should have higher or equal lows
+    rising_lows = low_2 >= low_1 * 0.98 and low_3 >= low_2 * 0.98
+    if not rising_lows:
+        return None
+    
+    # Support must be genuinely ascending (at least 2% higher from first to last)
+    overall_rise = (low_3 - low_1) / low_1
+    if overall_rise < 0.01:  # At least 1% rise
+        return None
+    
+    # --- PRICE SQUEEZE toward resistance ---
+    # Current price should be in the upper portion of the triangle
+    triangle_range = resistance - low_3
+    if triangle_range <= 0:
+        return None
+    
+    position_in_triangle = (last_close - low_3) / triangle_range
+    if position_in_triangle < 0.5:  # Should be in upper half
+        return None
+    
+    # --- VOLUME declining during consolidation ---
+    vol_first_half = segment_vol[:len(segment_vol)//2].mean()
+    vol_second_half = segment_vol[len(segment_vol)//2:].mean()
+    vol_declining = vol_second_half < vol_first_half * 1.2
+    
+    # Entry: breakout above resistance + 1%
+    entry = round(resistance * 1.01, 2)
+    stop = round(low_3 * 0.98, 2)
+    # Target: height of triangle from breakout
+    triangle_height = resistance - low_1
+    target = round(entry + triangle_height, 2)
+    
+    return {
+        "ticker": ticker,
+        "pattern": "Ascending Triangle",
+        "price": round(float(last_close), 2),
+        "resistance": round(float(resistance), 2),
+        "support_low": round(float(low_3), 2),
+        "touches": touches,
+        "squeeze_pct": round(position_in_triangle * 100, 1),
+        "vol_declining": vol_declining,
+        "entry": entry,
+        "stop": stop,
+        "target": target,
+        "setup": "Ascending Triangle"
+    }
+
+
+def scan_base_breakout(df: pd.DataFrame, ticker: str = None):
+    """
+    Long Base Breakout scanner (AGI-style setup).
+    Detects: Strong impulse move (>20%) followed by prolonged consolidation (30-120 days)
+    with declining volume, then price squeezing near the top of the base.
+    
+    Think: Cup-and-handle, flat base, or long bull flag after impulse.
+    """
+    if df is None or df.empty:
+        return None
+    
+    df = indicators.normalize_dataframe(df)
+    df = df.sort_index().dropna()
+    
+    # Need at least 6 months of data
+    if len(df) < 150:
+        return None
+    
+    close = df['Close'].values
+    high = df['High'].values
+    low = df['Low'].values
+    volume = df['Volume'].values
+    last_close = close[-1]
+    
+    # --- FIND THE IMPULSE MOVE (strong rally >20% in 5-30 days) ---
+    # Search in the window from 150 days ago to 30 days ago
+    best_impulse = None
+    search_start = max(0, len(df) - 150)
+    search_end = len(df) - 30  # Must leave at least 30 days for the base
+    
+    for imp_start in range(search_start, search_end):
+        for imp_end in range(imp_start + 5, min(imp_start + 31, search_end)):
+            imp_low = low[imp_start]
+            imp_high = high[imp_end]
+            imp_gain = (imp_high - imp_low) / imp_low
+            imp_days = imp_end - imp_start
+            
+            if imp_gain >= 0.20 and imp_days >= 5 and imp_days <= 30:
+                # Prefer the strongest, most recent impulse
+                if best_impulse is None or (imp_gain > best_impulse['gain'] * 0.9 and imp_end > best_impulse['end_idx']):
+                    best_impulse = {
+                        'start_idx': imp_start,
+                        'end_idx': imp_end,
+                        'low': imp_low,
+                        'high': imp_high,
+                        'gain': imp_gain,
+                        'days': imp_days
+                    }
+    
+    if best_impulse is None:
+        return None
+    
+    # --- BASE / CONSOLIDATION (30-120 days after impulse peak) ---
+    base_start = best_impulse['end_idx']
+    base_bars = len(df) - 1 - base_start
+    
+    # Base must be 30-120 trading days
+    if base_bars < 30 or base_bars > 120:
+        return None
+    
+    base_high = high[base_start:].max()
+    base_low = low[base_start:].min()
+    
+    # Base should not significantly exceed impulse high (no new highs during consolidation)
+    if base_high > best_impulse['high'] * 1.05:
+        return None
+    
+    # Base depth: retracement from impulse high should be <40% (shallow base = healthy)
+    impulse_height = best_impulse['high'] - best_impulse['low']
+    base_depth = best_impulse['high'] - base_low
+    depth_pct = (base_depth / best_impulse['high']) * 100
+    
+    if depth_pct > 40:
+        return None
+    
+    # --- VOLUME DECLINING during base ---
+    base_vol = volume[base_start:]
+    first_half_vol = base_vol[:len(base_vol)//2].mean()
+    second_half_vol = base_vol[len(base_vol)//2:].mean()
+    vol_declining = second_half_vol < first_half_vol * 1.1
+    
+    if not vol_declining:
+        return None
+    
+    # --- PRICE SQUEEZING near top of base ---
+    # Current price should be in the upper 60% of the base range
+    base_range = base_high - base_low
+    if base_range <= 0:
+        return None
+    
+    position_in_base = (last_close - base_low) / base_range
+    if position_in_base < 0.2:  # Should be above the very bottom (not breaking down)
+        return None
+    
+    # --- HIGHER LOWS FORMING (ascending base) ---
+    # Split base into quarters and check for rising or flat lows
+    q = len(base_vol) // 4
+    if q >= 3:
+        ql1 = low[base_start:base_start + q].min()
+        ql4 = low[base_start + 3*q:].min()
+        # Last quarter low should be >= first quarter low (or close)
+        has_higher_lows = ql4 >= ql1 * 0.95
+    else:
+        has_higher_lows = True  # Can't check, assume OK
+    
+    # Entry: breakout above base high + 1%
+    entry = round(base_high * 1.01, 2)
+    stop = round(base_low * 0.98, 2)
+    # Target: measured move (impulse height projected from breakout)
+    target = round(entry + impulse_height, 2)
+    
+    # Duration in weeks
+    base_weeks = base_bars // 5
+    
+    return {
+        "ticker": ticker,
+        "pattern": "Base Breakout",
+        "price": round(float(last_close), 2),
+        "impulse_gain_pct": round(best_impulse['gain'] * 100, 1),
+        "impulse_days": best_impulse['days'],
+        "base_days": base_bars,
+        "base_weeks": base_weeks,
+        "base_depth_pct": round(depth_pct, 1),
+        "position_in_base": round(position_in_base * 100, 1),
+        "vol_declining": vol_declining,
+        "has_higher_lows": has_higher_lows,
+        "entry": entry,
+        "stop": stop,
+        "target": target,
+        "setup": f"Base Breakout ({base_weeks}w base after +{round(best_impulse['gain'] * 100)}% impulse)"
+    }
 
 
 def analyze_bull_flag(ticker: str):

@@ -4117,21 +4117,23 @@ function Scanner({ onTickerClick }) {
                             <th className="p-2 text-right cursor-pointer hover:text-white transition" onClick={() => handleSort('price')}>
                                 Price
                             </th>
-                            <th className="p-2 text-right cursor-pointer hover:text-white transition" onClick={() => handleSort('rsi')}>
-                                RSI(W)
-                            </th>
-                            <th className="p-2 text-right cursor-pointer hover:text-white transition" onClick={() => handleSort('macd_d')}>
-                                MACD
-                            </th>
-                            <th className="p-2 text-right cursor-pointer hover:text-white transition" onClick={() => handleSort('ema60_d')}>
-                                EMA60
-                            </th>
-                            <th className="p-2 text-center cursor-pointer hover:text-white transition" onClick={() => handleSort('di_plus')}>
-                                DMI & Strength
-                            </th>
-                            <th className="p-2 text-right cursor-pointer hover:text-white transition" onClick={() => handleSort('vol_ratio')}>
-                                Vol
-                            </th>
+                            {strategy === 'wave2' ? (
+                                <>
+                                    <th className="p-2 text-right cursor-pointer hover:text-white transition text-cyan-400" onClick={() => handleSort('w2_retrace_pct')}>W2 Ret</th>
+                                    <th className="p-2 text-right cursor-pointer hover:text-white transition" onClick={() => handleSort('rsi_daily')}>RSI(D)</th>
+                                    <th className="p-2 text-center cursor-pointer hover:text-white transition" onClick={() => handleSort('wave_quality')}>Quality</th>
+                                    <th className="p-2 text-center cursor-pointer hover:text-white transition" onClick={() => handleSort('wave_phase')}>Phase</th>
+                                    <th className="p-2 text-right cursor-pointer hover:text-white transition text-green-400" onClick={() => handleSort('w3_target_1618')}>W3 Target</th>
+                                </>
+                            ) : (
+                                <>
+                                    <th className="p-2 text-right cursor-pointer hover:text-white transition" onClick={() => handleSort('rsi')}>RSI(W)</th>
+                                    <th className="p-2 text-right cursor-pointer hover:text-white transition" onClick={() => handleSort('macd_d')}>MACD</th>
+                                    <th className="p-2 text-right cursor-pointer hover:text-white transition" onClick={() => handleSort('ema60_d')}>EMA60</th>
+                                    <th className="p-2 text-center cursor-pointer hover:text-white transition" onClick={() => handleSort('di_plus')}>DMI & Strength</th>
+                                    <th className="p-2 text-right cursor-pointer hover:text-white transition" onClick={() => handleSort('vol_ratio')}>Vol</th>
+                                </>
+                            )}
                             <th className="p-2 text-center">Chart</th>
                         </tr>
                     </thead>
@@ -4162,28 +4164,72 @@ function Scanner({ onTickerClick }) {
                                     {'⭐'.repeat(row.stars || 1)}
                                 </td>
                                 <td className="p-2 text-right font-mono text-white text-xs">${row.price?.toFixed(2)}</td>
-                                <td className={`p-2 text-right font-bold text-xs ${row.rsi < 35 ? 'text-green-400' : 'text-blue-300'}`}>
-                                    {row.rsi?.toFixed(1)}
-                                </td>
-                                <td className="p-2 text-right text-xs font-mono">
-                                    <span className={row.macd_d > 0 ? 'text-green-400' : 'text-red-400'}>
-                                        {row.macd_d?.toFixed(2)}
-                                    </span>
-                                </td>
-                                <td className={`p-2 text-right font-mono text-xs ${row.price > row.ema60_d ? 'text-green-400 font-bold' : 'text-slate-500'}`}>
-                                    {row.ema60_d?.toFixed(0)}
-                                </td>
-                                <td className="p-2 text-center">
-                                    <div className={`text-[10px] font-bold ${row.is_bullish ? 'text-green-400' : 'text-slate-500'}`}>
-                                        {row.di_plus > row.di_minus ? 'BULL' : 'NEUT'} {row.di_plus_above_adx ? '⚡' : ''}
-                                    </div>
-                                    <div className="text-[9px] text-slate-500 font-mono">
-                                        {row.di_plus?.toFixed(0)}/{row.di_minus?.toFixed(0)}/{row.adx?.toFixed(0)}
-                                    </div>
-                                </td>
-                                <td className={`p-2 text-right font-bold text-xs ${row.is_vol_growing ? 'text-orange-400' : 'text-slate-500'}`}>
-                                    {row.vol_ratio?.toFixed(1)}x
-                                </td>
+                                {strategy === 'wave2' ? (
+                                    <>
+                                        <td className="p-2 text-right font-bold text-xs font-mono">
+                                            {(() => {
+                                                const ret = row.w2_retrace_pct;
+                                                if (!ret) return <span className="text-slate-600">-</span>;
+                                                const color = (ret >= 45 && ret <= 68) ? 'text-green-400' : (ret >= 38 && ret <= 78) ? 'text-yellow-400' : 'text-red-400';
+                                                return <span className={color}>{ret.toFixed(1)}%</span>;
+                                            })()}
+                                        </td>
+                                        <td className="p-2 text-right font-bold text-xs font-mono">
+                                            {(() => {
+                                                const drsi = row.rsi_daily;
+                                                if (!drsi) return <span className="text-slate-600">-</span>;
+                                                const color = drsi > 55 ? 'text-green-400' : drsi < 45 ? 'text-red-400' : 'text-yellow-400';
+                                                return <span className={color}>{drsi.toFixed(1)}</span>;
+                                            })()}
+                                        </td>
+                                        <td className="p-2 text-center">
+                                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${
+                                                row.wave_quality === 'HIGH' ? 'text-green-300 border-green-500/30 bg-green-900/20' :
+                                                row.wave_quality === 'MED' ? 'text-yellow-300 border-yellow-500/30 bg-yellow-900/20' :
+                                                'text-red-300 border-red-500/30 bg-red-900/20'
+                                            }`}>
+                                                {row.wave_quality || 'N/A'}
+                                            </span>
+                                        </td>
+                                        <td className="p-2 text-center">
+                                            <span className={`text-[10px] font-bold ${
+                                                row.wave_phase === 'Reversal' ? 'text-cyan-400' :
+                                                row.wave_phase === 'Testing' ? 'text-yellow-400' :
+                                                'text-slate-500'
+                                            }`}>
+                                                {row.wave_phase || '-'}
+                                            </span>
+                                        </td>
+                                        <td className="p-2 text-right font-mono text-xs text-green-400 font-bold">
+                                            ${row.w3_target_1618?.toFixed(2)}
+                                        </td>
+                                    </>
+                                ) : (
+                                    <>
+                                        <td className={`p-2 text-right font-bold text-xs ${row.rsi < 35 ? 'text-green-400' : 'text-blue-300'}`}>
+                                            {row.rsi?.toFixed(1)}
+                                        </td>
+                                        <td className="p-2 text-right text-xs font-mono">
+                                            <span className={row.macd_d > 0 ? 'text-green-400' : 'text-red-400'}>
+                                                {row.macd_d?.toFixed(2)}
+                                            </span>
+                                        </td>
+                                        <td className={`p-2 text-right font-mono text-xs ${row.price > row.ema60_d ? 'text-green-400 font-bold' : 'text-slate-500'}`}>
+                                            {row.ema60_d?.toFixed(0)}
+                                        </td>
+                                        <td className="p-2 text-center">
+                                            <div className={`text-[10px] font-bold ${row.is_bullish ? 'text-green-400' : 'text-slate-500'}`}>
+                                                {row.di_plus > row.di_minus ? 'BULL' : 'NEUT'} {row.di_plus_above_adx ? '⚡' : ''}
+                                            </div>
+                                            <div className="text-[9px] text-slate-500 font-mono">
+                                                {row.di_plus?.toFixed(0)}/{row.di_minus?.toFixed(0)}/{row.adx?.toFixed(0)}
+                                            </div>
+                                        </td>
+                                        <td className={`p-2 text-right font-bold text-xs ${row.is_vol_growing ? 'text-orange-400' : 'text-slate-500'}`}>
+                                            {row.vol_ratio?.toFixed(1)}x
+                                        </td>
+                                    </>
+                                )}
                                 <td className="p-2 text-center">
                                     <button
                                         onClick={() => onTickerClick(row.ticker)}
@@ -4243,7 +4289,8 @@ function Scanner({ onTickerClick }) {
                         {[
                             { id: 'weekly_rsi', label: '📊 W.RSI', desc: 'Weekly RSI Crossover' },
                             { id: 'rally_3m', label: '🚀 3M Rally', desc: '3-Month Rally Pattern' },
-                            { id: 'vcp', label: '🔄 VCP', desc: 'Volatility Contraction' }
+                            { id: 'vcp', label: '🔄 VCP', desc: 'Volatility Contraction' },
+                            { id: 'wave2', label: '🌊 Wave 2', desc: 'Elliott Wave 2 Correction' }
                         ].map(s => (
                             <button key={s.id} onClick={() => setStrategy(s.id)}
                                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${

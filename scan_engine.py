@@ -103,6 +103,12 @@ def process_ticker(ticker, data_df=None, use_cache=True, strategy="rally_3m"):
             result = screener.scan_rsi_crossover(df)
         elif strategy == "vcp":
             result = screener.scan_vcp_pattern(df, ticker)
+        elif strategy == "3m_rally":
+            result = screener.scan_3m_rally(df, ticker)
+        elif strategy == "deep_oversold":
+            result = screener.scan_deep_oversold(df, ticker)
+        elif strategy == "wave2":
+            result = screener.scan_wave2_correction(df, ticker)
         else:
             result = screener.compute_3m_pattern(df)
         

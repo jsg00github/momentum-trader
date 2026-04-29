@@ -129,6 +129,218 @@ def find_abc_breakout(df: pd.DataFrame) -> Dict:
     
     return best_pattern
 
+
+def find_wave2_correction(df: pd.DataFrame) -> Optional[Dict]:
+    """
+    Detect Elliott Wave 2 correction ending — ideal entry for Wave 3.
+    
+    Logic:
+    1. Find a significant Wave 1 impulse (>= 25% rally)
+    2. Measure Wave 2 retracement vs Fibonacci levels
+    3. Verify Wave 2 does NOT violate Wave 1 start (Elliott Rule)
+    4. Check reversal signals: RSI oversold, bullish candle, volume dry-up
+    5. Score quality and return Wave 3 projections
+    
+    Returns dict with wave metrics or None if no valid pattern.
+    """
+    if df is None or df.empty or len(df) < 60:
+        return None
+    
+    closes = df['Close'].values
+    highs = df['High'].values
+    lows = df['Low'].values
+    volumes = df['Volume'].values
+    dates = df.index
+    n = len(closes)
+    
+    # 1. Find pivots with adaptive window
+    window = max(3, min(7, n // 30))
+    peaks, troughs = find_pivot_points(closes, window=window)
+    
+    if len(peaks) < 1 or len(troughs) < 2:
+        return None
+    
+    # 2. Search for Wave 1 + Wave 2 pattern (most recent first)
+    # Structure: Trough_start -> Peak_w1 -> Trough_w2 (current area)
+    best = None
+    
+    # Iterate peaks as potential Wave 1 tops (from most recent)
+    for peak_idx in reversed(peaks):
+        # Peak must be in the last 70% of data (not too old)
+        if peak_idx < n * 0.2:
+            continue
+        
+        # Find the trough BEFORE this peak (Wave 1 start)
+        w1_start_idx = None
+        w1_start_price = None
+        for t_idx in reversed(troughs):
+            if t_idx < peak_idx:
+                w1_start_idx = t_idx
+                w1_start_price = closes[t_idx]
+                break
+        
+        if w1_start_idx is None:
+            continue
+        
+        w1_top_price = closes[peak_idx]
+        w1_height = w1_top_price - w1_start_price
+        
+        # Wave 1 must be a significant rally (>= 20%)
+        if w1_start_price <= 0:
+            continue
+        w1_pct = (w1_height / w1_start_price) * 100
+        if w1_pct < 20:
+            continue
+        
+        # 3. Find Wave 2 trough (lowest point AFTER the peak)
+        # Must be after peak and within reasonable timeframe
+        post_peak_lows = lows[peak_idx:]
+        if len(post_peak_lows) < 3:
+            continue
+        
+        # Wave 2 low = minimum low after W1 peak
+        w2_rel_idx = np.argmin(post_peak_lows)
+        w2_abs_idx = peak_idx + w2_rel_idx
+        w2_low_price = float(lows[w2_abs_idx])
+        
+        # ELLIOTT RULE: Wave 2 cannot go below Wave 1 start
+        if w2_low_price <= w1_start_price:
+            continue
+        
+        # 4. Calculate Fibonacci retracement
+        retrace_amount = w1_top_price - w2_low_price
+        retrace_pct = (retrace_amount / w1_height) * 100 if w1_height > 0 else 0
+        
+        # Valid retracement: 23.6% to 86% (loose to catch more setups)
+        if retrace_pct < 23.6 or retrace_pct > 86:
+            continue
+        
+        # Find nearest Fibonacci level
+        fib_levels = [23.6, 38.2, 50.0, 61.8, 78.6]
+        nearest_fib = min(fib_levels, key=lambda x: abs(x - retrace_pct))
+        
+        # 5. Wave 2 should be recent (correction should be near current price)
+        # The low should be within the last 40% of bars after the peak
+        bars_after_peak = n - peak_idx
+        if bars_after_peak > 0:
+            w2_position = (w2_abs_idx - peak_idx) / bars_after_peak
+        else:
+            continue
+        
+        # Current price should be near or slightly above W2 low
+        current_price = float(closes[-1])
+        
+        # Don't select if price has already rallied significantly past W2 low
+        # (would mean Wave 3 already started and we missed the entry)
+        recovery_from_w2 = ((current_price - w2_low_price) / w2_low_price) * 100 if w2_low_price > 0 else 999
+        if recovery_from_w2 > 15:
+            # Already moved too much — Wave 3 might be underway, not an entry
+            continue
+        
+        # 6. Reversal signals
+        signals = 0
+        signal_details = []
+        
+        # A. RSI oversold / neutral (daily RSI < 45)
+        try:
+            import indicators
+            rsi_series = indicators.calculate_rsi(pd.Series(closes), period=14)
+            rsi_current = float(rsi_series.iloc[-1])
+            if rsi_current < 45:
+                signals += 1
+                signal_details.append(f"RSI oversold ({rsi_current:.1f})")
+            if rsi_current < 35:
+                signals += 1  # Extra point for deeply oversold
+                signal_details.append("Deeply oversold")
+        except:
+            rsi_current = 50
+        
+        # B. Bullish candle (last candle close > open)
+        if closes[-1] > df['Open'].values[-1]:
+            signals += 1
+            signal_details.append("Bullish candle")
+        
+        # C. Volume dry-up during correction
+        try:
+            if peak_idx < n - 5:
+                vol_impulse = np.mean(volumes[w1_start_idx:peak_idx+1]) if peak_idx > w1_start_idx else volumes[peak_idx]
+                vol_correction = np.mean(volumes[peak_idx:]) if n > peak_idx else volumes[-1]
+                if vol_correction < vol_impulse * 0.8:
+                    signals += 1
+                    signal_details.append("Volume dry-up")
+        except:
+            pass
+        
+        # D. Price holding above key Fibonacci level (50% or 61.8%)
+        if 45 <= retrace_pct <= 68:
+            signals += 1
+            signal_details.append(f"Ideal Fib zone ({nearest_fib}%)")
+        
+        # 7. Quality scoring
+        if signals >= 4:
+            quality = "HIGH"
+        elif signals >= 2:
+            quality = "MED"
+        else:
+            quality = "LOW"
+        
+        # Stars rating
+        stars = min(3, max(1, signals - 1))
+        
+        # 8. Determine phase
+        if recovery_from_w2 > 5 and closes[-1] > closes[-2]:
+            phase = "Reversal"
+        elif abs(recovery_from_w2) < 5:
+            phase = "Testing"
+        else:
+            phase = "Correcting"
+        
+        # 9. Wave 3 projections
+        w3_target_100 = w2_low_price + w1_height
+        w3_target_1618 = w2_low_price + (w1_height * 1.618)
+        w3_target_2618 = w2_low_price + (w1_height * 2.618)
+        
+        candidate = {
+            "w1_start_idx": int(w1_start_idx),
+            "w1_start_price": float(w1_start_price),
+            "w1_start_date": str(dates[w1_start_idx].date()) if hasattr(dates[w1_start_idx], 'date') else str(dates[w1_start_idx]),
+            "w1_top_idx": int(peak_idx),
+            "w1_top_price": float(w1_top_price),
+            "w1_top_date": str(dates[peak_idx].date()) if hasattr(dates[peak_idx], 'date') else str(dates[peak_idx]),
+            "w1_height_pct": round(w1_pct, 1),
+            "w2_low_idx": int(w2_abs_idx),
+            "w2_low_price": w2_low_price,
+            "w2_low_date": str(dates[w2_abs_idx].date()) if hasattr(dates[w2_abs_idx], 'date') else str(dates[w2_abs_idx]),
+            "w2_retrace_pct": round(retrace_pct, 1),
+            "w2_fib_level": nearest_fib,
+            "current_price": current_price,
+            "recovery_pct": round(recovery_from_w2, 1),
+            "rsi_daily": round(rsi_current, 1),
+            "signals": signals,
+            "signal_details": signal_details,
+            "quality": quality,
+            "stars": stars,
+            "phase": phase,
+            "w3_target_100": round(w3_target_100, 2),
+            "w3_target_1618": round(w3_target_1618, 2),
+            "w3_target_2618": round(w3_target_2618, 2),
+            "wave_labels": [
+                {"date": str(dates[w1_start_idx].date()) if hasattr(dates[w1_start_idx], 'date') else str(dates[w1_start_idx]),
+                 "price": float(w1_start_price), "label": "W1 Start", "type": "trough"},
+                {"date": str(dates[peak_idx].date()) if hasattr(dates[peak_idx], 'date') else str(dates[peak_idx]),
+                 "price": float(w1_top_price), "label": "W1 Top", "type": "peak"},
+                {"date": str(dates[w2_abs_idx].date()) if hasattr(dates[w2_abs_idx], 'date') else str(dates[w2_abs_idx]),
+                 "price": w2_low_price, "label": "W2 Low", "type": "trough"},
+            ]
+        }
+        
+        # Prefer highest quality, then most recent
+        if best is None or candidate["signals"] > best["signals"]:
+            best = candidate
+    
+    return best
+
+
 def analyze_elliott_waves(df: pd.DataFrame) -> Dict:
     """
     Simplified Wrapper replacing original logic.
