@@ -241,19 +241,43 @@ for sector, tickers in SECTOR_HOLDINGS.items():
     for t in tickers:
         _TICKER_TO_SECTOR[t] = sector
 
+# In-memory cache for yfinance sector lookups (persists for the process lifetime)
+_YF_SECTOR_CACHE = {}
+
 def get_ticker_sector(ticker):
-    """Returns the sector name for a given ticker, or 'Other' if unknown."""
-    # Check manual mapping first
+    """Returns the sector name for a given ticker.
+    
+    Uses a 3-tier lookup:
+    1. Fast hardcoded mapping (~150 major stocks)
+    2. In-memory cache from previous yfinance lookups
+    3. Live yfinance .info query (cached for future use)
+    """
+    # 1. Check manual mapping first (instant)
     if ticker in _TICKER_TO_SECTOR:
         etf = _TICKER_TO_SECTOR[ticker]
-        # Reverse lookup sector name
         for name, sym in SECTORS.items():
             if sym == etf: return name
             
     # Fallback to ETF lookup if ticker is a sector ETF itself
     for name, sym in SECTORS.items():
         if sym == ticker: return name
-        
+    
+    # 2. Check in-memory yfinance cache
+    if ticker in _YF_SECTOR_CACHE:
+        return _YF_SECTOR_CACHE[ticker]
+    
+    # 3. Live lookup via yfinance .info (slow but accurate)
+    try:
+        info = yf.Ticker(ticker).info
+        sector = info.get("sector", None)
+        if sector:
+            _YF_SECTOR_CACHE[ticker] = sector
+            return sector
+    except Exception as e:
+        print(f"[Sector] yfinance lookup failed for {ticker}: {e}")
+    
+    # Cache "Other" to avoid repeated failed lookups
+    _YF_SECTOR_CACHE[ticker] = "Other"
     return "Other"
 
 def get_benchmark_performance(dates):

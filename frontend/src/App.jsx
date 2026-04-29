@@ -3992,12 +3992,13 @@ function Scanner({ onTickerClick }) {
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF();
 
-            const tableColumn = ["Ticker", "Score", "Price", "RSI", "MACD", "EMA60", "DMI (+/-)", "Vol Ratio"];
+            const tableColumn = ["Ticker", "Sector", "Score", "Price", "RSI", "MACD", "EMA60", "DMI (+/-)", "Vol Ratio"];
             const tableRows = [];
 
             sortedResults.forEach(ticket => {
                 const ticketData = [
                     ticket.ticker,
+                    ticket.sector || 'Other',
                     ticket.score,
                     ticket.price?.toFixed(2),
                     ticket.rsi?.toFixed(2),
@@ -4093,6 +4094,9 @@ function Scanner({ onTickerClick }) {
                             <th className="p-2 cursor-pointer hover:text-white transition" onClick={() => handleSort('ticker')}>
                                 Ticker
                             </th>
+                            <th className="p-2 cursor-pointer hover:text-white transition" onClick={() => handleSort('sector')}>
+                                Sector
+                            </th>
                             <th className="p-2 text-center text-orange-400 cursor-pointer hover:text-white transition" onClick={() => handleSort('stars')}>
                                 Stars
                             </th>
@@ -4122,7 +4126,23 @@ function Scanner({ onTickerClick }) {
                             <tr key={idx} className="hover:bg-slate-700/50 transition duration-150">
                                 <td className="p-2 cursor-pointer group" onClick={() => onTickerClick(row.ticker)}>
                                     <div className="font-bold text-white group-hover:text-blue-400 transition">{row.ticker}</div>
-                                    <div className="text-[9px] text-slate-500 truncate max-w-[60px]">{row.sector || 'Other'}</div>
+                                </td>
+                                <td className="p-2">
+                                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border ${
+                                        (row.sector || '').includes('Technol') ? 'text-blue-300 border-blue-500/30 bg-blue-900/20' :
+                                        (row.sector || '').includes('Health') ? 'text-emerald-300 border-emerald-500/30 bg-emerald-900/20' :
+                                        (row.sector || '').includes('Financ') ? 'text-amber-300 border-amber-500/30 bg-amber-900/20' :
+                                        (row.sector || '').includes('Energy') ? 'text-orange-300 border-orange-500/30 bg-orange-900/20' :
+                                        (row.sector || '').includes('Cons') ? 'text-pink-300 border-pink-500/30 bg-pink-900/20' :
+                                        (row.sector || '').includes('Industr') ? 'text-cyan-300 border-cyan-500/30 bg-cyan-900/20' :
+                                        (row.sector || '').includes('Comm') ? 'text-purple-300 border-purple-500/30 bg-purple-900/20' :
+                                        (row.sector || '').includes('Mater') ? 'text-teal-300 border-teal-500/30 bg-teal-900/20' :
+                                        (row.sector || '').includes('Real') ? 'text-lime-300 border-lime-500/30 bg-lime-900/20' :
+                                        (row.sector || '').includes('Utilit') ? 'text-yellow-300 border-yellow-500/30 bg-yellow-900/20' :
+                                        'text-slate-400 border-slate-600/30 bg-slate-800/30'
+                                    }`}>
+                                        {row.sector || 'Other'}
+                                    </span>
                                 </td>
                                 <td className="p-2 text-center text-xs whitespace-nowrap">
                                     {'⭐'.repeat(row.stars || 1)}
