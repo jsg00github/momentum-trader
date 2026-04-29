@@ -11,6 +11,8 @@ import models
 from database import get_db
 import auth
 import argentina_data
+import indicators
+import pandas as pd
 
 # Router for FastAPI
 router = APIRouter(prefix="/api/argentina", tags=["argentina"])
@@ -386,6 +388,30 @@ def api_get_portfolio(current_user: models.User = Depends(auth.get_current_user)
         
         total_ars += val_ars
         
+        # Calculate Daily RSI(14)
+        daily_rsi_val = None
+        try:
+            import yfinance as yf
+            # For local Argentine stocks use .BA suffix, for CEDEARs use raw US ticker
+            if p["asset_type"].lower() == "stock":
+                rsi_ticker = p["ticker"] if p["ticker"].endswith(".BA") else f"{p['ticker']}.BA"
+            else:
+                rsi_ticker = p["ticker"]  # CEDEARs are US tickers
+            
+            rsi_df = yf.download(rsi_ticker, period="3mo", progress=False)
+            if rsi_df is not None and not rsi_df.empty and 'Close' in rsi_df.columns:
+                close_series = rsi_df['Close']
+                if isinstance(close_series, pd.DataFrame):
+                    close_series = close_series.iloc[:, 0]
+                rsi_series = indicators.calculate_rsi(close_series, period=14)
+                if rsi_series is not None and len(rsi_series) > 0:
+                    import math
+                    val = float(rsi_series.iloc[-1])
+                    if not math.isnan(val):
+                        daily_rsi_val = round(val, 1)
+        except Exception as e:
+            print(f"[ARG RSI] Error for {p['ticker']}: {e}")
+        
         holdings.append({
             "id": p["id"],
             "ticker": p["ticker"],
@@ -396,6 +422,7 @@ def api_get_portfolio(current_user: models.User = Depends(auth.get_current_user)
             "value_ars": round(val_ars, 2),
             "pnl_ars": round(pnl, 2),
             "pnl_pct": round(pnl_pct, 2),
+            "daily_rsi": daily_rsi_val,
             "manual_price": p["manual_price"],
             "manual_price_updated_at": p["manual_price_updated_at"].isoformat() if p["manual_price_updated_at"] else None
         })

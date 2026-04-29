@@ -1423,6 +1423,7 @@ function TradeJournal() {
                 t3: groupTrades[0]?.target3 || 0,
                 strategy: groupTrades[0]?.strategy || '',
                 rsi: live.rsi_weekly?.val || 0,
+                dailyRsi: live.daily_rsi || null,
                 ema8: live.ema_8 || 0,
                 ema21: live.ema_21 || 0,
                 ema35: live.ema_35 || 0,
@@ -2202,6 +2203,9 @@ ${res.data.errors.join("\n")}`);
                                         <th onClick={() => requestSort('rsi')} className="p-2 text-center border-r border-slate-800 cursor-pointer hover:text-white transition">
                                             W. RSI <span className="text-[9px] ml-1">{getSortIcon('rsi')}</span>
                                         </th>
+                                        <th onClick={() => requestSort('dailyRsi')} className="p-2 text-center border-r border-slate-800 cursor-pointer hover:text-white transition">
+                                            D. RSI <span className="text-[9px] ml-1">{getSortIcon('dailyRsi')}</span>
+                                        </th>
                                         <th onClick={() => requestSort('ema8')} className="p-2 text-center border-r border-slate-800 cursor-pointer hover:text-white transition">
                                             EMA 8 <span className="text-[9px] ml-1">{getSortIcon('ema8')}</span>
                                         </th>
@@ -2332,6 +2336,16 @@ ${res.data.errors.join("\n")}`);
                                                                     <span className={`text-[9px] ${colorClass}`}>{rsi.bullish ? '▲' : '▼'}</span>
                                                                 </div>
                                                             );
+                                                        })()}
+                                                    </td>
+
+                                                    {/* Daily RSI */}
+                                                    <td className="p-2 text-center border-r border-slate-800 font-bold font-mono">
+                                                        {(() => {
+                                                            const drsi = row.dailyRsi;
+                                                            if (!drsi) return <span className="text-slate-600">-</span>;
+                                                            const color = drsi > 55 ? 'text-green-400' : drsi < 45 ? 'text-red-400' : 'text-yellow-400';
+                                                            return <span className={color}>{drsi.toFixed(1)}</span>;
                                                         })()}
                                                     </td>
 
@@ -6154,13 +6168,14 @@ function ArgentinaJournal() {
                             <th onClick={() => requestSort('current_price')} className="px-6 py-4 text-right cursor-pointer hover:text-white transition">Actual <span className="text-[9px] ml-1">{getSortIcon('current_price')}</span></th>
                             <th onClick={() => requestSort('value_ars')} className="px-6 py-4 text-right cursor-pointer hover:text-white transition">Valor ARS <span className="text-[9px] ml-1">{getSortIcon('value_ars')}</span></th>
                             <th onClick={() => requestSort('pnl_ars')} className="px-6 py-4 text-right cursor-pointer hover:text-white transition">P&L <span className="text-[9px] ml-1">{getSortIcon('pnl_ars')}</span></th>
+                            <th onClick={() => requestSort('daily_rsi')} className="px-6 py-4 text-center cursor-pointer hover:text-white transition">D. RSI <span className="text-[9px] ml-1">{getSortIcon('daily_rsi')}</span></th>
                             <th onClick={() => requestSort('asset_type')} className="px-6 py-4 text-center cursor-pointer hover:text-white transition">Tipo <span className="text-[9px] ml-1">{getSortIcon('asset_type')}</span></th>
                             <th className="px-6 py-4 text-right cursor-default">Acciones</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-[#1a1a1a]">
                         {sortedHoldings.length === 0 ? (
-                            <tr><td colSpan="8" className="p-8 text-center text-slate-500">No hay posiciones activas.</td></tr>
+                            <tr><td colSpan="9" className="p-8 text-center text-slate-500">No hay posiciones activas.</td></tr>
                         ) : sortedHoldings.map(pos => (
                             <tr key={pos.id} className="hover:bg-[#1a1a1a]">
                                 <td className="px-6 py-4 font-bold text-white">{pos.ticker}</td>
@@ -6193,6 +6208,14 @@ function ArgentinaJournal() {
                                 <td className="px-6 py-4 text-right text-white font-bold">${pos.value_ars?.toLocaleString()}</td>
                                 <td className={`px-6 py-4 text-right font-bold ${pos.pnl_ars >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                                     ${pos.pnl_ars?.toLocaleString()} ({pos.pnl_pct?.toFixed(2)}%)
+                                </td>
+                                <td className="px-6 py-4 text-center font-bold font-mono">
+                                    {(() => {
+                                        const drsi = pos.daily_rsi;
+                                        if (!drsi) return <span className="text-slate-600">-</span>;
+                                        const color = drsi > 55 ? 'text-green-400' : drsi < 45 ? 'text-red-400' : 'text-yellow-400';
+                                        return <span className={color}>{drsi.toFixed(1)}</span>;
+                                    })()}
                                 </td>
                                 <td className="px-6 py-4 text-center">
                                     <span className="bg-slate-800 text-slate-300 text-[10px] px-2 py-1 rounded border border-slate-600 uppercase">

@@ -572,6 +572,7 @@ def get_open_prices(current_user: models.User = Depends(auth.get_current_user), 
                 ema_8 = ema_21 = ema_35 = ema_200 = None
                 rsi_summary = None
                 momentum_path = None
+                daily_rsi_val = None
                 
                 if not df.empty and 'Close' in df.columns and len(df['Close']) >= 2:
                     close = df['Close']
@@ -602,6 +603,14 @@ def get_open_prices(current_user: models.User = Depends(auth.get_current_user), 
                     ema_21 = safe_round(ema_21_series.iloc[-1])
                     ema_35 = safe_round(ema_35_series.iloc[-1]) if len(ema_35_series) > 0 else None
                     ema_200 = safe_round(ema_200_series.iloc[-1]) if len(ema_200_series) >= 200 else None
+                    
+                    # Daily RSI(14)
+                    try:
+                        rsi_series = indicators.calculate_rsi(close, period=14)
+                        if rsi_series is not None and len(rsi_series) > 0:
+                            daily_rsi_val = safe_round(float(rsi_series.iloc[-1]), 1)
+                    except:
+                        pass
                     
                     try:
                         r = indicators.calculate_weekly_rsi_analytics(df)
@@ -721,6 +730,7 @@ def get_open_prices(current_user: models.User = Depends(auth.get_current_user), 
                     "ema_35": ema_35,
                     "ema_200": ema_200,
                     "rsi_weekly": rsi_summary,
+                    "daily_rsi": daily_rsi_val,
                     "momentum_path": momentum_path,
                     "volume_trend": volume_trend,
                     "stage": stage_data,
