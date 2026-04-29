@@ -185,11 +185,11 @@ def find_wave2_correction(df: pd.DataFrame) -> Optional[Dict]:
         w1_top_price = closes[peak_idx]
         w1_height = w1_top_price - w1_start_price
         
-        # Wave 1 must be a significant rally (>= 20%)
+        # Wave 1 must be a significant rally (>= 15%)
         if w1_start_price <= 0:
             continue
         w1_pct = (w1_height / w1_start_price) * 100
-        if w1_pct < 20:
+        if w1_pct < 15:
             continue
         
         # 3. Find Wave 2 trough (lowest point AFTER the peak)
@@ -233,7 +233,7 @@ def find_wave2_correction(df: pd.DataFrame) -> Optional[Dict]:
         # Don't select if price has already rallied significantly past W2 low
         # (would mean Wave 3 already started and we missed the entry)
         recovery_from_w2 = ((current_price - w2_low_price) / w2_low_price) * 100 if w2_low_price > 0 else 999
-        if recovery_from_w2 > 15:
+        if recovery_from_w2 > 20:
             # Already moved too much — Wave 3 might be underway, not an entry
             continue
         
@@ -241,15 +241,15 @@ def find_wave2_correction(df: pd.DataFrame) -> Optional[Dict]:
         signals = 0
         signal_details = []
         
-        # A. RSI oversold / neutral (daily RSI < 45)
+        # A. RSI oversold / neutral (daily RSI < 55)
         try:
             import indicators
             rsi_series = indicators.calculate_rsi(pd.Series(closes), period=14)
             rsi_current = float(rsi_series.iloc[-1])
-            if rsi_current < 45:
+            if rsi_current < 55:
                 signals += 1
-                signal_details.append(f"RSI oversold ({rsi_current:.1f})")
-            if rsi_current < 35:
+                signal_details.append(f"RSI neutral/oversold ({rsi_current:.1f})")
+            if rsi_current < 45:
                 signals += 1  # Extra point for deeply oversold
                 signal_details.append("Deeply oversold")
         except:

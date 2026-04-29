@@ -3929,13 +3929,18 @@ function Scanner({ onTickerClick }) {
                     setProgress(res.data);
 
                     // If scan finished while we were polling, capture results
-                    if (res.data.is_running === false && res.data.results && Array.isArray(res.data.results) && res.data.results.length > 0 && results.length === 0) {
-                        setResults(res.data.results);
-                        setStats({
-                            scanned: res.data.scanned || (res.data.total > 0 ? res.data.total : 0),
-                            count: res.data.results.length,
-                            spy_ret_3m: res.data.spy_ret_3m || 0
-                        });
+                    if (res.data.is_running === false) {
+                        if (res.data.results && Array.isArray(res.data.results)) {
+                            // Only update if we haven't already captured results
+                            if (results.length === 0 || res.data.results.length === 0) {
+                                setResults(res.data.results);
+                                setStats({
+                                    scanned: res.data.scanned || (res.data.total > 0 ? res.data.total : 0),
+                                    count: res.data.results.length,
+                                    spy_ret_3m: res.data.spy_ret_3m || 0
+                                });
+                            }
+                        }
                         setScanning(false);
                     }
                 } catch (e) {
