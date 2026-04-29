@@ -13191,11 +13191,9 @@ function Scanner({ onTickerClick }) {
 
 
                         <col style={{ width: '5%' }} />{/* Price */}
-
-
-                        <col style={{ width: '4.5%' }} />{/* RSI */}
-
-
+                        <col style={{ width: '4.5%' }} />{/* Float */}
+                        <col style={{ width: '4.5%' }} />{/* RSI(W) */}
+                        <col style={{ width: '4.5%' }} />{/* RSI(D) */}
                         <col style={{ width: '5%' }} />{/* Phase */}
 
 
@@ -13260,7 +13258,9 @@ function Scanner({ onTickerClick }) {
                             <Th k="perf_1m" className="text-right" filterType="range">1M%</Th>
                             <Th k="perf_1w" className="text-right" filterType="range">1W%</Th>
                             <Th k="price" className="text-right" filterType="range">Price</Th>
+                            <Th k="float_shares" className="text-right" filterType="category">Float</Th>
                             <Th k="rsi" className="text-right" filterType="range">RSI(W)</Th>
+                            <Th k="rsi_d" className="text-right" filterType="range">RSI(D)</Th>
                             <Th k="rsi_color" className="text-center" filterType="category" filterOptions={['Strong', 'Accum', 'Pull↑', 'Pull↓', 'Corr', 'Bear', '-']}>Phase</Th>
                             <Th k="smi" className="text-right" filterType="range">SMI</Th>
                             <Th k="macd_d" className="text-right" filterType="range">MACD</Th>
@@ -13305,6 +13305,21 @@ function Scanner({ onTickerClick }) {
 
                                     <td className="px-1 py-1 cursor-pointer group" onClick={() => onTickerClick(row.ticker)}>
                                         <div className="font-bold text-white group-hover:text-blue-400 transition text-[10px]">{row.ticker}</div>
+                                        {row.sector && (
+                                            <div className="text-[7px] text-slate-400 mt-0.5 whitespace-nowrap overflow-hidden text-ellipsis max-w-[60px]" title={row.sector}>
+                                                {row.sector}
+                                            </div>
+                                        )}
+                                        {row.w2_retrace_pct != null && (
+                                            <div className="text-[7px] text-blue-300 mt-0.5 whitespace-nowrap">
+                                                W2: {row.w2_retrace_pct}% | {row.wave_quality}
+                                            </div>
+                                        )}
+                                        {row.w3_target_1618 != null && (
+                                            <div className="text-[7px] text-green-400 mt-0.5 whitespace-nowrap">
+                                                Tgt: ${row.w3_target_1618}
+                                            </div>
+                                        )}
                                     </td>
                                     <td className={`px-1 py-1 text-right font-mono text-[9px] ${row.perf_3m > 0 ? 'text-green-400' : row.perf_3m < 0 ? 'text-red-400' : 'text-slate-500'}`}>
                                         <div>{row.perf_3m != null ? `${row.perf_3m > 0 ? '+' : ''}${row.perf_3m.toFixed(1)}%` : '-'}</div>
@@ -13327,13 +13342,16 @@ function Scanner({ onTickerClick }) {
 
                                     <td className="px-1 py-1 text-right font-mono text-white text-[10px]">${row.price?.toFixed(2)}</td>
 
+                                    <td className="px-1 py-1 text-right font-mono text-slate-300 text-[9px]">
+                                        {row.float_shares || '-'}
+                                    </td>
 
                                     <td className={`px-1 py-1 text-right font-bold text-[10px] ${row.rsi < 35 ? 'text-green-400' : 'text-blue-300'}`}>
-
-
                                         {row.rsi?.toFixed(1)}
+                                    </td>
 
-
+                                    <td className={`px-1 py-1 text-right font-bold text-[10px] ${row.rsi_d < 30 ? 'text-green-400' : 'text-blue-300'}`}>
+                                        {row.rsi_d != null ? row.rsi_d.toFixed(1) : '-'}
                                     </td>
 
 
@@ -13795,6 +13813,8 @@ function Scanner({ onTickerClick }) {
                         <option value="weekly_rsi">📊 Weekly RSI</option>
                         <option value="vcp">🔺 VCP (Minervini)</option>
                         <option value="3m_rally">🚀 3-Month Rally</option>
+                        <option value="deep_oversold">📉 Deep Oversold</option>
+                        <option value="wave2">🌊 Elliott Wave 2</option>
                     </select>
 
 
@@ -14133,6 +14153,24 @@ function Scanner({ onTickerClick }) {
 
                 </div>
 
+
+            )}
+
+
+
+
+
+            {!scanning && stats && results.length === 0 && (
+
+                <div className="text-center py-20 border-2 border-dashed border-slate-800 rounded-xl">
+
+                    <div className="text-6xl mb-4">🏜️</div>
+
+                    <h3 className="text-xl font-bold text-white">No Results Found</h3>
+
+                    <p className="text-slate-400 mt-2">The scanner completed but found 0 tickers matching the "{strategy}" criteria.</p>
+
+                </div>
 
             )}
 

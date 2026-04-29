@@ -251,10 +251,18 @@ def run_market_scan(limit=1000, strategy="weekly_rsi"):
             gc.collect()
             
     # Sort by Stars (DESC) and then by Score (DESC)
-    results.sort(key=lambda x: (x.get("stars", 0), x.get("score", 0)), reverse=True)
+    try:
+        results.sort(key=lambda x: (x.get("stars", 0), x.get("score", 0)), reverse=True)
+    except Exception as e:
+        print(f"[WARN] Sort failed: {e}")
+    
+    try:
+        SCAN_STATUS["results"] = clean_type(results)
+    except Exception as e:
+        print(f"[ERROR] clean_type failed: {e}")
+        SCAN_STATUS["results"] = []
     
     SCAN_STATUS["is_running"] = False
-    SCAN_STATUS["results"] = clean_type(results)
     SCAN_STATUS["last_run"] = datetime.now().isoformat()
     SCAN_STATUS["spy_ret_3m"] = clean_type(round(spy_ret_3m, 2))
     
