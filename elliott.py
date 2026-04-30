@@ -212,8 +212,8 @@ def find_wave2_correction(df: pd.DataFrame) -> Optional[Dict]:
         # This confirms a high-volume rally and a low-volume flag/pullback
         w1_avg_vol = np.mean(volumes[w1_start_idx:peak_idx+1])
         w2_avg_vol = np.mean(volumes[peak_idx:w2_abs_idx+1])
-        if w1_avg_vol <= 0 or w2_avg_vol >= w1_avg_vol:
-            continue
+        # if w1_avg_vol <= 0 or w2_avg_vol >= w1_avg_vol:
+        #     continue
         
         # 4. Calculate Fibonacci retracement
         retrace_amount = w1_top_price - w2_low_price
