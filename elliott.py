@@ -153,8 +153,8 @@ def find_wave2_correction(df: pd.DataFrame) -> Optional[Dict]:
     dates = df.index
     n = len(closes)
     
-    # 1. Find pivots with adaptive window
-    window = max(3, min(7, n // 30))
+    # 1. Find pivots with adaptive window for macro waves (minimum 10 days)
+    window = max(10, min(15, n // 20))
     peaks, troughs = find_pivot_points(closes, window=window)
     
     if len(peaks) < 1 or len(troughs) < 2:
@@ -184,12 +184,13 @@ def find_wave2_correction(df: pd.DataFrame) -> Optional[Dict]:
         
         w1_top_price = closes[peak_idx]
         w1_height = w1_top_price - w1_start_price
+        w1_duration = peak_idx - w1_start_idx
         
-        # Wave 1 must be a significant rally (>= 15%)
+        # Wave 1 must be a significant rally (>= 15%) and sustained (>= 20 trading days, ~1 month)
         if w1_start_price <= 0:
             continue
         w1_pct = (w1_height / w1_start_price) * 100
-        if w1_pct < 15:
+        if w1_pct < 15 or w1_duration < 20:
             continue
         
         # 3. Find Wave 2 trough (lowest point AFTER the peak)
@@ -206,13 +207,20 @@ def find_wave2_correction(df: pd.DataFrame) -> Optional[Dict]:
         # ELLIOTT RULE: Wave 2 cannot go below Wave 1 start
         if w2_low_price <= w1_start_price:
             continue
+            
+        # VOLUME RULE: Wave 1 (rally) average volume > Wave 2 (pullback) average volume
+        # This confirms a high-volume rally and a low-volume flag/pullback
+        w1_avg_vol = np.mean(volumes[w1_start_idx:peak_idx+1])
+        w2_avg_vol = np.mean(volumes[peak_idx:w2_abs_idx+1])
+        if w1_avg_vol <= 0 or w2_avg_vol >= w1_avg_vol:
+            continue
         
         # 4. Calculate Fibonacci retracement
         retrace_amount = w1_top_price - w2_low_price
         retrace_pct = (retrace_amount / w1_height) * 100 if w1_height > 0 else 0
         
-        # Valid retracement: 23.6% to 86% (loose to catch more setups)
-        if retrace_pct < 23.6 or retrace_pct > 86:
+        # Valid retracement: 23% to 68% (user requested tight bull flag / deep golden pocket)
+        if retrace_pct < 23 or retrace_pct > 68:
             continue
         
         # Find nearest Fibonacci level
